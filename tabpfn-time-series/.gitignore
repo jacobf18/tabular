@@ -1,0 +1,6 @@
+*.pyc
+*.DS_Store
+gift_eval/data
+gift_eval/results
+wandb
+results

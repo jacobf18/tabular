@@ -1,5 +1,19 @@
 **/.DS_Store
 
-**/__pycache__/
+.venv/
 
-
+# Ignore Python bytecode files
+*.py[cod]
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints
+# Ignore virtual environment directories
+# Ignore Python egg files
+*.egg
+# Ignore distribution files
+*.egg-info/
+# Ignore cache directories
+__pycache__/
+# Ignore log files
+*.log
+# Ignore coverage reports
+.coverage
