@@ -8,14 +8,19 @@ import warnings
 
 # --- Helper functions for sampling ---
 def sample_log_uniform(low, high, size=1, base=np.e):
-    return np.power(base, np.random.uniform(np.log(low)/np.log(base), np.log(high)/np.log(base), size))
+    """Sample from a log-uniform distribution between low and high."""
+    return np.power(base, np.random.uniform(np.log(low)/np.log(base), 
+                                            np.log(high)/np.log(base), 
+                                            size))
 
 def sample_discretized_log_normal(mean, min_val, size=1):
+    """Sample from a discretized log-normal distribution with mean and minimum value."""
     sigma = 0.8
     val = np.random.lognormal(mean=np.log(mean), sigma=sigma, size=size)
     return np.maximum(min_val, np.round(val)).astype(int)
 
 def sample_exponential(scale, min_val, size=1):
+    """Sample from an exponential distribution with scale and minimum value."""
     return min_val + np.round(np.random.exponential(scale=scale, size=size)).astype(int)
 
 # --- Graph Generation Functions ---
@@ -154,6 +159,9 @@ def _logit(x):
     return 1 / (1 + np.exp(-x))
 
 def induce_mcar(matrix: pd.DataFrame, p: float):
+    """
+    Induces missing completely at random (MCAR) by randomly masking a specified percentage of cells.
+    """
     mat = matrix.copy(); total_cells = mat.size; num_missing = int(total_cells * p)
     indices = np.random.choice(total_cells, num_missing, replace=False)
     row_indices, col_indices = np.unravel_index(indices, mat.shape)
@@ -161,6 +169,9 @@ def induce_mcar(matrix: pd.DataFrame, p: float):
     return mat
 
 def induce_mar(matrix: pd.DataFrame, p: float):
+    """
+    Induces missing at random (MAR) by masking values based on a linear combination of predictor columns and a random choice of beta_0.
+    """
     mat = matrix.copy(); num_cols = mat.shape[1]
     num_predictors = np.random.randint(1, max(2, num_cols // 2))
     predictor_cols = mat.sample(n=num_predictors, axis=1).columns
@@ -175,6 +186,9 @@ def induce_mar(matrix: pd.DataFrame, p: float):
     return mat
 
 def induce_mnar(matrix: pd.DataFrame, p: float):
+    """
+    Induces missing not at random (MNAR) by selectively masking values based on the target column and a random choice of beta_1.
+    """
     mat = matrix.copy()
     target_cols = mat.sample(n=np.random.randint(1, mat.shape[1] + 1), axis=1).columns
     for col in target_cols:
@@ -188,6 +202,10 @@ def induce_mnar(matrix: pd.DataFrame, p: float):
 
 # --- Transformation Functions ---
 def create_cell_as_sample_dataset(matrix: pd.DataFrame):
+    """
+    Transforms incomplete matrix into supervised dataset. Each cell becomeess a data point with its features engineered from its
+    position and the statistical context of its row+ column and the global matrix.
+    """
     n_rows, m_cols = matrix.shape; samples = []
     row_stats = {'mean': matrix.mean(axis=1), 'std': matrix.std(axis=1), 'min': matrix.min(axis=1), 'max': matrix.max(axis=1), 'count': matrix.count(axis=1)}
     col_stats = {'mean': matrix.mean(axis=0), 'std': matrix.std(axis=0), 'min': matrix.min(axis=0), 'max': matrix.max(axis=0), 'count': matrix.count(axis=0)}
