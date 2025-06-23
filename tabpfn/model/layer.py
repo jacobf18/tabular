@@ -440,11 +440,11 @@ class PerFeatureEncoderLayer(Module):
                     "Pre-norm implementation is wrong, as the residual should never"
                     " be layer normed here.",
                 )
-                state = layer_norm(
-                    state,
-                    allow_inplace=True,
-                    save_peak_mem_factor=save_peak_mem_factor,
-                )
+                # state = layer_norm(
+                #     state,
+                #     allow_inplace=True,
+                #     save_peak_mem_factor=save_peak_mem_factor,
+                # )
 
             state = sublayer(state)
             if not self.pre_norm:
