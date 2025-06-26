@@ -1,0 +1,92 @@
+[project]
+name = "mcpfn"
+dynamic = ["version"]
+description = "MCPFN: A Tabular Foundation Model for Missing Data Imputation"
+readme = "README.md"
+authors = [
+    { name = "Jacob Feitelberg" },
+    { name = "Dwaipayan Saha" } ,
+    { name = "Zaid Ahmad" } ,
+    { name = "Kyuseong Choi" } ,
+    { name = "Anish Agarwal" } ,
+    { name = "Raaz Dwivedi" } ,
+]
+license = { file = "LICENSE" }
+requires-python = ">=3.9,<3.13"
+keywords = ["tabular data", "foundation model", "MCPFN", "in-context learning"]
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "Topic :: Scientific/Engineering",
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python",
+    'Programming Language :: Python :: 3',
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "torch>=2.2,<3",  # to enjoy Flash Attention v2
+    "scikit-learn>=1.3.0,<1.7",
+    "numpy",
+    "scipy",
+    "joblib",
+    "xgboost",
+    "transformers",
+    "einops>=0.7",
+    "psutil",
+    "wandb",
+    "tqdm>=4.64.0",
+    "huggingface-hub",
+]
+
+[build-system]
+requires = ["hatchling>=1.26.1"]  # https://github.com/pypa/hatch/issues/1818
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/mcpfn/__about__.py"
+
+[tool.hatch.build.targets.sdist]
+only-include = ["src/mcpfn", "LICENSE", "README.md"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mcpfn"]
+
+[tool.hatch.envs.default]
+installer = "uv"
+features = []
+
+[tool.hatch.envs.hatch-test]
+default-args = ["tests"]
+installer = "uv"
+features = []
+
+[tool.pytest.ini_options]
+pythonpath = "src"  # to allow importing mcpfn instead of src.mcpfn
+
+[tool.hatch.envs.types]
+extra-dependencies = [
+    "mypy>=1.0.0",
+]
+[tool.hatch.envs.types.scripts]
+check = "mypy --install-types --non-interactive {args:mcpfn tests}"
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+parallel = true
+omit = [
+    "src/mcpfn/__about__.py",
+]
+
+[tool.coverage.paths]
+mcpfn = ["src"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "no cov",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
