@@ -1,10 +1,12 @@
 import numpy as np
 
-def create_train_test_sets(X: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def create_train_test_sets(X: np.ndarray, X_full: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """ Create train and test sets from a matrix with missing values.
 
     Args:
         X (np.ndarray): Matrix with missing values.
+        X_full (np.ndarray | None, optional): Full matrix. If provided, the function will use it to create the test target values.
+        Defaults to None.
 
     Returns:
         tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]: Train and test sets.
@@ -38,6 +40,9 @@ def create_train_test_sets(X: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.nd
         
         # Create train set
         test_X[k,:] = np.concatenate((row, col))
-        test_y[k] = np.nan
+        if X_full is not None:
+            test_y[k] = X_full[i,j]
+        else:
+            test_y[k] = np.nan
        
     return train_X, train_y, test_X, test_y
