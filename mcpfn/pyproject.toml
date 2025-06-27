@@ -11,7 +11,6 @@ authors = [
     { name = "Anish Agarwal" } ,
     { name = "Raaz Dwivedi" } ,
 ]
-license = { file = "LICENSE" }
 requires-python = ">=3.9,<3.13"
 keywords = ["tabular data", "foundation model", "MCPFN", "in-context learning"]
 classifiers = [
@@ -47,9 +46,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.version]
 path = "src/mcpfn/__about__.py"
-
-[tool.hatch.build.targets.sdist]
-only-include = ["src/mcpfn", "LICENSE", "README.md"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mcpfn"]
