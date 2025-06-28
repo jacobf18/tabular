@@ -169,6 +169,3 @@ def run_complete_pipeline(
     masks = mask_gen.generate_binary_matrices(prob_matrix, num_masks=num_masks, random_seed=mask_seed)
     print(f"Generated {num_masks} masking matrices, each shape: {masks[0].shape}")
     return U, V, X, masks, prob_matrix
-
-# Example usage:
-# U, V, X, masks, prob_matrix = run_complete_pipeline(N=50, T=50, d=5, L_X=3, L_mask=3, num_masks=5)
