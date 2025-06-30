@@ -8,6 +8,8 @@ import torch.nn.functional as F
 from .rope import RotaryEmbedding
 from .attention import multi_head_attention_forward
 
+from .bar_distribution import FullSupportBarDistribution, get_bucket_limits
+
 
 class ClassNode:
     """Node in the hierarchical classification tree for handling many-class problems.
@@ -50,6 +52,8 @@ class ClassNode:
         self.y = None
 
 
+# This is only used to embed the class labels into a dense vector.
+# We can convert this to use the BarDistribution from TabPFN to embed floats values through a class structure.
 class OneHotAndLinear(nn.Linear):
     """Combines one-hot encoding and linear projection in a single efficient operation
     to convert categorical indices to embeddings.
@@ -84,6 +88,40 @@ class OneHotAndLinear(nn.Linear):
         # Convert indices to one-hot vectors and apply linear projection
         one_hot = F.one_hot(src.long(), self.num_classes).to(src.dtype)
         return F.linear(one_hot, self.weight, self.bias)
+    
+# class OneHotAndLinearBarDistribution(nn.Module):
+#     """Combines one-hot encoding and linear projection in a single efficient operation
+#     to convert float values to embeddings using the BarDistribution.
+
+#     Parameters
+#     ----------
+#     borders : Tensor
+#         Borders of the bar distribution
+
+#     embed_dim : int
+#         Output embedding dimension
+#     """
+#     def __init__(self, means, stds, embed_dim: int):
+#         super().__init__()
+#         self.bar_distribution = FullSupportBarDistribution(borders = borders)
+#         self.one_hot_and_linear = OneHotAndLinear(num_classes = len(borders) + 1, embed_dim = embed_dim)
+#         self.means = 
+        
+#     def forward(self, src: Tensor) -> Tensor:
+#         """Transform float values to dense embeddings using the BarDistribution.
+
+#         Parameters
+#         ----------
+#         src : Tensor
+#             Float tensor of shape (batch_size, sequence_length) containing values to embed
+
+#         Returns
+#         -------
+#         Tensor
+#             Embedded representation of shape (batch_size, sequence_length, embed_dim)
+#         """
+#         border_inds = self.bar_distribution.map_to_bucket_idx(src)
+#         return self.one_hot_and_linear(border_inds)
 
 
 class SkippableLinear(nn.Linear):

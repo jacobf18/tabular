@@ -53,7 +53,7 @@
 
 # Saving to disk
 # python /Users/jfeit/tabular/mcpfn/src/mcpfn/prior/genload.py \
-#     --save_dir /Users/jfeit/tabular/mcpfn/prior \
+#     --save_dir /Users/jfeit/tabular/mcpfn/data \
 #     --np_seed 42 \
 #     --torch_seed 42 \
 #     --num_batches 2 \
@@ -72,24 +72,24 @@
 #     --device cpu
 
 # Loading from disk and training
-torchrun --standalone --nproc_per_node=1 /path/to/tabicl/train/run.py \
+torchrun --standalone --nproc_per_node=1 /Users/jfeit/tabular/mcpfn/src/mcpfn/train/run.py \
             --wandb_log True \
-            --wandb_project TabICL \
+            --wandb_project MCPFN \
             --wandb_name Stage1 \
-            --wandb_dir /my/wandb/dir \
+            --wandb_dir /Users/jfeit/tabular/mcpfn/wandb \
             --wandb_mode online \
-            --device cuda \
+            --device cpu \
             --dtype float32 \
             --np_seed 42 \
             --torch_seed 42 \
-            --max_steps 100000 \
-            --batch_size 512 \
-            --micro_batch_size 4 \
+            --max_steps 2 \
+            --batch_size 4 \
+            --micro_batch_size 1 \
             --lr 1e-4 \
             --scheduler cosine_warmup \
             --warmup_proportion 0.02 \
             --gradient_clipping 1.0 \
-            --prior_dir /my/stage1/prior/dir \
+            --prior_dir /Users/jfeit/tabular/mcpfn/data \
             --load_prior_start 0 \
             --delete_after_load False \
             --prior_device cpu \
@@ -105,6 +105,6 @@ torchrun --standalone --nproc_per_node=1 /path/to/tabicl/train/run.py \
             --icl_nhead 4 \
             --ff_factor 2 \
             --norm_first True \
-            --checkpoint_dir /my/stage1/checkpoint/dir \
+            --checkpoint_dir /Users/jfeit/tabular/mcpfn/stage1/checkpoint \
             --save_temp_every 50 \
             --save_perm_every 5000
