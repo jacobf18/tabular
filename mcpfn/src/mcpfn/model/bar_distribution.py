@@ -557,16 +557,16 @@ class FullSupportBarDistribution(BarDistribution):
         if ignore_loss_mask.any():
             nll_loss[ignore_loss_mask] = 0.0
 
-        # TODO: Check with samuel whether to keep
-        self.losses_per_bucket += (
-            torch.scatter(
-                self.losses_per_bucket,
-                0,
-                target_sample[~ignore_loss_mask].flatten(),
-                nll_loss[~ignore_loss_mask].flatten().detach(),
-            )
-            / target_sample[~ignore_loss_mask].numel()
-        )
+        # # TODO: Check with samuel whether to keep
+        # self.losses_per_bucket += (
+        #     torch.scatter(
+        #         self.losses_per_bucket,
+        #         0,
+        #         target_sample[~ignore_loss_mask].flatten(),
+        #         nll_loss[~ignore_loss_mask].flatten().detach(),
+        #     )
+        #     / target_sample[~ignore_loss_mask].numel()
+        # )
 
         return nll_loss
 

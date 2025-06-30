@@ -468,7 +468,8 @@ class Trainer:
             if self.wandb_run is not None:
                 # Add learning rate to results
                 results["lr"] = self.scheduler.get_last_lr()[0]
-                wandb.log(results, step=self.curr_step)
+                # wandb.log(results, step=self.curr_step)
+                wandb.log(results)
 
     def validate_micro_batch(self, micro_seq_len, micro_train_size):
         """
@@ -616,7 +617,9 @@ class Trainer:
             micro_results = {}
             micro_results["ce"] = scaled_loss.item()
             # accuracy = (pred.argmax(dim=1) == true).sum() / len(true)
-            # micro_results["accuracy"] = accuracy.item() / num_micro_batches
+            # print(self.bar_distribution.median(logits=pred))
+            accuracy = (self.bar_distribution.median(logits=pred) - true).abs().mean()
+            micro_results["mae"] = accuracy.item() / num_micro_batches
 
         return micro_results
 
@@ -654,7 +657,7 @@ class Trainer:
         micro_batches = [torch.split(t, self.config.micro_batch_size, dim=0) for t in batch]
         micro_batches = list(zip(*micro_batches))
 
-        results = {"ce": 0.0, "accuracy": 0.0}
+        results = {"ce": 0.0, "mae": 0.0}
         failed_batches = 0
 
         for idx, micro_batch in enumerate(micro_batches):
@@ -705,4 +708,9 @@ if __name__ == "__main__":
 
     # Create trainer and start training
     trainer = Trainer(config)
-    trainer.train()
+    
+    for epoch in range(10):
+        print(f"Epoch {epoch}")
+        trainer.train()
+        # trainer.configure_prior()
+        trainer.curr_step = 0
