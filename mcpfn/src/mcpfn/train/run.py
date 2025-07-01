@@ -90,7 +90,7 @@ class Trainer:
         self.configure_amp()
         self.load_checkpoint()
         
-        borders = torch.load('/Users/jfeit/tabular/mcpfn/borders.pt')
+        borders = torch.load('/root/tabular/mcpfn/borders.pt').to(self.config.device)
         self.bar_distribution = FullSupportBarDistribution(borders = borders)
 
     def configure_ddp(self):

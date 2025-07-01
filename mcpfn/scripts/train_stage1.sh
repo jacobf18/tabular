@@ -52,33 +52,33 @@
 # ------------------------------------------------------
 
 # Saving to disk
-python /Users/jfeit/tabular/mcpfn/src/mcpfn/prior/genload.py \
-    --save_dir /Users/jfeit/tabular/mcpfn/data \
-    --np_seed 42 \
-    --torch_seed 42 \
-    --num_batches 2 \
-    --resume_from 0 \
-    --batch_size 4 \
-    --batch_size_per_gp 4 \
-    --prior_type mcar \
-    --min_features 5 \
-    --max_features 20 \
-    --max_classes 10 \
-    --max_seq_len 100 \
-    --min_train_size 0.1 \
-    --max_train_size 0.9 \
-    --n_jobs -1 \
-    --num_threads_per_generate 1 \
-    --device cpu
+# python3 /root/tabular/mcpfn/src/mcpfn/prior/genload.py \
+#     --save_dir /root/tabular/mcpfn/data \
+#     --np_seed 42 \
+#     --torch_seed 42 \
+#     --num_batches 2 \
+#     --resume_from 0 \
+#     --batch_size 4 \
+#     --batch_size_per_gp 4 \
+#     --prior_type mcar \
+#     --min_features 5 \
+#     --max_features 20 \
+#     --max_classes 10 \
+#     --max_seq_len 100 \
+#     --min_train_size 0.1 \
+#     --max_train_size 0.9 \
+#     --n_jobs -1 \
+#     --num_threads_per_generate 1 \
+#     --device cpu
 
 # Loading from disk and training
-torchrun --standalone --nproc_per_node=1 /Users/jfeit/tabular/mcpfn/src/mcpfn/train/run.py \
+python3 -m torch.distributed.run --standalone --nproc_per_node=1 /root/tabular/mcpfn/src/mcpfn/train/run.py \
             --wandb_log True \
             --wandb_project MCPFN \
-            --wandb_name Stage1 \
-            --wandb_dir /Users/jfeit/tabular/mcpfn/wandb \
+            --wandb_name H100 \
+            --wandb_dir /root/tabular/mcpfn/wandb \
             --wandb_mode online \
-            --device cpu \
+            --device cuda \
             --dtype float32 \
             --np_seed 42 \
             --torch_seed 42 \
@@ -89,7 +89,7 @@ torchrun --standalone --nproc_per_node=1 /Users/jfeit/tabular/mcpfn/src/mcpfn/tr
             --scheduler cosine_warmup \
             --warmup_proportion 0.02 \
             --gradient_clipping 1.0 \
-            --prior_dir /Users/jfeit/tabular/mcpfn/data \
+            --prior_dir /root/tabular/mcpfn/data \
             --load_prior_start 0 \
             --delete_after_load False \
             --prior_device cpu \
@@ -105,6 +105,6 @@ torchrun --standalone --nproc_per_node=1 /Users/jfeit/tabular/mcpfn/src/mcpfn/tr
             --icl_nhead 4 \
             --ff_factor 2 \
             --norm_first True \
-            --checkpoint_dir /Users/jfeit/tabular/mcpfn/stage1/checkpoint \
+            --checkpoint_dir /root/tabular/mcpfn/stage1/checkpoint \
             --save_temp_every 50 \
             --save_perm_every 5000

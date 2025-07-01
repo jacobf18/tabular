@@ -548,7 +548,7 @@ class SavePriorDataset:
             B = len(d)
         else:
             B, T, H = X.shape
-            X = dense2sparse(X.view(-1, H), d.repeat_interleave(T.to(torch.int64)), dtype=torch.float32)
+            X = dense2sparse(X.view(-1, H), d.repeat_interleave(T), dtype=torch.float32)
 
         # Create temporary file first
         batch_file = self.save_dir / f"batch_{batch_idx:06d}.pt"
