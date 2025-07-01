@@ -52,24 +52,24 @@
 # ------------------------------------------------------
 
 # Saving to disk
-# python /Users/jfeit/tabular/mcpfn/src/mcpfn/prior/genload.py \
-#     --save_dir /Users/jfeit/tabular/mcpfn/data \
-#     --np_seed 42 \
-#     --torch_seed 42 \
-#     --num_batches 2 \
-#     --resume_from 0 \
-#     --batch_size 4 \
-#     --batch_size_per_gp 4 \
-#     --prior_type mcar \
-#     --min_features 5 \
-#     --max_features 20 \
-#     --max_classes 10 \
-#     --max_seq_len 100 \
-#     --min_train_size 0.1 \
-#     --max_train_size 0.9 \
-#     --n_jobs -1 \
-#     --num_threads_per_generate 1 \
-#     --device cpu
+python /Users/jfeit/tabular/mcpfn/src/mcpfn/prior/genload.py \
+    --save_dir /Users/jfeit/tabular/mcpfn/data \
+    --np_seed 42 \
+    --torch_seed 42 \
+    --num_batches 2 \
+    --resume_from 0 \
+    --batch_size 4 \
+    --batch_size_per_gp 4 \
+    --prior_type mcar \
+    --min_features 5 \
+    --max_features 20 \
+    --max_classes 10 \
+    --max_seq_len 100 \
+    --min_train_size 0.1 \
+    --max_train_size 0.9 \
+    --n_jobs -1 \
+    --num_threads_per_generate 1 \
+    --device cpu
 
 # Loading from disk and training
 torchrun --standalone --nproc_per_node=1 /Users/jfeit/tabular/mcpfn/src/mcpfn/train/run.py \
