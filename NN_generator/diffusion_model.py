@@ -13,7 +13,7 @@ from typing import List, Tuple, Optional
 from tqdm import tqdm
 
 class MinimalDiffusionModel(nn.Module):
-    """Complex diffusion model with more capacity for learning patterns."""
+    """Advanced diffusion model with more capacity for learning patterns."""
     
     def __init__(self, max_size: int = 32):
         super().__init__()
@@ -21,69 +21,81 @@ class MinimalDiffusionModel(nn.Module):
         
         # Time embedding - more complex
         self.time_embed = nn.Sequential(
-            nn.Linear(1, 64),
+            nn.Linear(1, 128),
             nn.ReLU(),
-            nn.Linear(64, 128),
+            nn.Linear(128, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128),
             nn.ReLU(),
             nn.Linear(128, 64)
         )
         
         # Size embedding - more complex
         self.size_embed = nn.Sequential(
-            nn.Linear(2, 32),
+            nn.Linear(2, 64),
             nn.ReLU(),
-            nn.Linear(32, 64),
+            nn.Linear(64, 128),
             nn.ReLU(),
-            nn.Linear(64, 64)
+            nn.Linear(128, 64)
         )
         
-        # Much more complex CNN architecture
         # Initial convolution
-        self.conv1 = nn.Conv2d(2, 64, 3, padding=1)
-        self.bn1 = nn.BatchNorm2d(64)
+        self.conv1 = nn.Conv2d(2, 128, 3, padding=1)
+        self.bn1 = nn.BatchNorm2d(128)
+        self.dropout1 = nn.Dropout2d(0.1)
         
-        # Multiple convolutional blocks with residual connections
+        # More convolutional blocks with residual connections and dropout
         self.conv_block1 = nn.Sequential(
-            nn.Conv2d(64, 64, 3, padding=1),
-            nn.BatchNorm2d(64),
+            nn.Conv2d(128, 128, 3, padding=1),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
-            nn.Conv2d(64, 64, 3, padding=1),
-            nn.BatchNorm2d(64)
+            nn.Dropout2d(0.1),
+            nn.Conv2d(128, 128, 3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
         )
-        
         self.conv_block2 = nn.Sequential(
-            nn.Conv2d(64, 128, 3, padding=1),
-            nn.BatchNorm2d(128),
+            nn.Conv2d(128, 256, 3, padding=1),
+            nn.BatchNorm2d(256),
             nn.ReLU(),
-            nn.Conv2d(128, 128, 3, padding=1),
-            nn.BatchNorm2d(128)
+            nn.Dropout2d(0.1),
+            nn.Conv2d(256, 256, 3, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
         )
-        
         self.conv_block3 = nn.Sequential(
+            nn.Conv2d(256, 256, 3, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            nn.Dropout2d(0.1),
+            nn.Conv2d(256, 256, 3, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+        )
+        self.conv_block4 = nn.Sequential(
+            nn.Conv2d(256, 128, 3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.Dropout2d(0.1),
             nn.Conv2d(128, 128, 3, padding=1),
             nn.BatchNorm2d(128),
             nn.ReLU(),
+        )
+        self.conv_block5 = nn.Sequential(
             nn.Conv2d(128, 128, 3, padding=1),
-            nn.BatchNorm2d(128)
-        )
-        
-        self.conv_block4 = nn.Sequential(
-            nn.Conv2d(128, 64, 3, padding=1),
-            nn.BatchNorm2d(64),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
-            nn.Conv2d(64, 64, 3, padding=1),
-            nn.BatchNorm2d(64)
+            nn.Dropout2d(0.1),
+            nn.Conv2d(128, 128, 3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
         )
-        
         # Final convolution
-        self.conv_final = nn.Conv2d(64, 2, 3, padding=1)
-        
+        self.conv_final = nn.Conv2d(128, 2, 3, padding=1)
         self.relu = nn.ReLU()
-        
-        # Downsample and upsample for multi-scale processing
         self.downsample = nn.MaxPool2d(2)
         self.upsample = nn.Upsample(scale_factor=2, mode='nearest')
-        
+    
     def forward(self, x, t=None, size_info=None):
         # Time and size embeddings
         if t is not None:
@@ -92,52 +104,43 @@ class MinimalDiffusionModel(nn.Module):
             t_emb = t_emb.expand(-1, -1, x.shape[2], x.shape[3])  # [B, 64, H, W]
         else:
             t_emb = torch.zeros(x.shape[0], 64, x.shape[2], x.shape[3], device=x.device)
-            
         if size_info is not None:
             size_emb = self.size_embed(size_info)  # [B, 64]
             size_emb = size_emb.unsqueeze(-1).unsqueeze(-1)  # [B, 64, 1, 1]
             size_emb = size_emb.expand(-1, -1, x.shape[2], x.shape[3])  # [B, 64, H, W]
         else:
             size_emb = torch.zeros(x.shape[0], 64, x.shape[2], x.shape[3], device=x.device)
-        
         # Initial convolution
-        h = self.relu(self.bn1(self.conv1(x)))  # [B, 64, H, W]
-        
+        h = self.relu(self.bn1(self.conv1(x)))  # [B, 128, H, W]
+        h = self.dropout1(h)
         # Add embeddings
         h = h + t_emb + size_emb
-        
         # First conv block with residual connection
-        residual = h
+        residual1 = h
         h = self.conv_block1(h)
-        h = self.relu(h + residual)  # Residual connection
-        
-        # Second conv block with downsampling
-        h_down = self.downsample(h)  # [B, 64, H/2, W/2]
-        h_down = self.conv_block2(h_down)  # [B, 128, H/2, W/2]
+        h = self.relu(h + residual1)
+        # Downsample and second conv block
+        h_down = self.downsample(h)  # [B, 128, H/2, W/2]
+        h_down = self.conv_block2(h_down)  # [B, 256, H/2, W/2]
         h_down = self.relu(h_down)
-        
         # Third conv block
-        h_down = self.conv_block3(h_down)  # [B, 128, H/2, W/2]
+        h_down = self.conv_block3(h_down)  # [B, 256, H/2, W/2]
         h_down = self.relu(h_down)
-        
         # Fourth conv block with upsampling
-        h_up = self.conv_block4(h_down)  # [B, 64, H/2, W/2]
+        h_up = self.conv_block4(h_down)  # [B, 128, H/2, W/2]
         h_up = self.relu(h_up)
-        h_up = self.upsample(h_up)  # [B, 64, H, W]
-        
+        h_up = self.upsample(h_up)  # [B, 128, H, W]
+        # Fifth conv block
+        h_up = self.conv_block5(h_up)  # [B, 128, H, W]
+        h_up = self.relu(h_up)
         # Combine with original features
         h = h + h_up  # Skip connection
-        
         # Final convolution
         h = self.conv_final(h)  # [B, 2, H, W]
-        
         # Split into data and mask channels
-        data_channel = h[:, 0:1, :, :]  # [B, 1, H, W] - continuous data
-        mask_channel = torch.sigmoid(h[:, 1:2, :, :])  # [B, 1, H, W] - binary-like mask (0-1)
-        
-        # Combine back
+        data_channel = h[:, 0:1, :, :]  # [B, 1, H, W]
+        mask_channel = torch.sigmoid(h[:, 1:2, :, :])  # [B, 1, H, W]
         output = torch.cat([data_channel, mask_channel], dim=1)  # [B, 2, H, W]
-        
         return output
 
 class MinimalDiffusionScheduler:
