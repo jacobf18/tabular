@@ -72,11 +72,11 @@
 #     --device cpu
 
 # Loading from disk and training
-torchrun --standalone --nproc_per_node=1 /Users/jfeit/tabular/mcpfn/src/mcpfn/train/run.py \
-            --wandb_log True \
+python3 -m torch.distributed.run --standalone --nproc_per_node=1 /root/tabular/mcpfn/src/mcpfn/train/run.py \
+            --wandb_log False \
             --wandb_project MCPFN \
-            --wandb_name Stage1 \
-            --wandb_dir /Users/jfeit/tabular/mcpfn/wandb \
+            --wandb_name H100_mse \
+            --wandb_dir /root/tabular/mcpfn/wandb \
             --wandb_mode online \
             --device cuda \
             --dtype float32 \
@@ -85,7 +85,7 @@ torchrun --standalone --nproc_per_node=1 /Users/jfeit/tabular/mcpfn/src/mcpfn/tr
             --max_steps 2 \
             --batch_size 4 \
             --micro_batch_size 1 \
-            --lr 1e-4 \
+            --lr 1e-2 \
             --scheduler cosine_warmup \
             --warmup_proportion 0.02 \
             --gradient_clipping 1.0 \

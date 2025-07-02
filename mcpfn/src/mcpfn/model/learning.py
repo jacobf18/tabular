@@ -240,6 +240,7 @@ class ICLearning(nn.Module):
         
         # self.y_encoder = OneHotAndLinearBarDistribution(means = means, stds = stds, embed_dim = d_model)
         R[:, :train_size] = R[:, :train_size] + self.y_encoder(y_train.float().unsqueeze(2))
+        
         src = self.tf_icl(R, attn_mask=train_size)
         if self.norm_first:
             src = self.ln(src)
@@ -326,6 +327,7 @@ class ICLearning(nn.Module):
 
             # Case 1: Leaf node - direct classification
             if node.is_leaf:
+                
                 node_y = self._label_encoding(node.y.to(device))
                 # Get predictions for this leaf
                 leaf_preds = self._predict_standard(
@@ -413,30 +415,31 @@ class ICLearning(nn.Module):
         self.inference_mgr.configure(**mgr_config)
 
         num_classes = len(torch.unique(y_train[0]))
+        print('num_classes', num_classes)
         assert all(
             len(torch.unique(yi)) == num_classes for yi in y_train
         ), "All tables must have the same number of classes"
 
-        if num_classes <= self.max_classes:
-            # Standard classification
-            out = self._predict_standard(
-                R, y_train, return_logits=return_logits, softmax_temperature=softmax_temperature
-            )
-        else:
-            # Hierarchical classification
-            out = []
-            train_size = y_train.shape[1]
-            for ri, yi in zip(R, y_train):
-                if mgr_config.offload:
-                    ri, yi = ri.cpu(), yi.cpu()
-                else:
-                    ri, yi = ri.to(mgr_config.device), yi.to(mgr_config.device)
-                self._fit_hierarchical(ri[:train_size], yi)
-                probs = self._predict_hierarchical(ri[train_size:])
-                out.append(probs)
-            out = torch.stack(out, dim=0)
-            if return_logits:
-                out = softmax_temperature * torch.log(out + 1e-6)
+        # if num_classes <= self.max_classes:
+        # Standard classification
+        out = self._predict_standard(
+            R, y_train, return_logits=return_logits, softmax_temperature=softmax_temperature
+        )
+        # else:
+        #     # Hierarchical classification
+        #     out = []
+        #     train_size = y_train.shape[1]
+        #     for ri, yi in zip(R, y_train):
+        #         if mgr_config.offload:
+        #             ri, yi = ri.cpu(), yi.cpu()
+        #         else:
+        #             ri, yi = ri.to(mgr_config.device), yi.to(mgr_config.device)
+        #         self._fit_hierarchical(ri[:train_size], yi)
+        #         probs = self._predict_hierarchical(ri[train_size:])
+        #         out.append(probs)
+        #     out = torch.stack(out, dim=0)
+        #     if return_logits:
+        #         out = softmax_temperature * torch.log(out + 1e-6)
 
         return out
 

@@ -178,12 +178,12 @@ class TabICL(nn.Module):
         # Check if d is provided and has the same length as the number of features
         if d is not None and len(d.unique()) == 1 and d[0] == H:
             d = None
-
-        # Column-wise embedding -> Row-wise interaction
-        representations = self.row_interactor(
-            self.col_embedder(X, d=d, train_size=None if embed_with_test else train_size), d=d
-        )
+            
+        col_embeddings = self.col_embedder(X, d=d, train_size=None if embed_with_test else train_size)
+        representations = self.row_interactor(col_embeddings, d=d)
         
+        print(col_embeddings[:, train_size:])
+
         # Dataset-wise in-context learning
         out = self.icl_predictor(representations, y_train=y_train)
 

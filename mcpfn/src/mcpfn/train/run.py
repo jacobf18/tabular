@@ -8,6 +8,7 @@ from contextlib import nullcontext
 
 import math
 import numpy as np
+import pickle
 
 import torch
 from torch import nn
@@ -81,7 +82,7 @@ class Trainer:
         optimizer, distributed training, and data generation.
     """
 
-    def __init__(self, config):
+    def __init__(self, config, step_progress):
         self.config = config
         self.configure_ddp()
         self.configure_wandb()
@@ -93,6 +94,8 @@ class Trainer:
         
         borders = torch.load('/root/tabular/mcpfn/borders.pt').to(self.config.device)
         self.bar_distribution = FullSupportBarDistribution(borders = borders)
+        
+        self.step_progress = step_progress
 
     def configure_ddp(self):
         """Set up distributed training and system configuration.
@@ -267,11 +270,11 @@ class Trainer:
                 device=self.config.prior_device,
             )
 
-        if self.master_process:
-            print(dataset)
+        # if self.master_process:
+        #     print(dataset)
 
         # Create dataloader for efficient loading and prefetching
-        print(self.config.device)
+        # print(self.config.device)
         self.dataloader = DataLoader(
             dataset,
             batch_size=None,  # No additional batching since PriorDataset handles batching internally
@@ -428,8 +431,17 @@ class Trainer:
 
         if self.master_process:
             step_progress = tqdm(range(self.curr_step, self.config.max_steps), desc="Step", leave=True)
+            # step_progress = range(self.curr_step, self.config.max_steps)
         else:
             step_progress = range(self.curr_step, self.config.max_steps)
+            
+        results = {
+            'ce': 0.0,
+            'mae': 0.0,
+            'prior_time': 0.0,
+            'train_time': 0.0,
+            'lr': 0.0,
+        }
 
         dataloader = iter(self.dataloader)
         for step in step_progress:
@@ -440,7 +452,9 @@ class Trainer:
 
             # Train the model on the batch
             with Timer() as train_timer:
-                results = self.run_batch(batch)
+                results_batch = self.run_batch(batch)
+                results['ce'] += results_batch['ce']
+                results['mae'] += results_batch['mae']
             train_time = train_timer.elapsed
 
             # Clear CUDA cache to free memory
@@ -449,10 +463,9 @@ class Trainer:
             self.curr_step = step + 1
             if self.master_process:
                 # Add timing information to results
-                results.update({"prior_time": prior_time, "train_time": train_time})
-
-                # Update progress bar with rounded values for cleaner display
-                step_progress.set_postfix(**{k: round(v, 3) if isinstance(v, float) else v for k, v in results.items()})
+                results['prior_time'] += prior_time
+                results['train_time'] += train_time
+                results['lr'] = self.scheduler.get_last_lr()[0]
 
                 # Save checkpoints
                 is_temp_save = self.curr_step % self.config.save_temp_every == 0
@@ -466,12 +479,21 @@ class Trainer:
                     if is_temp_save and not is_perm_save and self.config.max_checkpoints > 0:
                         self.manage_checkpoint()
 
-            # Logging to Weights & Biases
-            if self.wandb_run is not None:
-                # Add learning rate to results
-                results["lr"] = self.scheduler.get_last_lr()[0]
-                # wandb.log(results, step=self.curr_step)
-                wandb.log(results)
+        # Logging to Weights & Biases
+        if self.wandb_run is not None:
+            # Average results
+            results['ce'] /= self.config.max_steps
+            results['mae'] /= self.config.max_steps
+            results['prior_time'] /= self.config.max_steps
+            results['train_time'] /= self.config.max_steps
+            
+            # Update progress bar with rounded values for cleaner display
+            self.step_progress.set_postfix(**{k: round(v, 3) if isinstance(v, float) else v for k, v in results.items()})
+            
+            # wandb.log(results, step=self.curr_step)
+            wandb.log(results)
+            
+        return results
 
     def validate_micro_batch(self, micro_seq_len, micro_train_size):
         """
@@ -608,22 +630,29 @@ class Trainer:
             # true = y_test.long().flatten()
             true = y_test.flatten()
             
+            true = torch.ones_like(true).to(self.config.device)
+            
             loss = self.bar_distribution(logits = pred, y =true)
+            # mse = torch.pow(self.bar_distribution.mean(logits = pred) - true, 2).mean()
     
         # Scale loss for gradient accumulation and backpropagate
-        # scaled_loss = loss / num_micro_batches
-        # self.scaler.scale(scaled_loss).backward()
         scaled_loss = loss.mean() / num_micro_batches
         self.scaler.scale(scaled_loss).backward()
+        # scaled_loss = loss.mean() / num_micro_batches
+        # mse = mse / num_micro_batches
+        # self.scaler.scale(mse).backward()
 
         with torch.no_grad():
             micro_results = {}
+            # scaled_loss = loss.mean() / num_micro_batches
             micro_results["ce"] = scaled_loss.item()
             # accuracy = (pred.argmax(dim=1) == true).sum() / len(true)
             # print(self.bar_distribution.median(logits=pred))
-            # accuracy = (self.bar_distribution.median(logits=pred) - true).abs().mean()
-            accuracy = torch.pow(self.bar_distribution.mean(logits=pred) - true, 2).mean()
-            micro_results["mse"] = accuracy.item() / num_micro_batches
+            median = self.bar_distribution.median(logits=pred)
+            accuracy = (median - true).abs().mean() # mae
+            micro_results["mae"] = accuracy.item()
+            
+            # print(median[0].item(), true[0])
 
         return micro_results
 
@@ -703,6 +732,12 @@ class Trainer:
 if __name__ == "__main__":
     parser = build_parser()
     config = parser.parse_args()
+    
+    # print(config)
+    
+    # # save config to pickle
+    # with open('config.pkl', 'wb') as f:
+    #     pickle.dump(config, f)
 
     # try:
     #     # Set the start method for subprocesses to 'spawn'
@@ -711,9 +746,10 @@ if __name__ == "__main__":
     #     pass  # Ignore the error if the context has already been set
 
     # Create trainer and start training
-    trainer = Trainer(config)
-    
-    for epoch in range(1):
+    step_progress = tqdm(range(100), desc="Epoch")
+    trainer = Trainer(config, step_progress)
+    for epoch in step_progress:
+        # print(f"Epoch {epoch}")
         trainer.train()
         # trainer.configure_prior()
         trainer.curr_step = 0
