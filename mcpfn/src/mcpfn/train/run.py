@@ -21,7 +21,8 @@ from torch.distributed import init_process_group, destroy_process_group
 from tqdm import tqdm
 import wandb
 
-from mcpfn import TabICL
+# from mcpfn import TabICL
+from mcpfn.model.mcpfn import MCPFN
 from mcpfn.prior.dataset import PriorDataset
 from mcpfn.prior.genload import LoadPriorDataset
 from mcpfn.train.optim import get_scheduler
@@ -191,7 +192,8 @@ class Trainer:
             "norm_first": self.config.norm_first,
         }
 
-        model = TabICL(**self.model_config)
+        # model = TabICL(**self.model_config)
+        model = MCPFN(encoder_path = '/Users/jfeit/tabular/mcpfn/src/mcpfn/model/encoder.pth')
         model.to(device=self.config.device)
 
         if self.master_process:
@@ -601,7 +603,8 @@ class Trainer:
 
         with self.amp_ctx:
             pred = self.model(micro_X, y_train, micro_d)  # (B, test_size, max_classes)
-            pred = pred.flatten(end_dim=-2)
+            # pred = pred.flatten(end_dim=-2)
+            
             # true = y_test.long().flatten()
             true = y_test.flatten()
             
@@ -618,8 +621,9 @@ class Trainer:
             micro_results["ce"] = scaled_loss.item()
             # accuracy = (pred.argmax(dim=1) == true).sum() / len(true)
             # print(self.bar_distribution.median(logits=pred))
-            accuracy = (self.bar_distribution.median(logits=pred) - true).abs().mean()
-            micro_results["mae"] = accuracy.item() / num_micro_batches
+            # accuracy = (self.bar_distribution.median(logits=pred) - true).abs().mean()
+            accuracy = torch.pow(self.bar_distribution.mean(logits=pred) - true, 2).mean()
+            micro_results["mse"] = accuracy.item() / num_micro_batches
 
         return micro_results
 
@@ -657,7 +661,7 @@ class Trainer:
         micro_batches = [torch.split(t, self.config.micro_batch_size, dim=0) for t in batch]
         micro_batches = list(zip(*micro_batches))
 
-        results = {"ce": 0.0, "mae": 0.0}
+        results = {"ce": 0.0, "mse": 0.0}
         failed_batches = 0
 
         for idx, micro_batch in enumerate(micro_batches):
@@ -700,17 +704,16 @@ if __name__ == "__main__":
     parser = build_parser()
     config = parser.parse_args()
 
-    try:
-        # Set the start method for subprocesses to 'spawn'
-        set_start_method("spawn")
-    except RuntimeError:
-        pass  # Ignore the error if the context has already been set
+    # try:
+    #     # Set the start method for subprocesses to 'spawn'
+    #     set_start_method("spawn")
+    # except RuntimeError:
+    #     pass  # Ignore the error if the context has already been set
 
     # Create trainer and start training
     trainer = Trainer(config)
     
-    for epoch in range(10):
-        print(f"Epoch {epoch}")
+    for epoch in range(1):
         trainer.train()
         # trainer.configure_prior()
         trainer.curr_step = 0
