@@ -423,6 +423,7 @@ class TabPFNRegressor(RegressorMixin, BaseEstimator):
             fit_mode=self.fit_mode,
             static_seed=static_seed,
         )
+        print(self.bardist_.borders)
 
         # Determine device and precision
         self.device_ = infer_device_and_type(self.device)

@@ -26,6 +26,7 @@ from mcpfn.prior.dataset import PriorDataset
 from mcpfn.prior.genload import LoadPriorDataset
 from mcpfn.train.optim import get_scheduler
 from mcpfn.train.train_config import build_parser
+from mcpfn.model.bar_distribution import FullSupportBarDistribution
 
 warnings.filterwarnings(
     "ignore", message=".*The PyTorch API of nested tensors is in prototype stage.*", category=UserWarning
@@ -88,6 +89,9 @@ class Trainer:
         self.configure_optimizer()
         self.configure_amp()
         self.load_checkpoint()
+        
+        borders = torch.load('/Users/jfeit/tabular/mcpfn/borders.pt')
+        self.bar_distribution = FullSupportBarDistribution(borders = borders)
 
     def configure_ddp(self):
         """Set up distributed training and system configuration.
@@ -100,6 +104,7 @@ class Trainer:
         """
         # Setup distributed training
         self.ddp = int(os.environ.get("RANK", -1)) != -1
+        self.ddp = False
 
         if self.ddp:
             init_process_group(backend="nccl")
@@ -264,14 +269,16 @@ class Trainer:
             print(dataset)
 
         # Create dataloader for efficient loading and prefetching
+        print(self.config.device)
         self.dataloader = DataLoader(
             dataset,
             batch_size=None,  # No additional batching since PriorDataset handles batching internally
             shuffle=False,
             num_workers=1,
             prefetch_factor=4,
-            pin_memory=True if self.config.prior_device == "cpu" else False,
-            pin_memory_device=self.config.device if self.config.prior_device == "cpu" else "",
+            # pin_memory=True if self.config.prior_device == "cpu" else False,
+            pin_memory = False,
+            # pin_memory_device=self.config.device if self.config.prior_device == "cpu" else "",
         )
 
     def configure_optimizer(self):
@@ -461,7 +468,8 @@ class Trainer:
             if self.wandb_run is not None:
                 # Add learning rate to results
                 results["lr"] = self.scheduler.get_last_lr()[0]
-                wandb.log(results, step=self.curr_step)
+                # wandb.log(results, step=self.curr_step)
+                wandb.log(results)
 
     def validate_micro_batch(self, micro_seq_len, micro_train_size):
         """
@@ -569,6 +577,20 @@ class Trainer:
         micro_X = micro_X.to(self.config.device)
         micro_y = micro_y.to(self.config.device)
         micro_d = micro_d.to(self.config.device)
+        
+        # Compute mean along dim=2 (last dimension), ignoring NaNs
+        mean_vals = torch.nanmean(micro_X, dim=2, keepdim=True)  # shape: [1, 2000, 1]
+
+        # Find the NaNs
+        nan_mask = torch.isnan(micro_X)  # shape: [1, 2000, 20]
+
+        # Expand mean_vals to match x's shape for indexing
+        mean_vals_expanded = mean_vals.expand_as(micro_X)
+
+        # Replace NaNs with corresponding mean values
+        micro_X[nan_mask] = mean_vals_expanded[nan_mask]
+        
+        train_size = int(train_size)
 
         y_train = micro_y[:, :train_size]
         y_test = micro_y[:, train_size:]
@@ -580,18 +602,24 @@ class Trainer:
         with self.amp_ctx:
             pred = self.model(micro_X, y_train, micro_d)  # (B, test_size, max_classes)
             pred = pred.flatten(end_dim=-2)
-            true = y_test.long().flatten()
-            loss = F.cross_entropy(pred, true)
-
+            # true = y_test.long().flatten()
+            true = y_test.flatten()
+            
+            loss = self.bar_distribution(logits = pred, y =true)
+    
         # Scale loss for gradient accumulation and backpropagate
-        scaled_loss = loss / num_micro_batches
+        # scaled_loss = loss / num_micro_batches
+        # self.scaler.scale(scaled_loss).backward()
+        scaled_loss = loss.mean() / num_micro_batches
         self.scaler.scale(scaled_loss).backward()
 
         with torch.no_grad():
             micro_results = {}
             micro_results["ce"] = scaled_loss.item()
-            accuracy = (pred.argmax(dim=1) == true).sum() / len(true)
-            micro_results["accuracy"] = accuracy.item() / num_micro_batches
+            # accuracy = (pred.argmax(dim=1) == true).sum() / len(true)
+            # print(self.bar_distribution.median(logits=pred))
+            accuracy = (self.bar_distribution.median(logits=pred) - true).abs().mean()
+            micro_results["mae"] = accuracy.item() / num_micro_batches
 
         return micro_results
 
@@ -629,7 +657,7 @@ class Trainer:
         micro_batches = [torch.split(t, self.config.micro_batch_size, dim=0) for t in batch]
         micro_batches = list(zip(*micro_batches))
 
-        results = {"ce": 0.0, "accuracy": 0.0}
+        results = {"ce": 0.0, "mae": 0.0}
         failed_batches = 0
 
         for idx, micro_batch in enumerate(micro_batches):
@@ -680,4 +708,9 @@ if __name__ == "__main__":
 
     # Create trainer and start training
     trainer = Trainer(config)
-    trainer.train()
+    
+    for epoch in range(10):
+        print(f"Epoch {epoch}")
+        trainer.train()
+        # trainer.configure_prior()
+        trainer.curr_step = 0

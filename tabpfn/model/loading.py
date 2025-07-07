@@ -490,7 +490,7 @@ def get_loss_criterion(
 
     assert config.max_num_classes == 0
     num_buckets = config.num_buckets
-
+    print(num_buckets)
     # NOTE: This just seems to get overriddden in the module loading from `state_dict`
     # dummy values, extra bad s.t. one realizes if they are used for training
     borders = torch.arange(num_buckets + 1).float() * 10_000

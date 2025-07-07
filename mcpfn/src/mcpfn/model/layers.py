@@ -8,6 +8,8 @@ import torch.nn.functional as F
 from .rope import RotaryEmbedding
 from .attention import multi_head_attention_forward
 
+from .bar_distribution import FullSupportBarDistribution, get_bucket_limits
+
 
 class ClassNode:
     """Node in the hierarchical classification tree for handling many-class problems.
@@ -50,6 +52,8 @@ class ClassNode:
         self.y = None
 
 
+# This is only used to embed the class labels into a dense vector.
+# We can convert this to use the BarDistribution from TabPFN to embed floats values through a class structure.
 class OneHotAndLinear(nn.Linear):
     """Combines one-hot encoding and linear projection in a single efficient operation
     to convert categorical indices to embeddings.
@@ -84,7 +88,6 @@ class OneHotAndLinear(nn.Linear):
         # Convert indices to one-hot vectors and apply linear projection
         one_hot = F.one_hot(src.long(), self.num_classes).to(src.dtype)
         return F.linear(one_hot, self.weight, self.bias)
-
 
 class SkippableLinear(nn.Linear):
     """Linear layer that handles inputs where all values equal `skip_value`.

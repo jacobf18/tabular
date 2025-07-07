@@ -183,7 +183,7 @@ class TabICL(nn.Module):
         representations = self.row_interactor(
             self.col_embedder(X, d=d, train_size=None if embed_with_test else train_size), d=d
         )
-
+        
         # Dataset-wise in-context learning
         out = self.icl_predictor(representations, y_train=y_train)
 

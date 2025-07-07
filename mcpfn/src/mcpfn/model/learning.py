@@ -61,7 +61,8 @@ class ICLearning(nn.Module):
         norm_first: bool = True,
     ):
         super().__init__()
-        self.max_classes = max_classes
+        # self.max_classes = max_classes
+        self.max_classes = 5000
         self.norm_first = norm_first
 
         self.tf_icl = Encoder(
@@ -75,9 +76,15 @@ class ICLearning(nn.Module):
         )
         if self.norm_first:
             self.ln = nn.LayerNorm(d_model)
+            
+        self.y_encoder = nn.Linear(1, d_model)
 
-        self.y_encoder = OneHotAndLinear(max_classes, d_model)
-        self.decoder = nn.Sequential(nn.Linear(d_model, d_model * 2), nn.GELU(), nn.Linear(d_model * 2, max_classes))
+        # self.y_encoder = OneHotAndLinear(max_classes, d_model)
+        self.decoder = nn.Sequential(
+            nn.Linear(d_model, d_model * 2),
+            nn.GELU(),
+            nn.Linear(d_model * 2, self.max_classes)
+        )
 
         self.inference_mgr = InferenceManager(enc_name="tf_icl", out_dim=max_classes)
 
@@ -218,12 +225,25 @@ class ICLearning(nn.Module):
         """
 
         train_size = y_train.shape[1]
-        R[:, :train_size] = R[:, :train_size] + self.y_encoder(y_train.float())
+        # means = y_train.mean(dim = 1)
+        # stds = y_train.std(dim = 1)
+        
+        # borders_base = torch.load('borders.pt')
+        # # We need different borders for each train
+        # borders = borders_base.repeat(y_train.shape[0], 1)
+        # borders = borders * stds.unsqueeze(1) + means.unsqueeze(1)
+        
+        # # Why not just do linear?
+        # self.y_encoder = Linear()
+        
+        # self.y_encoder = OneHotAndLinearBarDistribution(borders = borders, embed_dim = d_model)
+        
+        # self.y_encoder = OneHotAndLinearBarDistribution(means = means, stds = stds, embed_dim = d_model)
+        R[:, :train_size] = R[:, :train_size] + self.y_encoder(y_train.float().unsqueeze(2))
         src = self.tf_icl(R, attn_mask=train_size)
         if self.norm_first:
             src = self.ln(src)
         out = self.decoder(src)  # (B, T, max_classes)
-
         return out
 
     def _predict_standard(
