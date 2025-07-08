@@ -7,9 +7,9 @@ import torch
 from torch import nn, Tensor
 
 from .layers import SkippableLinear
-from .encoders import SetTransformer
-from .inference import InferenceManager
-from .inference_config import MgrConfig
+from .tabicl import SetTransformer
+from ..inference import InferenceManager
+from ..inference_config import MgrConfig
 
 
 class ColEmbedding(nn.Module):

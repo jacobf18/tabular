@@ -6,9 +6,9 @@ from torch import nn, Tensor
 import torch.nn.functional as F
 
 from .rope import RotaryEmbedding
-from .attention import multi_head_attention_forward
+from .tabicl import multi_head_attention_forward
 
-from .bar_distribution import FullSupportBarDistribution, get_bucket_limits
+from ..bar_distribution import FullSupportBarDistribution, get_bucket_limits
 
 
 class ClassNode:

@@ -203,21 +203,21 @@ class Trainer:
             num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
             print(f"Model has {num_params} parameters.")
 
-        # Freeze model components if requested
-        if self.config.freeze_col:
-            model.col_embedder.eval()
-            for param in model.col_embedder.parameters():
-                param.requires_grad = False
+        # # Freeze model components if requested
+        # if self.config.freeze_col:
+        #     model.col_embedder.eval()
+        #     for param in model.col_embedder.parameters():
+        #         param.requires_grad = False
 
-        if self.config.freeze_row:
-            model.row_interactor.eval()
-            for param in model.row_interactor.parameters():
-                param.requires_grad = False
+        # if self.config.freeze_row:
+        #     model.row_interactor.eval()
+        #     for param in model.row_interactor.parameters():
+        #         param.requires_grad = False
 
-        if self.config.freeze_icl:
-            model.icl_predictor.eval()
-            for param in model.icl_predictor.parameters():
-                param.requires_grad = False
+        # if self.config.freeze_icl:
+        #     model.icl_predictor.eval()
+        #     for param in model.icl_predictor.parameters():
+        #         param.requires_grad = False
 
         # Compile model if requested
         if self.config.model_compile:

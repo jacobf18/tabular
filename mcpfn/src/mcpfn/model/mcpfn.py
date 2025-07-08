@@ -4,8 +4,8 @@ from typing import Optional
 from torch import nn, Tensor
 import torch
 
-from tabpfn.model.config import ModelConfig
-from tabpfn.model.transformer import PerFeatureTransformer
+from mcpfn.model.config import ModelConfig
+from mcpfn.model.transformer import PerFeatureTransformer
 
 import einops
 
@@ -43,6 +43,7 @@ class MCPFN(nn.Module):
         )
         
         self.encoder = torch.load(encoder_path, weights_only=False)
+        
         self.model = PerFeatureTransformer(config = self.config, encoder=self.encoder, n_out = 5000)
 
     def forward(

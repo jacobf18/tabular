@@ -6,9 +6,9 @@ from collections import OrderedDict
 import torch
 from torch import nn, Tensor
 
-from .encoders import Encoder
-from .inference import InferenceManager
-from .inference_config import MgrConfig
+from .tabicl import Encoder
+from ..inference import InferenceManager
+from ..inference_config import MgrConfig
 
 
 class RowInteraction(nn.Module):

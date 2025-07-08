@@ -17,3 +17,5 @@ __pycache__/
 *.log
 # Ignore coverage reports
 .coverage
+
+.vscode
