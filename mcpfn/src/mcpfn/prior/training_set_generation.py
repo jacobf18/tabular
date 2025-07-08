@@ -153,13 +153,16 @@ class FixedMissingDataSCMPrior(Prior):
             y_list.append(torch.cat((train_y, test_y)))
             train_sizes[i] = train_X.shape[0]
 
-        X_nested = nested_tensor(X_list, device=self.device)
-        y_nested = nested_tensor(y_list, device=self.device)
+        # X_nested = nested_tensor(X_list, device=self.device)
+        # y_nested = nested_tensor(y_list, device=self.device)
+        
+        X_full = torch.stack(X_list, dim=0)
+        y_full = torch.stack(y_list, dim=0)
 
         d = torch.tensor(self.num_samples + self.num_features - 2, device=self.device).repeat(_batch_size)
         seq_lens = torch.tensor([len(y) for y in y_list], device=self.device, dtype=torch.long)
 
-        return X_nested, y_nested, d, seq_lens, train_sizes
+        return X_full, y_full, d, seq_lens, train_sizes
 
 class DisablePrinting:
     """Context manager to temporarily suppress printed output."""
