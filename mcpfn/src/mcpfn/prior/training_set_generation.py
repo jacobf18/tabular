@@ -9,9 +9,6 @@ Original file is located at
 
 import os
 import sys
-os.chdir('/content/drive/MyDrive/TabPFN Project')
-
-from data_generation import *
 
 import torch
 import numpy as np
