@@ -172,7 +172,9 @@ class MLPSCM(nn.Module):
 
         if self.is_causal:
             # Ensure enough intermediate variables for sampling X and y
-            self.hidden_dim = max(self.hidden_dim, self.num_outputs + 2 * self.num_features)
+            self.hidden_dim = max(
+                self.hidden_dim, self.num_outputs + 2 * self.num_features
+            )
         else:
             # In non-causal mode, features are the causes
             self.num_causes = self.num_features
@@ -205,7 +207,10 @@ class MLPSCM(nn.Module):
 
         if self.pre_sample_noise_std:
             noise_std = torch.abs(
-                torch.normal(torch.zeros(size=(1, out_dim), device=self.device), float(self.noise_std))
+                torch.normal(
+                    torch.zeros(size=(1, out_dim), device=self.device),
+                    float(self.noise_std),
+                )
             )
         else:
             noise_std = self.noise_std
@@ -228,17 +233,25 @@ class MLPSCM(nn.Module):
         block_size = [dim // n_blocks for dim in param.shape]
         keep_prob = (n_blocks * block_size[0] * block_size[1]) / param.numel()
         for block in range(n_blocks):
-            block_slice = tuple(slice(dim * block, dim * (block + 1)) for dim in block_size)
+            block_slice = tuple(
+                slice(dim * block, dim * (block + 1)) for dim in block_size
+            )
             nn.init.normal_(
-                param[block_slice], std=self.init_std / (keep_prob**0.5 if self.scale_init_std_by_dropout else 1)
+                param[block_slice],
+                std=self.init_std
+                / (keep_prob**0.5 if self.scale_init_std_by_dropout else 1),
             )
 
     def initialize_normally(self, param, index):
         """Initializes parameters using normal distribution."""
         if param.dim() == 2:  # Applies only to weights, not biases
-            dropout_prob = self.mlp_dropout_prob if index > 0 else 0  # No dropout for the first layer's weights
+            dropout_prob = (
+                self.mlp_dropout_prob if index > 0 else 0
+            )  # No dropout for the first layer's weights
             dropout_prob = min(dropout_prob, 0.99)
-            std = self.init_std / ((1 - dropout_prob) ** 0.5 if self.scale_init_std_by_dropout else 1)
+            std = self.init_std / (
+                (1 - dropout_prob) ** 0.5 if self.scale_init_std_by_dropout else 1
+            )
             nn.init.normal_(param, std=std)
             param *= torch.bernoulli(torch.full_like(param, 1 - dropout_prob))
 
@@ -250,7 +263,9 @@ class MLPSCM(nn.Module):
         outputs = [causes]
         for layer in self.layers:
             outputs.append(layer(outputs[-1]))
-        outputs = outputs[2:]  # Start from 2 because the first layer is only linear without activation
+        outputs = outputs[
+            2:
+        ]  # Start from 2 because the first layer is only linear without activation
 
         # Handle outputs based on causality
         X, y = self.handle_outputs(causes, outputs)
@@ -293,13 +308,21 @@ class MLPSCM(nn.Module):
             if self.in_clique:
                 # When in_clique=True, features and targets are sampled as a block, ensuring that
                 # selected variables may share dense dependencies.
-                start = random.randint(0, outputs_flat.shape[-1] - self.num_outputs - self.num_features)
-                random_perm = start + torch.randperm(self.num_outputs + self.num_features, device=self.device)
+                start = random.randint(
+                    0, outputs_flat.shape[-1] - self.num_outputs - self.num_features
+                )
+                random_perm = start + torch.randperm(
+                    self.num_outputs + self.num_features, device=self.device
+                )
             else:
                 # Otherwise, features and targets are randomly and independently selected
-                random_perm = torch.randperm(outputs_flat.shape[-1] - 1, device=self.device)
+                random_perm = torch.randperm(
+                    outputs_flat.shape[-1] - 1, device=self.device
+                )
 
-            indices_X = random_perm[self.num_outputs : self.num_outputs + self.num_features]
+            indices_X = random_perm[
+                self.num_outputs : self.num_outputs + self.num_features
+            ]
             if self.y_is_effect:
                 # If targets are effects, take last output dims
                 indices_y = list(range(-self.num_outputs, 0))

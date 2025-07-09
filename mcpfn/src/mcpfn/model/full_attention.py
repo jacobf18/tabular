@@ -89,6 +89,7 @@ class Attention(ABC, nn.Module):
         """
         ...
 
+
 class MultiHeadAttention(Attention):
     _input_size: int
     _output_size: int

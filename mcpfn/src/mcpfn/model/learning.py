@@ -76,14 +76,14 @@ class ICLearning(nn.Module):
         )
         if self.norm_first:
             self.ln = nn.LayerNorm(d_model)
-            
+
         self.y_encoder = nn.Linear(1, d_model)
 
         # self.y_encoder = OneHotAndLinear(max_classes, d_model)
         self.decoder = nn.Sequential(
             nn.Linear(d_model, d_model * 2),
             nn.GELU(),
-            nn.Linear(d_model * 2, self.max_classes)
+            nn.Linear(d_model * 2, self.max_classes),
         )
 
         self.inference_mgr = InferenceManager(enc_name="tf_icl", out_dim=max_classes)
@@ -173,8 +173,12 @@ class ICLearning(nn.Module):
         group_assignments, num_groups = self._grouping(len(unique_classes))
 
         # Create mapping from original class labels to their corresponding group numbers
-        node.class_mapping = {c.item(): g.item() for c, g in zip(unique_classes, group_assignments)}
-        node.group_indices = torch.tensor([node.class_mapping[c.item()] for c in y], dtype=torch.int)
+        node.class_mapping = {
+            c.item(): g.item() for c, g in zip(unique_classes, group_assignments)
+        }
+        node.group_indices = torch.tensor(
+            [node.class_mapping[c.item()] for c in y], dtype=torch.int
+        )
         node.R = R
         node.y = y
         node.is_leaf = False
@@ -227,20 +231,22 @@ class ICLearning(nn.Module):
         train_size = y_train.shape[1]
         # means = y_train.mean(dim = 1)
         # stds = y_train.std(dim = 1)
-        
+
         # borders_base = torch.load('borders.pt')
         # # We need different borders for each train
         # borders = borders_base.repeat(y_train.shape[0], 1)
         # borders = borders * stds.unsqueeze(1) + means.unsqueeze(1)
-        
+
         # # Why not just do linear?
         # self.y_encoder = Linear()
-        
+
         # self.y_encoder = OneHotAndLinearBarDistribution(borders = borders, embed_dim = d_model)
-        
+
         # self.y_encoder = OneHotAndLinearBarDistribution(means = means, stds = stds, embed_dim = d_model)
-        R[:, :train_size] = R[:, :train_size] + self.y_encoder(y_train.float().unsqueeze(2))
-        
+        R[:, :train_size] = R[:, :train_size] + self.y_encoder(
+            y_train.float().unsqueeze(2)
+        )
+
         src = self.tf_icl(R, attn_mask=train_size)
         if self.norm_first:
             src = self.ln(src)
@@ -282,7 +288,9 @@ class ICLearning(nn.Module):
         train_size = y_train.shape[1]
         num_classes = len(torch.unique(y_train[0]))
         out = self.inference_mgr(
-            self._icl_predictions, inputs=OrderedDict([("R", R), ("y_train", y_train)]), auto_batch=auto_batch
+            self._icl_predictions,
+            inputs=OrderedDict([("R", R), ("y_train", y_train)]),
+            auto_batch=auto_batch,
         )
         out = out[:, train_size:, :num_classes]
 
@@ -291,7 +299,9 @@ class ICLearning(nn.Module):
 
         return out
 
-    def _predict_hierarchical(self, R_test: Tensor, softmax_temperature: float = 0.9) -> Tensor:
+    def _predict_hierarchical(
+        self, R_test: Tensor, softmax_temperature: float = 0.9
+    ) -> Tensor:
         """Generate predictions using the hierarchical classification tree.
 
         This method traverses the tree from leaves to root, computing probabilities at each level
@@ -327,7 +337,7 @@ class ICLearning(nn.Module):
 
             # Case 1: Leaf node - direct classification
             if node.is_leaf:
-                
+
                 node_y = self._label_encoding(node.y.to(device))
                 # Get predictions for this leaf
                 leaf_preds = self._predict_standard(
@@ -415,7 +425,7 @@ class ICLearning(nn.Module):
         self.inference_mgr.configure(**mgr_config)
 
         num_classes = len(torch.unique(y_train[0]))
-        print('num_classes', num_classes)
+        print("num_classes", num_classes)
         assert all(
             len(torch.unique(yi)) == num_classes for yi in y_train
         ), "All tables must have the same number of classes"
@@ -423,7 +433,10 @@ class ICLearning(nn.Module):
         # if num_classes <= self.max_classes:
         # Standard classification
         out = self._predict_standard(
-            R, y_train, return_logits=return_logits, softmax_temperature=softmax_temperature
+            R,
+            y_train,
+            return_logits=return_logits,
+            softmax_temperature=softmax_temperature,
         )
         # else:
         #     # Hierarchical classification
@@ -489,6 +502,8 @@ class ICLearning(nn.Module):
             out = self._icl_predictions(R, y_train)
             out = out[:, train_size:]
         else:
-            out = self._inference_forward(R, y_train, return_logits, softmax_temperature, mgr_config)
+            out = self._inference_forward(
+                R, y_train, return_logits, softmax_temperature, mgr_config
+            )
 
         return out

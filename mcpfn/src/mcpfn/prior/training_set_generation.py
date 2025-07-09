@@ -20,18 +20,35 @@ import warnings
 import os
 import sys
 
+
 class Prior:
-    def __init__(self, **kwargs): pass
-    def get_batch(self, batch_size): raise NotImplementedError
+    def __init__(self, **kwargs):
+        pass
+
+    def get_batch(self, batch_size):
+        raise NotImplementedError
+
 
 class DisablePrinting:
     def __enter__(self):
-        self.original_stdout = sys.stdout; sys.stdout = open(os.devnull, "w")
+        self.original_stdout = sys.stdout
+        sys.stdout = open(os.devnull, "w")
+
     def __exit__(self, exc_type, exc_val, exc_tb):
-        sys.stdout.close(); sys.stdout = self.original_stdout
+        sys.stdout.close()
+        sys.stdout = self.original_stdout
+
 
 class TabICLSCMPrior(Prior):
-    def __init__(self, batch_size=4, num_samples=50, num_features=10, num_missing=20, device="cpu", **kwargs):
+    def __init__(
+        self,
+        batch_size=4,
+        num_samples=50,
+        num_features=10,
+        num_missing=20,
+        device="cpu",
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self.batch_size = batch_size
         self.num_samples = num_samples
@@ -39,157 +56,320 @@ class TabICLSCMPrior(Prior):
         self.num_missing = num_missing
         self.device = device
         self.config = self._create_config(num_features, num_samples)
-        self.missingness_functions = [self.induce_mcar_fixed, self.induce_mar_fixed, self.induce_mnar_fixed]
+        self.missingness_functions = [
+            self.induce_mcar_fixed,
+            self.induce_mar_fixed,
+            self.induce_mnar_fixed,
+        ]
+
     ###### specifiy config hyperparams here #######
     def _create_config(self, num_features, num_samples):
         return {
-            'graph_generation_method': ['MLP-Dropout', 'Scale-Free'],
-            'num_nodes_low': num_features, 'num_nodes_high': num_features * 2,
-            'mlp_num_layers_mean': 5, 'function_type_mixture_ratio': 0.7,
-            'scm_activation_functions': list(self.ACTIVATION_FUNCTIONS.keys()),
-            'xgb_n_estimators_exp_scale': 0.5, 'xgb_max_depth_exp_scale': 0.5,
-            'num_rows_low': num_samples, 'num_rows_high': num_samples + 1,
-            'num_cols_low': num_features, 'num_cols_high': num_features + 1,
-            'root_node_noise_dist': ['Normal', 'Uniform'],
-            'apply_feature_warping_prob': 0.1, 'apply_quantization_prob': 0.1,
+            "graph_generation_method": ["MLP-Dropout", "Scale-Free"],
+            "num_nodes_low": num_features,
+            "num_nodes_high": num_features * 2,
+            "mlp_num_layers_mean": 5,
+            "function_type_mixture_ratio": 0.7,
+            "scm_activation_functions": list(self.ACTIVATION_FUNCTIONS.keys()),
+            "xgb_n_estimators_exp_scale": 0.5,
+            "xgb_max_depth_exp_scale": 0.5,
+            "num_rows_low": num_samples,
+            "num_rows_high": num_samples + 1,
+            "num_cols_low": num_features,
+            "num_cols_high": num_features + 1,
+            "root_node_noise_dist": ["Normal", "Uniform"],
+            "apply_feature_warping_prob": 0.1,
+            "apply_quantization_prob": 0.1,
         }
 
     @staticmethod
     def sample_log_uniform(low, high, size=1, base=np.e):
-        return np.power(base, np.random.uniform(np.log(low)/np.log(base), np.log(high)/np.log(base), size))
+        return np.power(
+            base,
+            np.random.uniform(
+                np.log(low) / np.log(base), np.log(high) / np.log(base), size
+            ),
+        )
+
     @staticmethod
     def sample_discretized_log_normal(mean, min_val, size=1):
-        return np.maximum(min_val, np.round(np.random.lognormal(mean=np.log(mean), sigma=0.8, size=size))).astype(int)
+        return np.maximum(
+            min_val,
+            np.round(np.random.lognormal(mean=np.log(mean), sigma=0.8, size=size)),
+        ).astype(int)
+
     @staticmethod
     def sample_exponential(scale, min_val, size=1):
-        return min_val + np.round(np.random.exponential(scale=scale, size=size)).astype(int)
+        return min_val + np.round(np.random.exponential(scale=scale, size=size)).astype(
+            int
+        )
+
     @staticmethod
     def generate_mlp_dropout_dag(num_nodes, num_layers):
-        G = nx.DiGraph(); nodes_per_layer = np.array_split(np.arange(num_nodes), num_layers)
+        G = nx.DiGraph()
+        nodes_per_layer = np.array_split(np.arange(num_nodes), num_layers)
         for i, layer_nodes in enumerate(nodes_per_layer):
-            for node in layer_nodes: G.add_node(node, layer=i)
+            for node in layer_nodes:
+                G.add_node(node, layer=i)
         for i in range(num_layers - 1):
             for u in nodes_per_layer[i]:
-                for v in nodes_per_layer[i+1]:
-                    if np.random.rand() > 0.2: G.add_edge(u, v)
+                for v in nodes_per_layer[i + 1]:
+                    if np.random.rand() > 0.2:
+                        G.add_edge(u, v)
         return G
+
     @staticmethod
     def generate_scale_free_dag(num_nodes, m_edges=2):
         undirected_G = nx.barabasi_albert_graph(n=num_nodes, m=m_edges)
-        return nx.DiGraph([(u, v) if u < v else (v, u) for u, v in undirected_G.edges()])
+        return nx.DiGraph(
+            [(u, v) if u < v else (v, u) for u, v in undirected_G.edges()]
+        )
+
     def sample_dag_structure(self):
-        graph_type = np.random.choice(self.config['graph_generation_method'])
-        num_nodes = int(self.sample_log_uniform(self.config['num_nodes_low'], self.config['num_nodes_high'])[0])
-        if graph_type == 'MLP-Dropout':
-            num_layers = self.sample_discretized_log_normal(mean=self.config['mlp_num_layers_mean'], min_val=2)[0]
-            if num_layers >= num_nodes: num_layers = num_nodes - 1
+        graph_type = np.random.choice(self.config["graph_generation_method"])
+        num_nodes = int(
+            self.sample_log_uniform(
+                self.config["num_nodes_low"], self.config["num_nodes_high"]
+            )[0]
+        )
+        if graph_type == "MLP-Dropout":
+            num_layers = self.sample_discretized_log_normal(
+                mean=self.config["mlp_num_layers_mean"], min_val=2
+            )[0]
+            if num_layers >= num_nodes:
+                num_layers = num_nodes - 1
             return self.generate_mlp_dropout_dag(num_nodes, num_layers)
-        elif graph_type == 'Scale-Free':
+        elif graph_type == "Scale-Free":
             m_edges = np.random.randint(1, 5)
             return self.generate_scale_free_dag(num_nodes, m_edges)
+
     class RandomFourierFeatureFunction:
         def __init__(self, N=256):
-            self.N, u, self.b = N, np.random.uniform(0.7, 3.0), np.random.uniform(0, 2*np.pi, N)
-            self.a = np.random.uniform(0, N, N); self.w = self.a ** (-np.exp(u))
+            self.N, u, self.b = (
+                N,
+                np.random.uniform(0.7, 3.0),
+                np.random.uniform(0, 2 * np.pi, N),
+            )
+            self.a = np.random.uniform(0, N, N)
+            self.w = self.a ** (-np.exp(u))
+
         def __call__(self, x):
             z, x = np.random.randn(self.N), x[:, np.newaxis] if x.ndim == 1 else x
             phi_x = (self.w / np.linalg.norm(self.w)) * np.sin(self.a * x + self.b)
             return np.dot(phi_x, z)
-    ACTIVATION_FUNCTIONS = {'identity': lambda x: x, 'tanh': np.tanh, 'leaky_relu': lambda x: np.maximum(0.01*x, x), 'sine': np.sin, 'relu': lambda x: np.maximum(0, x)}
+
+    ACTIVATION_FUNCTIONS = {
+        "identity": lambda x: x,
+        "tanh": np.tanh,
+        "leaky_relu": lambda x: np.maximum(0.01 * x, x),
+        "sine": np.sin,
+        "relu": lambda x: np.maximum(0, x),
+    }
+
     def assign_functional_mechanisms(self, dag):
-        function_choices = self.config['scm_activation_functions'] + ['random_fourier']
+        function_choices = self.config["scm_activation_functions"] + ["random_fourier"]
         for node in dag.nodes():
             choice = np.random.choice(function_choices)
             parents = list(dag.predecessors(node))
-            if choice != 'random_fourier' and np.random.rand() < self.config['function_type_mixture_ratio']:
-                func_name = np.random.choice(self.config['scm_activation_functions'])
-                dag.nodes[node].update({'type': 'scm', 'function': self.ACTIVATION_FUNCTIONS[func_name], 'weights': np.random.randn(len(parents)), 'bias': np.random.randn()})
-            elif choice == 'random_fourier':
-                dag.nodes[node].update({'type': 'random_fourier', 'function': self.RandomFourierFeatureFunction(), 'parent_selector': np.random.randint(len(parents)) if parents else None})
+            if (
+                choice != "random_fourier"
+                and np.random.rand() < self.config["function_type_mixture_ratio"]
+            ):
+                func_name = np.random.choice(self.config["scm_activation_functions"])
+                dag.nodes[node].update(
+                    {
+                        "type": "scm",
+                        "function": self.ACTIVATION_FUNCTIONS[func_name],
+                        "weights": np.random.randn(len(parents)),
+                        "bias": np.random.randn(),
+                    }
+                )
+            elif choice == "random_fourier":
+                dag.nodes[node].update(
+                    {
+                        "type": "random_fourier",
+                        "function": self.RandomFourierFeatureFunction(),
+                        "parent_selector": (
+                            np.random.randint(len(parents)) if parents else None
+                        ),
+                    }
+                )
             else:
-                model = xgb.XGBRegressor(n_estimators=self.sample_exponential(self.config['xgb_n_estimators_exp_scale'], 1)[0], max_depth=self.sample_exponential(self.config['xgb_max_depth_exp_scale'], 2)[0], n_jobs=1)
-                dag.nodes[node].update({'type': 'tree', 'function': model})
+                model = xgb.XGBRegressor(
+                    n_estimators=self.sample_exponential(
+                        self.config["xgb_n_estimators_exp_scale"], 1
+                    )[0],
+                    max_depth=self.sample_exponential(
+                        self.config["xgb_max_depth_exp_scale"], 2
+                    )[0],
+                    n_jobs=1,
+                )
+                dag.nodes[node].update({"type": "tree", "function": model})
+
     def generate_complete_matrix_pd(self):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             dag = self.sample_dag_structure()
-            if not nx.is_directed_acyclic_graph(dag): dag = nx.DiGraph([(u,v) for (u,v) in dag.edges() if u<v]) # Ensure DAG
-            self.assign_functional_mechanisms(dag); n_rows = int(self.sample_log_uniform(self.config['num_rows_low'], self.config['num_rows_high'])[0])
-            sorted_nodes = list(nx.topological_sort(dag)); node_data = {node: np.zeros(n_rows) for node in sorted_nodes}
+            if not nx.is_directed_acyclic_graph(dag):
+                dag = nx.DiGraph(
+                    [(u, v) for (u, v) in dag.edges() if u < v]
+                )  # Ensure DAG
+            self.assign_functional_mechanisms(dag)
+            n_rows = int(
+                self.sample_log_uniform(
+                    self.config["num_rows_low"], self.config["num_rows_high"]
+                )[0]
+            )
+            sorted_nodes = list(nx.topological_sort(dag))
+            node_data = {node: np.zeros(n_rows) for node in sorted_nodes}
             for node in sorted_nodes:
-                parents = list(dag.predecessors(node)); node_info = dag.nodes[node]
-                if not parents: node_data[node] = np.random.randn(n_rows) if np.random.choice(self.config['root_node_noise_dist']) == 'Normal' else np.random.uniform(-1, 1, n_rows)
+                parents = list(dag.predecessors(node))
+                node_info = dag.nodes[node]
+                if not parents:
+                    node_data[node] = (
+                        np.random.randn(n_rows)
+                        if np.random.choice(self.config["root_node_noise_dist"])
+                        == "Normal"
+                        else np.random.uniform(-1, 1, n_rows)
+                    )
                 else:
                     parent_values = np.vstack([node_data[p] for p in parents]).T
-                    if parent_values.ndim == 1: parent_values = parent_values.reshape(-1, 1)
-                    if node_info['type'] == 'scm': node_data[node] = node_info['function'](np.dot(parent_values, node_info['weights']) + node_info['bias'])
-                    elif node_info['type'] == 'random_fourier': node_data[node] = node_info['function'](parent_values[:, node_info['parent_selector']])
-                    elif node_info['type'] == 'tree':
-                        node_info['function'].fit(parent_values, np.random.randn(n_rows)); node_data[node] = node_info['function'].predict(parent_values)
-            m_cols = np.random.randint(self.config['num_cols_low'], min(dag.number_of_nodes() + 1, self.config['num_cols_high'])) if dag.number_of_nodes() > 0 else self.config['num_cols_low']
-            if m_cols == 0 and dag.number_of_nodes() > 0: m_cols = 1
+                    if parent_values.ndim == 1:
+                        parent_values = parent_values.reshape(-1, 1)
+                    if node_info["type"] == "scm":
+                        node_data[node] = node_info["function"](
+                            np.dot(parent_values, node_info["weights"])
+                            + node_info["bias"]
+                        )
+                    elif node_info["type"] == "random_fourier":
+                        node_data[node] = node_info["function"](
+                            parent_values[:, node_info["parent_selector"]]
+                        )
+                    elif node_info["type"] == "tree":
+                        node_info["function"].fit(
+                            parent_values, np.random.randn(n_rows)
+                        )
+                        node_data[node] = node_info["function"].predict(parent_values)
+            m_cols = (
+                np.random.randint(
+                    self.config["num_cols_low"],
+                    min(dag.number_of_nodes() + 1, self.config["num_cols_high"]),
+                )
+                if dag.number_of_nodes() > 0
+                else self.config["num_cols_low"]
+            )
+            if m_cols == 0 and dag.number_of_nodes() > 0:
+                m_cols = 1
             if m_cols > 0:
-                final_cols = np.random.choice(list(node_data.keys()), m_cols, replace=False)
-                matrix = pd.DataFrame({f"feature_{col}": node_data[col] for col in final_cols})
-            else: matrix = pd.DataFrame(np.random.randn(n_rows, self.config['num_cols_low']))
-            if np.random.rand() < self.config['apply_feature_warping_prob']:
+                final_cols = np.random.choice(
+                    list(node_data.keys()), m_cols, replace=False
+                )
+                matrix = pd.DataFrame(
+                    {f"feature_{col}": node_data[col] for col in final_cols}
+                )
+            else:
+                matrix = pd.DataFrame(
+                    np.random.randn(n_rows, self.config["num_cols_low"])
+                )
+            if np.random.rand() < self.config["apply_feature_warping_prob"]:
                 for col in matrix.columns:
-                    scaler = MinMaxScaler(); col_data = scaler.fit_transform(matrix[[col]])
+                    scaler = MinMaxScaler()
+                    col_data = scaler.fit_transform(matrix[[col]])
                     a, b = np.random.rand() * 5 + 0.5, np.random.rand() * 5 + 0.5
-                    matrix[col] = scaler.inverse_transform(beta.ppf(np.clip(col_data, 1e-10, 1 - 1e-10), a, b).reshape(-1, 1)).flatten()
-            if np.random.rand() < self.config['apply_quantization_prob'] and not matrix.empty:
+                    matrix[col] = scaler.inverse_transform(
+                        beta.ppf(np.clip(col_data, 1e-10, 1 - 1e-10), a, b).reshape(
+                            -1, 1
+                        )
+                    ).flatten()
+            if (
+                np.random.rand() < self.config["apply_quantization_prob"]
+                and not matrix.empty
+            ):
                 col_to_quantize = np.random.choice(matrix.columns)
-                try: matrix[col_to_quantize] = pd.qcut(matrix[col_to_quantize], q=np.random.randint(2, 20), labels=False, duplicates='drop')
-                except (ValueError, IndexError): pass
+                try:
+                    matrix[col_to_quantize] = pd.qcut(
+                        matrix[col_to_quantize],
+                        q=np.random.randint(2, 20),
+                        labels=False,
+                        duplicates="drop",
+                    )
+                except (ValueError, IndexError):
+                    pass
             return torch.from_numpy(matrix.values).float()
 
-
     @staticmethod
-    def _logit(x): return 1 / (1 + torch.exp(-x))
+    def _logit(x):
+        return 1 / (1 + torch.exp(-x))
 
     def induce_mcar_fixed(self, matrix: torch.Tensor) -> torch.Tensor:
         mat = matrix.clone()
         # Flatten indices+sample num_missing of them
         flat_indices = torch.randperm(mat.numel())
-        missing_indices_1d = flat_indices[:self.num_missing]
+        missing_indices_1d = flat_indices[: self.num_missing]
         # convert flat 1D indices back to 2D
         rows, cols = np.unravel_index(missing_indices_1d.cpu().numpy(), mat.shape)
-        mat[rows, cols] = float('nan')
+        mat[rows, cols] = float("nan")
         return mat
 
     def induce_mar_fixed(self, matrix: torch.Tensor) -> torch.Tensor:
-        mat = matrix.clone(); _, num_features = mat.shape; predictor_col_idx = np.random.randint(0, num_features)
-        eligible_mask = torch.ones_like(mat, dtype=torch.bool); eligible_mask[:, predictor_col_idx] = False
+        mat = matrix.clone()
+        _, num_features = mat.shape
+        predictor_col_idx = np.random.randint(0, num_features)
+        eligible_mask = torch.ones_like(mat, dtype=torch.bool)
+        eligible_mask[:, predictor_col_idx] = False
         probs = self._logit(mat[:, predictor_col_idx].unsqueeze(1).expand_as(mat) * 0.5)
         eligible_probs = probs[eligible_mask]
         if len(eligible_probs) > 0:
             num_to_sample = min(self.num_missing, len(eligible_probs))
-            if torch.all(eligible_probs == 0): eligible_probs += 1e-8 # in case all zero
-            sampled_indices_flat = torch.multinomial(eligible_probs, num_samples=num_to_sample, replacement=False)
+            if torch.all(eligible_probs == 0):
+                eligible_probs += 1e-8  # in case all zero
+            sampled_indices_flat = torch.multinomial(
+                eligible_probs, num_samples=num_to_sample, replacement=False
+            )
             original_indices = torch.where(eligible_mask)
-            mat[original_indices[0][sampled_indices_flat], original_indices[1][sampled_indices_flat]] = float('nan')
+            mat[
+                original_indices[0][sampled_indices_flat],
+                original_indices[1][sampled_indices_flat],
+            ] = float("nan")
         return mat
 
     def induce_mnar_fixed(self, matrix: torch.Tensor) -> torch.Tensor:
-        mat = matrix.clone(); target_col_idx = np.random.randint(0, mat.shape[1]); target_col = mat[:, target_col_idx]
+        mat = matrix.clone()
+        target_col_idx = np.random.randint(0, mat.shape[1])
+        target_col = mat[:, target_col_idx]
         probs = self._logit(target_col * 0.6)
         num_to_sample = min(self.num_missing, len(probs))
-        if torch.all(probs == 0): probs += 1e-8 # in case all zero
-        missing_row_indices = torch.multinomial(probs, num_samples=num_to_sample, replacement=False)
-        mat[missing_row_indices, target_col_idx] = float('nan'); return mat
+        if torch.all(probs == 0):
+            probs += 1e-8  # in case all zero
+        missing_row_indices = torch.multinomial(
+            probs, num_samples=num_to_sample, replacement=False
+        )
+        mat[missing_row_indices, target_col_idx] = float("nan")
+        return mat
 
     @staticmethod
     def create_train_test_sets(X, X_full):
-        missing_indices = torch.where(torch.isnan(X)); non_missing_indices = torch.where(~torch.isnan(X))
-        num_non_missing, num_missing = len(non_missing_indices[0]), len(missing_indices[0])
+        missing_indices = torch.where(torch.isnan(X))
+        non_missing_indices = torch.where(~torch.isnan(X))
+        num_non_missing, num_missing = len(non_missing_indices[0]), len(
+            missing_indices[0]
+        )
         num_features_out = X.shape[0] + X.shape[1] - 2
-        train_X, train_y = torch.zeros((num_non_missing, num_features_out)), torch.zeros(num_non_missing)
-        test_X, test_y = torch.zeros((num_missing, num_features_out)), torch.zeros(num_missing)
+        train_X, train_y = torch.zeros(
+            (num_non_missing, num_features_out)
+        ), torch.zeros(num_non_missing)
+        test_X, test_y = torch.zeros((num_missing, num_features_out)), torch.zeros(
+            num_missing
+        )
         for k, (i, j) in enumerate(zip(non_missing_indices[0], non_missing_indices[1])):
-            row, col = torch.cat((X[i, :j], X[i, j+1:])), torch.cat((X[:i, j], X[i+1:, j]))
+            row, col = torch.cat((X[i, :j], X[i, j + 1 :])), torch.cat(
+                (X[:i, j], X[i + 1 :, j])
+            )
             train_X[k, :], train_y[k] = torch.cat((row, col)), X[i, j]
         for k, (i, j) in enumerate(zip(missing_indices[0], missing_indices[1])):
-            row, col = torch.cat((X[i, :j], X[i, j+1:])), torch.cat((X[:i, j], X[i+1:, j]))
+            row, col = torch.cat((X[i, :j], X[i, j + 1 :])), torch.cat(
+                (X[:i, j], X[i + 1 :, j])
+            )
             test_X[k, :], test_y[k] = torch.cat((row, col)), X_full[i, j]
         return train_X, train_y, test_X, test_y
 
@@ -198,16 +378,30 @@ class TabICLSCMPrior(Prior):
         X_list, y_list, train_sizes = [], [], torch.zeros(_batch_size, dtype=torch.long)
         for i in range(_batch_size):
             X_full = self.generate_complete_matrix_pd()
-            if X_full.numel() == 0: continue
+            if X_full.numel() == 0:
+                continue
             chosen_missing_func = np.random.choice(self.missingness_functions)
             X_missing = chosen_missing_func(X_full)
-            train_X, train_y, test_X, test_y = self.create_train_test_sets(X_missing, X_full=X_full)
-            X_list.append(torch.cat((train_X, test_X))); y_list.append(torch.cat((train_y, test_y))); train_sizes[i] = train_X.shape[0]
-        if not X_list: return self.get_batch(batch_size) # Retry if all generations failed
-        X_nested, y_nested = nested_tensor(X_list, device=self.device), nested_tensor(y_list, device=self.device)
+            train_X, train_y, test_X, test_y = self.create_train_test_sets(
+                X_missing, X_full=X_full
+            )
+            X_list.append(torch.cat((train_X, test_X)))
+            y_list.append(torch.cat((train_y, test_y)))
+            train_sizes[i] = train_X.shape[0]
+        if not X_list:
+            return self.get_batch(batch_size)  # Retry if all generations failed
+        # X_nested = nested_tensor(X_list, device=self.device)
+        # y_nested = nested_tensor(y_list, device=self.device)
+        
+        X_full = torch.stack(X_list, dim = 0)
+        y_full = torch.stack(y_list, dim = 0)
+        
         d = torch.tensor(X_list[0].shape[1], device=self.device).repeat(len(X_list))
-        seq_lens = torch.tensor([len(y) for y in y_list], device=self.device, dtype=torch.long)
-        return X_nested, y_nested, d, seq_lens, train_sizes
+        seq_lens = torch.tensor(
+            [len(y) for y in y_list], device=self.device, dtype=torch.long
+        )
+        return X_full, y_full, d, seq_lens, train_sizes
+
 
 # Main Wrapper
 class PriorDataset(IterableDataset):
@@ -218,11 +412,20 @@ class PriorDataset(IterableDataset):
         else:
             raise ValueError(f"Unknown prior type '{prior_type}'.")
         self.batch_size = self.prior.batch_size
-    def get_batch(self, batch_size=None): return self.prior.get_batch(batch_size)
-    def __iter__(self): return self
+
+    def get_batch(self, batch_size=None):
+        return self.prior.get_batch(batch_size)
+
+    def __iter__(self):
+        return self
+
     def __next__(self):
-        with DisablePrinting(): return self.get_batch()
-    def __repr__(self): return f"PriorDataset(prior={self.prior})"
+        with DisablePrinting():
+            return self.get_batch()
+
+    def __repr__(self):
+        return f"PriorDataset(prior={self.prior})"
+
 
 # Example usage and test
 # batch_size_to_test = 4
@@ -245,4 +448,3 @@ class PriorDataset(IterableDataset):
 
 # num_test_samples = seq_lens_batch - train_sizes_batch
 # print(f"actual # of missing entries: {num_test_samples.tolist()}")
-

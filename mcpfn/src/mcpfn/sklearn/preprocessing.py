@@ -92,12 +92,16 @@ class TransformToNumerical(TransformerMixin, BaseEstimator):
         self : object
             Returns self.
         """
-        if not hasattr(X, "columns"):  # proxy way to check whether X is a dataframe without importing pandas
+        if not hasattr(
+            X, "columns"
+        ):  # proxy way to check whether X is a dataframe without importing pandas
             # no dataframe
             self.tfm_ = FunctionTransformer()
             return self
 
-        cat_cols = make_column_selector(dtype_include=["string", "object", "category", "boolean"])(X)
+        cat_cols = make_column_selector(
+            dtype_include=["string", "object", "category", "boolean"]
+        )(X)
         cat_pos = [X.columns.get_loc(col) for col in cat_cols]
 
         numeric_cols = make_column_selector(dtype_include="number")(X)
@@ -108,7 +112,10 @@ class TransformToNumerical(TransformerMixin, BaseEstimator):
                 (
                     "categorical",
                     OrdinalEncoder(
-                        dtype=np.int64, handle_unknown="use_encoded_value", unknown_value=-1, encoded_missing_value=-1
+                        dtype=np.int64,
+                        handle_unknown="use_encoded_value",
+                        unknown_value=-1,
+                        encoded_missing_value=-1,
                     ),
                     cat_pos,
                 ),
@@ -127,7 +134,9 @@ class TransformToNumerical(TransformerMixin, BaseEstimator):
 
             dropped_cols = set(X.columns).difference(set(selected_cols))
             if len(dropped_cols) >= 1:
-                print(f"The following columns are not used due to their data type: {list(dropped_cols)}")
+                print(
+                    f"The following columns are not used due to their data type: {list(dropped_cols)}"
+                )
 
         return self
 
@@ -202,7 +211,10 @@ class UniqueFeatureFilter(TransformerMixin, BaseEstimator):
         else:
             # For each feature, check if it has more than threshold unique values
             self.features_to_keep_ = np.array(
-                [len(np.unique(X[:, i])) > self.threshold for i in range(self.n_features_in_)]
+                [
+                    len(np.unique(X[:, i])) > self.threshold
+                    for i in range(self.n_features_in_)
+                ]
             )
 
         self.n_features_out_ = np.sum(self.features_to_keep_)
@@ -364,7 +376,9 @@ class CustomStandardScaler(TransformerMixin, BaseEstimator):
         The standard deviation for each feature in the training set with epsilon added.
     """
 
-    def __init__(self, clip_min: float = -100, clip_max: float = 100, epsilon: float = 1e-6):
+    def __init__(
+        self, clip_min: float = -100, clip_max: float = 100, epsilon: float = 1e-6
+    ):
         self.clip_min = clip_min
         self.clip_max = clip_max
         self.epsilon = epsilon
@@ -581,7 +595,10 @@ class PreprocessingPipeline(TransformerMixin, BaseEstimator):
     """
 
     def __init__(
-        self, normalization_method: str = "power", outlier_threshold: float = 4.0, random_state: Optional[int] = None
+        self,
+        normalization_method: str = "power",
+        outlier_threshold: float = 4.0,
+        random_state: Optional[int] = None,
     ):
         self.normalization_method = normalization_method
         self.outlier_threshold = outlier_threshold
@@ -612,15 +629,22 @@ class PreprocessingPipeline(TransformerMixin, BaseEstimator):
         # 2. Apply normalization
         if self.normalization_method != "none":
             if self.normalization_method == "power":
-                self.normalizer_ = PowerTransformer(method="yeo-johnson", standardize=True)
+                self.normalizer_ = PowerTransformer(
+                    method="yeo-johnson", standardize=True
+                )
             elif self.normalization_method == "quantile":
-                self.normalizer_ = QuantileTransformer(output_distribution="normal", random_state=self.random_state)
+                self.normalizer_ = QuantileTransformer(
+                    output_distribution="normal", random_state=self.random_state
+                )
             elif self.normalization_method == "quantile_rtdl":
                 self.normalizer_ = Pipeline(
                     [
                         (
                             "quantile_rtdl",
-                            RTDLQuantileTransformer(output_distribution="normal", random_state=self.random_state),
+                            RTDLQuantileTransformer(
+                                output_distribution="normal",
+                                random_state=self.random_state,
+                            ),
                         ),
                         ("std", StandardScaler()),
                     ]
@@ -628,7 +652,9 @@ class PreprocessingPipeline(TransformerMixin, BaseEstimator):
             elif self.normalization_method == "robust":
                 self.normalizer_ = RobustScaler(unit_variance=True)
             else:
-                raise ValueError(f"Unknown normalization method: {self.normalization_method}")
+                raise ValueError(
+                    f"Unknown normalization method: {self.normalization_method}"
+                )
 
             self.X_min_ = np.min(X_scaled, axis=0, keepdims=True)
             self.X_max_ = np.max(X_scaled, axis=0, keepdims=True)
@@ -752,20 +778,34 @@ class FeatureShuffler:
         # Generate permutations based on method
         if method == "shift":
             # All possible circular shifts
-            shuffle_patterns = [feature_indices[-i:] + feature_indices[:-i] for i in range(self.n_features)]
+            shuffle_patterns = [
+                feature_indices[-i:] + feature_indices[:-i]
+                for i in range(self.n_features)
+            ]
         elif method == "random":
             # Random permutations
             if self.n_features <= 5:
-                all_perms = [list(perm) for perm in itertools.permutations(feature_indices)]
-                shuffle_patterns = self.rng_.sample(all_perms, min(n_estimators, len(all_perms)))
+                all_perms = [
+                    list(perm) for perm in itertools.permutations(feature_indices)
+                ]
+                shuffle_patterns = self.rng_.sample(
+                    all_perms, min(n_estimators, len(all_perms))
+                )
             else:
-                shuffle_patterns = [self.rng_.sample(feature_indices, self.n_features) for _ in range(n_estimators)]
+                shuffle_patterns = [
+                    self.rng_.sample(feature_indices, self.n_features)
+                    for _ in range(n_estimators)
+                ]
         elif method == "latin":
             # Latin square permutations
-            with RecursionLimitManager(100000):  # Set a higher recursion limit to avoid recursion error
+            with RecursionLimitManager(
+                100000
+            ):  # Set a higher recursion limit to avoid recursion error
                 shuffle_patterns = self._latin_squares()
         else:
-            raise ValueError(f"Unknown method: {method}. Use 'shift', 'random', 'latin', or 'none'.")
+            raise ValueError(
+                f"Unknown method: {method}. Use 'shift', 'random', 'latin', or 'none'."
+            )
 
         return shuffle_patterns
 
@@ -933,7 +973,11 @@ class EnsembleGenerator(TransformerMixin, BaseEstimator):
         self.n_classes_ = len(np.unique(y))
 
         self.rng_ = random.Random(self.random_state)
-        self.ensemble_configs_, self.feature_shuffle_patterns_, self.class_shift_offsets_ = self._generate_ensemble()
+        (
+            self.ensemble_configs_,
+            self.feature_shuffle_patterns_,
+            self.class_shift_offsets_,
+        ) = self._generate_ensemble()
 
         self.preprocessors_ = {}
         for norm_method in self.ensemble_configs_:
@@ -961,7 +1005,9 @@ class EnsembleGenerator(TransformerMixin, BaseEstimator):
         """
 
         shuffler = FeatureShuffler(
-            n_features=self.n_features_in_, method=self.feat_shuffle_method, random_state=self.random_state
+            n_features=self.n_features_in_,
+            method=self.feat_shuffle_method,
+            random_state=self.random_state,
         )
         shuffle_patterns = shuffler.shuffle(self.n_estimators)
 
@@ -973,7 +1019,9 @@ class EnsembleGenerator(TransformerMixin, BaseEstimator):
         shuffle_shift_configs = list(itertools.product(shuffle_patterns, shift_offsets))
         self.rng_.shuffle(shuffle_shift_configs)
 
-        shuffle_shift_norm_configs = list(itertools.product(shuffle_shift_configs, self.norm_methods_))
+        shuffle_shift_norm_configs = list(
+            itertools.product(shuffle_shift_configs, self.norm_methods_)
+        )
         shuffle_shift_norm_configs = shuffle_shift_norm_configs[: self.n_estimators]
 
         # Reorganize configs so that those with the same normalization method are grouped together
@@ -984,7 +1032,11 @@ class EnsembleGenerator(TransformerMixin, BaseEstimator):
         shift_offsets = OrderedDict()
 
         for method in used_methods:
-            shuffle_shift_configs = [config[0] for config in shuffle_shift_norm_configs if config[1] == method]
+            shuffle_shift_configs = [
+                config[0]
+                for config in shuffle_shift_norm_configs
+                if config[1] == method
+            ]
             shuffle_patterns[method] = [config[0] for config in shuffle_shift_configs]
             shift_offsets[method] = [config[1] for config in shuffle_shift_configs]
             ensemble_configs[method] = shuffle_shift_configs
@@ -1033,6 +1085,9 @@ class EnsembleGenerator(TransformerMixin, BaseEstimator):
             for shuffle_pattern, shift_offset in shuffle_shift_configs:
                 X_ensemble.append(X_variant[:, shuffle_pattern])
                 y_ensemble.append((y + shift_offset) % self.n_classes_)
-            data[norm_method] = (np.stack(X_ensemble, axis=0), np.stack(y_ensemble, axis=0))
+            data[norm_method] = (
+                np.stack(X_ensemble, axis=0),
+                np.stack(y_ensemble, axis=0),
+            )
 
         return data

@@ -144,7 +144,11 @@ class TabICL(nn.Module):
         )
 
     def _train_forward(
-        self, X: Tensor, y_train: Tensor, d: Optional[Tensor] = None, embed_with_test: bool = False
+        self,
+        X: Tensor,
+        y_train: Tensor,
+        d: Optional[Tensor] = None,
+        embed_with_test: bool = False,
     ) -> Tensor:
         """Column-wise embedding -> row-wise interaction -> dataset-wise in-context learning for training.
 
@@ -181,9 +185,12 @@ class TabICL(nn.Module):
 
         # Column-wise embedding -> Row-wise interaction
         representations = self.row_interactor(
-            self.col_embedder(X, d=d, train_size=None if embed_with_test else train_size), d=d
+            self.col_embedder(
+                X, d=d, train_size=None if embed_with_test else train_size
+            ),
+            d=d,
         )
-        
+
         # Dataset-wise in-context learning
         out = self.icl_predictor(representations, y_train=y_train)
 
@@ -240,7 +247,9 @@ class TabICL(nn.Module):
         """
 
         train_size = y_train.shape[1]
-        assert train_size <= X.shape[1], "Number of training samples exceeds total samples"
+        assert (
+            train_size <= X.shape[1]
+        ), "Number of training samples exceeds total samples"
 
         if inference_config is None:
             inference_config = InferenceConfig()

@@ -97,7 +97,9 @@ def outlier_removing(input: Tensor, threshold: float = 4.0) -> Tensor:
     # Second pass using only non-outlier values for mean/std
     masked_input = torch.where(mask, input, torch.nan)
     masked_mean = torch.nanmean(masked_input, dim=0)
-    masked_std = torch_nanstd(masked_input, dim=0, ddof=1 if input.shape[0] > 1 else 0).clip(min=1e-6)
+    masked_std = torch_nanstd(
+        masked_input, dim=0, ddof=1 if input.shape[0] > 1 else 0
+    ).clip(min=1e-6)
 
     # Handle cases where a column had <= 1 valid value after masking -> std is NaN or 0
     masked_mean = torch.where(torch.isnan(masked_mean), mean, masked_mean)
@@ -190,7 +192,9 @@ class MulticlassAssigner(nn.Module):
         """
         super().__init__()
         if num_classes < 2:
-            raise ValueError("The number of classes must be at least 2 for MulticlassAssigner.")
+            raise ValueError(
+                "The number of classes must be at least 2 for MulticlassAssigner."
+            )
 
         self.num_classes = num_classes
         self.ordered_prob = ordered_prob
@@ -213,7 +217,9 @@ class MulticlassAssigner(nn.Module):
         device = input.device
 
         if self.mode == "rank":
-            boundary_indices = torch.randint(0, T, (self.num_classes - 1,), device=device)
+            boundary_indices = torch.randint(
+                0, T, (self.num_classes - 1,), device=device
+            )
             boundaries = input[boundary_indices]
         elif self.mode == "value":
             boundaries = torch.randn(self.num_classes - 1, device=device)
@@ -274,7 +280,9 @@ class Reg2Cls(nn.Module):
             self.class_assigner = BalancedBinarize()
         elif num_classes >= 2:
             self.class_assigner = MulticlassAssigner(
-                num_classes, mode=self.hp["multiclass_type"], ordered_prob=self.hp["multiclass_ordered_prob"]
+                num_classes,
+                mode=self.hp["multiclass_type"],
+                ordered_prob=self.hp["multiclass_ordered_prob"],
             )
         else:
             raise ValueError(f"Invalid number of classes: {num_classes}")
@@ -298,7 +306,9 @@ class Reg2Cls(nn.Module):
             - Processed targets of shape (T,).
         """
         if X.ndim != 2 or y.ndim != 1 or X.shape[0] != y.shape[0]:
-            raise ValueError(f"Input shapes mismatch or incorrect dims. X: {X.shape}, y: {y.shape}")
+            raise ValueError(
+                f"Input shapes mismatch or incorrect dims. X: {X.shape}, y: {y.shape}"
+            )
 
         X = self._num2cat(X)
         X = self._process_features(X)
@@ -333,9 +343,13 @@ class Reg2Cls(nn.Module):
             for col in range(X.shape[1]):
                 if random.random() < col_prob:
                     # Determine number of categories for this feature
-                    num_cats = min(max(round(random.gammavariate(1, 10)), 2), max_categories)
+                    num_cats = min(
+                        max(round(random.gammavariate(1, 10)), 2), max_categories
+                    )
                     # Use MulticlassAssigner to convert this column
-                    assigner = MulticlassAssigner(num_cats, mode="rank", ordered_prob=0.3)
+                    assigner = MulticlassAssigner(
+                        num_cats, mode="rank", ordered_prob=0.3
+                    )
                     X[:, col] = assigner(X[:, col]).float()
         return X
 

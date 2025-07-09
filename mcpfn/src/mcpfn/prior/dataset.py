@@ -42,8 +42,11 @@ from .prior_config import DEFAULT_FIXED_HP, DEFAULT_SAMPLED_HP
 
 
 warnings.filterwarnings(
-    "ignore", message=".*The PyTorch API of nested tensors is in prototype stage.*", category=UserWarning
+    "ignore",
+    message=".*The PyTorch API of nested tensors is in prototype stage.*",
+    category=UserWarning,
 )
+
 
 class Prior:
     """
@@ -118,7 +121,9 @@ class Prior:
         self.replay_small = replay_small
 
     @staticmethod
-    def validate_train_size_range(min_train_size: Union[int, float], max_train_size: Union[int, float]) -> None:
+    def validate_train_size_range(
+        min_train_size: Union[int, float], max_train_size: Union[int, float]
+    ) -> None:
         """
         Checks if the training size range is valid.
 
@@ -138,20 +143,31 @@ class Prior:
             If training size types are mismatched or invalid
         """
         # Check for numeric types only
-        if not isinstance(min_train_size, (int, float)) or not isinstance(max_train_size, (int, float)):
+        if not isinstance(min_train_size, (int, float)) or not isinstance(
+            max_train_size, (int, float)
+        ):
             raise TypeError("Training sizes must be int or float")
 
         # Check for valid ranges based on type
         if isinstance(min_train_size, int) and isinstance(max_train_size, int):
-            assert 0 < min_train_size < max_train_size, "0 < min_train_size < max_train_size"
+            assert (
+                0 < min_train_size < max_train_size
+            ), "0 < min_train_size < max_train_size"
         elif isinstance(min_train_size, float) and isinstance(max_train_size, float):
-            assert 0 < min_train_size < max_train_size < 1, "0 < min_train_size < max_train_size < 1"
+            assert (
+                0 < min_train_size < max_train_size < 1
+            ), "0 < min_train_size < max_train_size < 1"
         else:
-            raise ValueError("Both training sizes must be of the same type (int or float)")
+            raise ValueError(
+                "Both training sizes must be of the same type (int or float)"
+            )
 
     @staticmethod
     def sample_seq_len(
-        min_seq_len: Optional[int], max_seq_len: int, log: bool = False, replay_small: bool = False
+        min_seq_len: Optional[int],
+        max_seq_len: int,
+        log: bool = False,
+        replay_small: bool = False,
     ) -> int:
         """
         Selects a random sequence length within the specified range.
@@ -200,7 +216,11 @@ class Prior:
             return seq_len
 
     @staticmethod
-    def sample_train_size(min_train_size: Union[int, float], max_train_size: Union[int, float], seq_len: int) -> int:
+    def sample_train_size(
+        min_train_size: Union[int, float],
+        max_train_size: Union[int, float],
+        seq_len: int,
+    ) -> int:
         """
         Selects a random training size within the specified range.
 
@@ -318,7 +338,12 @@ class Prior:
             unique_mask = [len(torch.unique(xi[:, j])) > 1 for j in range(di)]
             di_new = sum(unique_mask)
             # Create new tensor with only informative features, padding the rest
-            xi_new = F.pad(xi[:, unique_mask], pad=(0, num_features - di_new), mode="constant", value=0)
+            xi_new = F.pad(
+                xi[:, unique_mask],
+                pad=(0, num_features - di_new),
+                mode="constant",
+                value=0,
+            )
             return xi_new, torch.tensor(di_new, device=xi.device)
 
         # Process each dataset in the batch independently
@@ -328,7 +353,13 @@ class Prior:
         return X_new, d_new
 
     @staticmethod
-    def sanity_check(X: Tensor, y: Tensor, train_size: int, n_attempts: int = 10, min_classes: int = 2) -> bool:
+    def sanity_check(
+        X: Tensor,
+        y: Tensor,
+        train_size: int,
+        n_attempts: int = 10,
+        min_classes: int = 2,
+    ) -> bool:
         """
         Verifies that both train and test sets contain all classes.
 
@@ -369,7 +400,10 @@ class Prior:
             # and at least min_classes different classes must be present
             unique_tr = torch.unique(yi[:train_size])
             unique_te = torch.unique(yi[train_size:])
-            return set(unique_tr.tolist()) == set(unique_te.tolist()) and len(unique_tr) >= min_classes
+            return (
+                set(unique_tr.tolist()) == set(unique_te.tolist())
+                and len(unique_tr) >= min_classes
+            )
 
         # Check each dataset in the batch
         for i, (xi, yi) in enumerate(zip(X, y)):
@@ -558,7 +592,9 @@ class SCMPrior(Prior):
 
             # Add batch dim for single dataset to be compatible with delete_unique_features and sanity_check
             X, y = X.unsqueeze(0), y.unsqueeze(0)
-            d = torch.tensor([params["num_features"]], device=self.device, dtype=torch.long)
+            d = torch.tensor(
+                [params["num_features"]], device=self.device, dtype=torch.long
+            )
 
             # Only keep valid datasets with sufficient features and balanced classes
             X, d = self.delete_unique_features(X, d)
@@ -566,7 +602,9 @@ class SCMPrior(Prior):
                 return X.squeeze(0), y.squeeze(0), d.squeeze(0)
 
     @torch.no_grad()
-    def get_batch(self, batch_size: Optional[int] = None) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+    def get_batch(
+        self, batch_size: Optional[int] = None
+    ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """
         Generates a batch of datasets by first creating a parameter list and then processing it.
 
@@ -610,9 +648,14 @@ class SCMPrior(Prior):
         # Determine global seq_len/train_size if not per-group
         if not self.seq_len_per_gp:
             global_seq_len = self.sample_seq_len(
-                self.min_seq_len, self.max_seq_len, log=self.log_seq_len, replay_small=self.replay_small
+                self.min_seq_len,
+                self.max_seq_len,
+                log=self.log_seq_len,
+                replay_small=self.replay_small,
             )
-            global_train_size = self.sample_train_size(self.min_train_size, self.max_train_size, global_seq_len)
+            global_train_size = self.sample_train_size(
+                self.min_train_size, self.max_train_size, global_seq_len
+            )
 
         # Generate parameters for each group
         for gp_idx in range(num_gps):
@@ -625,11 +668,18 @@ class SCMPrior(Prior):
             # If per-group, sample seq_len and train_size for this group. Otherwise, use global ones
             if self.seq_len_per_gp:
                 gp_seq_len = self.sample_seq_len(
-                    self.min_seq_len, self.max_seq_len, log=self.log_seq_len, replay_small=self.replay_small
+                    self.min_seq_len,
+                    self.max_seq_len,
+                    log=self.log_seq_len,
+                    replay_small=self.replay_small,
                 )
-                gp_train_size = self.sample_train_size(self.min_train_size, self.max_train_size, gp_seq_len)
+                gp_train_size = self.sample_train_size(
+                    self.min_train_size, self.max_train_size, gp_seq_len
+                )
                 # Adjust max features based on seq_len for this group
-                gp_max_features = self.adjust_max_features(gp_seq_len, self.max_features)
+                gp_max_features = self.adjust_max_features(
+                    gp_seq_len, self.max_features
+                )
             else:
                 gp_seq_len = global_seq_len
                 gp_train_size = global_train_size
@@ -641,14 +691,20 @@ class SCMPrior(Prior):
             # Generate parameters for each subgroup
             for subgp_idx in range(num_subgps_in_gp):
                 # Determine actual size for this subgroup
-                actual_subgp_size = min(size_per_subgp, actual_gp_size - subgp_idx * size_per_subgp)
+                actual_subgp_size = min(
+                    size_per_subgp, actual_gp_size - subgp_idx * size_per_subgp
+                )
                 if actual_subgp_size <= 0:
                     break
 
                 # Subgroups share prior type, number of features, and sampled HPs
                 subgp_prior_type = self.get_prior()
-                subgp_num_features = round(np.random.uniform(self.min_features, gp_max_features))
-                subgp_sampled_hp = {k: v() if callable(v) else v for k, v in group_sampled_hp.items()}
+                subgp_num_features = round(
+                    np.random.uniform(self.min_features, gp_max_features)
+                )
+                subgp_sampled_hp = {
+                    k: v() if callable(v) else v for k, v in group_sampled_hp.items()
+                }
 
                 # Generate parameters for each dataset in this subgroup
                 for ds_idx in range(actual_subgp_size):
@@ -665,7 +721,11 @@ class SCMPrior(Prior):
                         "train_size": gp_train_size,
                         # If per-gp setting, use adjusted max features for this group because we use nested tensors
                         # If not per-gp setting, use global max features to fix size for concatenation
-                        "max_features": gp_max_features if self.seq_len_per_gp else self.max_features,
+                        "max_features": (
+                            gp_max_features
+                            if self.seq_len_per_gp
+                            else self.max_features
+                        ),
                         **subgp_sampled_hp,  # sampled HPs for this group
                         "prior_type": subgp_prior_type,
                         "num_features": subgp_num_features,
@@ -682,9 +742,14 @@ class SCMPrior(Prior):
         # rather than generating them on-the-fly.
         if self.n_jobs > 1 and self.device == "cpu":
             with joblib.parallel_config(
-                n_jobs=self.n_jobs, backend="loky", inner_max_num_threads=self.num_threads_per_generate
+                n_jobs=self.n_jobs,
+                backend="loky",
+                inner_max_num_threads=self.num_threads_per_generate,
             ):
-                results = joblib.Parallel()(joblib.delayed(self.generate_dataset)(params) for params in param_list)
+                results = joblib.Parallel()(
+                    joblib.delayed(self.generate_dataset)(params)
+                    for params in param_list
+                )
         else:
             results = [self.generate_dataset(params) for params in param_list]
 
@@ -701,10 +766,18 @@ class SCMPrior(Prior):
             y = torch.stack(y_list).to(self.device)  # (B, T)
 
         # Metadata (always regular tensors)
-        d = torch.stack(d_list).to(self.device)  # Actual number of features after filtering out constant ones
-        seq_lens = torch.tensor([params["seq_len"] for params in param_list], device=self.device, dtype=torch.long)
+        d = torch.stack(d_list).to(
+            self.device
+        )  # Actual number of features after filtering out constant ones
+        seq_lens = torch.tensor(
+            [params["seq_len"] for params in param_list],
+            device=self.device,
+            dtype=torch.long,
+        )
         train_sizes = torch.tensor(
-            [params["train_size"] for params in param_list], device=self.device, dtype=torch.long
+            [params["train_size"] for params in param_list],
+            device=self.device,
+            dtype=torch.long,
         )
 
         return X, y, d, seq_lens, train_sizes
@@ -722,9 +795,12 @@ class SCMPrior(Prior):
             The selected prior type name
         """
         if self.prior_type == "mix_scm":
-            return np.random.choice(["mlp_scm", "tree_scm"], p=self.fixed_hp.get("mix_probas", [0.7, 0.3]))
+            return np.random.choice(
+                ["mlp_scm", "tree_scm"], p=self.fixed_hp.get("mix_probas", [0.7, 0.3])
+            )
         else:
             return self.prior_type
+
 
 class DummyPrior(Prior):
     """This class creates purely random data. This is useful for testing and debugging
@@ -792,7 +868,9 @@ class DummyPrior(Prior):
         self.device = device
 
     @torch.no_grad()
-    def get_batch(self, batch_size: Optional[int] = None) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+    def get_batch(
+        self, batch_size: Optional[int] = None
+    ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """
         Generates a batch of random datasets for testing purposes.
 
@@ -825,8 +903,12 @@ class DummyPrior(Prior):
         """
 
         batch_size = batch_size or self.batch_size
-        seq_len = self.sample_seq_len(self.min_seq_len, self.max_seq_len, log=self.log_seq_len)
-        train_size = self.sample_train_size(self.min_train_size, self.max_train_size, seq_len)
+        seq_len = self.sample_seq_len(
+            self.min_seq_len, self.max_seq_len, log=self.log_seq_len
+        )
+        train_size = self.sample_train_size(
+            self.min_train_size, self.max_train_size, seq_len
+        )
 
         X = torch.randn(batch_size, seq_len, self.max_features, device=self.device)
 
@@ -839,8 +921,11 @@ class DummyPrior(Prior):
 
         return X, y, d, seq_lens, train_sizes
 
-def create_train_test_sets(X: Tensor, X_full: Tensor | None = None) -> tuple[Tensor, Tensor, Tensor, Tensor]:
-    """ Create train and test sets from a matrix with missing values.
+
+def create_train_test_sets(
+    X: Tensor, X_full: Tensor | None = None
+) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+    """Create train and test sets from a matrix with missing values.
 
     Args:
         X (Tensor): Matrix with missing values.
@@ -852,55 +937,55 @@ def create_train_test_sets(X: Tensor, X_full: Tensor | None = None) -> tuple[Ten
     """
     # Get missing indices in X
     missing_indices = torch.where(torch.isnan(X))
-    
+
     non_missing_indices = torch.where(~torch.isnan(X))
-    
+
     train_X = torch.zeros((len(non_missing_indices[0]), X.shape[0] + X.shape[1] - 2))
     train_y = torch.zeros(len(non_missing_indices[0]))
     test_X = torch.zeros((len(missing_indices[0]), X.shape[0] + X.shape[1] - 2))
     test_y = torch.zeros(len(missing_indices[0]))
-    
-    for k, (i,j) in enumerate(zip(non_missing_indices[0], non_missing_indices[1])):
+
+    for k, (i, j) in enumerate(zip(non_missing_indices[0], non_missing_indices[1])):
         # Get row without j-th column
-        row = torch.cat((X[i,:j], X[i,j+1:]))
+        row = torch.cat((X[i, :j], X[i, j + 1 :]))
         # Get column without i-th row
-        col = torch.cat((X[:i,j], X[i+1:,j]))
-        
+        col = torch.cat((X[:i, j], X[i + 1 :, j]))
+
         # Create train set
-        train_X[k,:] = torch.cat((row, col))
-        train_y[k] = X[i,j]
-        
-    
-    for k, (i,j) in enumerate(zip(missing_indices[0], missing_indices[1])):
+        train_X[k, :] = torch.cat((row, col))
+        train_y[k] = X[i, j]
+
+    for k, (i, j) in enumerate(zip(missing_indices[0], missing_indices[1])):
         # Get row without j-th column
-        row = torch.cat((X[i,:j], X[i,j+1:]))
+        row = torch.cat((X[i, :j], X[i, j + 1 :]))
         # Get column without i-th row
-        col = torch.cat((X[:i,j], X[i+1:,j]))
-        
+        col = torch.cat((X[:i, j], X[i + 1 :, j]))
+
         # Create train set
-        test_X[k,:] = torch.cat((row, col))
+        test_X[k, :] = torch.cat((row, col))
         if X_full is not None:
-            test_y[k] = X_full[i,j]
+            test_y[k] = X_full[i, j]
         else:
             test_y[k] = torch.nan
-       
+
     return train_X, train_y, test_X, test_y
+
 
 class MissingDataPrior(DummyPrior):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
+
     @abstractmethod
     def induce_missingness(self, X: Tensor) -> Tensor:
-        """ Induce missingness on a matrix.
-        
+        """Induce missingness on a matrix.
+
         Args:
             X (Tensor): Matrix to induce missingness on.
-            
+
         Returns:
         """
         pass
-    
+
     # @torch.no_grad()
     # def generate_dataset(self, params: Dict[str, Any]) -> Tuple[Tensor, Tensor, Tensor]:
     #     """
@@ -923,13 +1008,15 @@ class MissingDataPrior(DummyPrior):
     #     X, _, d = super().generate_dataset(params)
     #     # X_missing = self.induce_mcar(X, self.mcar_prob_missing)
     #     X_missing = self.induce_missingness(X)
-        
+
     #     train_X, train_y, test_X, test_y = create_train_test_sets(X_missing, X_full=X)
-        
+
     #     return torch.cat((train_X, test_X)), torch.cat((train_y, test_y)), d
-    
+
     @torch.no_grad()
-    def get_batch(self, batch_size: Optional[int] = None) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+    def get_batch(
+        self, batch_size: Optional[int] = None
+    ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """
         Generates a batch of random datasets for testing purposes.
 
@@ -962,33 +1049,38 @@ class MissingDataPrior(DummyPrior):
         """
         if batch_size is None:
             batch_size = self.batch_size
-            
+
         X_batches, _, d, _, _ = super().get_batch(batch_size)
         train_sizes = torch.zeros(batch_size)
         seq_lens = torch.zeros(batch_size)
-        
+
         X_list = []
         y_list = []
-        
+
         for i in range(X_batches.shape[0]):
-            X = X_batches[i,:]
-            X_missing = self.induce_missingness(X) # needs to always produce the same number of missing values
-            
-            train_X, train_y, test_X, test_y = create_train_test_sets(X_missing, X_full=X)
-            
+            X = X_batches[i, :]
+            X_missing = self.induce_missingness(
+                X
+            )  # needs to always produce the same number of missing values
+
+            train_X, train_y, test_X, test_y = create_train_test_sets(
+                X_missing, X_full=X
+            )
+
             X_full_missing = torch.cat((train_X, test_X))
             y_full = torch.cat((train_y, test_y))
-            
+
             X_list.append(X_full_missing)
             y_list.append(y_full)
-            
+
             train_sizes[i] = train_X.shape[0]
             seq_lens[i] = X_full_missing.shape[0]
-        
+
         X_out = torch.stack(X_list, dim=0)
         y_out = torch.stack(y_list, dim=0)
-        
+
         return X_out, y_out, d, seq_lens, train_sizes
+
 
 class MCARPrior(MissingDataPrior):
     """
@@ -1070,12 +1162,12 @@ class MCARPrior(MissingDataPrior):
         *args,
         **kwargs,
     ):
-        super().__init__(*args,**kwargs)
+        super().__init__(*args, **kwargs)
         self.num_missing = num_missing
         self.mcar_prob_missing = mcar_prob_missing
-        
+
     def induce_mcar_set_number_of_missing(self, matrix: Tensor, n_missing: int):
-        """ Induce MCAR missingness on a matrix and set the number of missing values to a fixed number.
+        """Induce MCAR missingness on a matrix and set the number of missing values to a fixed number.
 
         Args:
             matrix (Tensor): Matrix to induce MCAR missingness on.
@@ -1088,9 +1180,9 @@ class MCARPrior(MissingDataPrior):
         n_missing_indices = torch.randperm(mat.numel())[:n_missing]
         mat.view(-1)[n_missing_indices] = torch.nan
         return mat
-        
+
     def induce_mcar(self, matrix: Tensor, p: float = 0.5):
-        """ Induce MCAR missingness on a matrix.
+        """Induce MCAR missingness on a matrix.
 
         Args:
             matrix (Tensor): Matrix to induce MCAR missingness on.
@@ -1103,17 +1195,18 @@ class MCARPrior(MissingDataPrior):
         mask = torch.rand(*mat.shape) < p
         mat[mask] = torch.nan
         return mat
-    
+
     def induce_missingness(self, X: Tensor) -> Tensor:
-        """ Induce missingness on a matrix.
-        
+        """Induce missingness on a matrix.
+
         Args:
             X (Tensor): Matrix to induce missingness on.
-            
+
         Returns:
             Tensor: Matrix with MCAR missingness induced.
         """
         return self.induce_mcar_set_number_of_missing(X, self.num_missing)
+
 
 class PriorDataset(IterableDataset):
     """
@@ -1211,7 +1304,7 @@ class PriorDataset(IterableDataset):
         n_jobs: int = -1,
         num_threads_per_generate: int = 1,
         device: str = "cpu",
-        num_missing: int = 10
+        num_missing: int = 10,
     ):
         super().__init__()
         if prior_type == "dummy":
@@ -1265,11 +1358,11 @@ class PriorDataset(IterableDataset):
             )
         elif prior_type == "missing":
             self.prior = FixedMissingDataSCMPrior(
-                batch_size = batch_size,
-                num_samples = max_seq_len,
-                num_features = max_features,
-                num_missing = num_missing,
-                device = 'cpu'
+                batch_size=batch_size,
+                num_samples=max_seq_len,
+                num_features=max_features,
+                num_missing=num_missing,
+                device="cpu",
             )
         else:
             raise ValueError(
@@ -1291,7 +1384,9 @@ class PriorDataset(IterableDataset):
         self.device = device
         self.prior_type = prior_type
 
-    def get_batch(self, batch_size: Optional[int] = None) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+    def get_batch(
+        self, batch_size: Optional[int] = None
+    ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """
         Generate a new batch of datasets.
 

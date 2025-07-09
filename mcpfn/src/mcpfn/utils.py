@@ -891,7 +891,9 @@ def meta_dataset_collator(batch, padding_val=0.0):
                     )
                 else:
                     estim_list.append(
-                        list(batch[r][item_idx][estim_no] for r in range(batch_sz))  # noqa: C400
+                        list(
+                            batch[r][item_idx][estim_no] for r in range(batch_sz)
+                        )  # noqa: C400
                     )
             items_list.append(estim_list)
         elif isinstance(batch[0][item_idx], torch.Tensor):

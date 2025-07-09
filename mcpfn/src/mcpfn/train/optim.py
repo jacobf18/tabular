@@ -34,14 +34,18 @@ def _get_cosine_with_restarts_lr_lambda(
         return float(current_step) / float(max(1, num_warmup_steps))
 
     # After warmup: Apply cosine schedule with hard restarts and amplitude scaling
-    progress = float(current_step - num_warmup_steps) / float(max(1, num_training_steps - num_warmup_steps))
+    progress = float(current_step - num_warmup_steps) / float(
+        max(1, num_training_steps - num_warmup_steps)
+    )
     if progress >= 1.0:
         return lr_end / lr_init  # as LambdaLR multiplies by lr_init
 
     # Determine which cycle the current step is in
     cycle_progress = (float(num_cycles) * progress) % 1.0
     current_cycle = int(float(num_cycles) * progress)
-    amplitude = amplitude_decay**current_cycle  # Exponentially decay amplitude per cycle
+    amplitude = (
+        amplitude_decay**current_cycle
+    )  # Exponentially decay amplitude per cycle
 
     # Calculate the current learning rate with proper scaling
     cosine_factor = 0.5 * (1.0 + math.cos(math.pi * cycle_progress))
@@ -75,7 +79,9 @@ def get_cosine_with_restarts(
     """
     lr_init = optimizer.defaults["lr"]
     if lr_end > lr_init:
-        raise ValueError(f"lr_end ({lr_end}) must be smaller than initial lr ({lr_init})")
+        raise ValueError(
+            f"lr_end ({lr_end}) must be smaller than initial lr ({lr_init})"
+        )
 
     lr_lambda = partial(
         _get_cosine_with_restarts_lr_lambda,
@@ -101,11 +107,15 @@ def get_scheduler(config, optimizer):
         scheduler = get_constant_schedule(optimizer=optimizer)
     elif config.scheduler == "linear_warmup":
         scheduler = get_linear_schedule_with_warmup(
-            optimizer=optimizer, num_warmup_steps=warmup_steps, num_training_steps=config.max_steps
+            optimizer=optimizer,
+            num_warmup_steps=warmup_steps,
+            num_training_steps=config.max_steps,
         )
     elif config.scheduler == "cosine_warmup":
         scheduler = get_cosine_schedule_with_warmup(
-            optimizer=optimizer, num_warmup_steps=warmup_steps, num_training_steps=config.max_steps
+            optimizer=optimizer,
+            num_warmup_steps=warmup_steps,
+            num_training_steps=config.max_steps,
         )
     elif config.scheduler == "cosine_with_restarts":
         scheduler = get_cosine_with_restarts(

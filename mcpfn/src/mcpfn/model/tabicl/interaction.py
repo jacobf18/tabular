@@ -84,9 +84,13 @@ class RowInteraction(nn.Module):
 
         self.out_ln = nn.LayerNorm(embed_dim) if norm_first else nn.Identity()
 
-        self.inference_mgr = InferenceManager(enc_name="tf_row", out_dim=embed_dim * self.num_cls, out_no_seq=True)
+        self.inference_mgr = InferenceManager(
+            enc_name="tf_row", out_dim=embed_dim * self.num_cls, out_no_seq=True
+        )
 
-    def _aggregate_embeddings(self, embeddings: Tensor, key_mask: Optional[Tensor] = None) -> Tensor:
+    def _aggregate_embeddings(
+        self, embeddings: Tensor, key_mask: Optional[Tensor] = None
+    ) -> Tensor:
         """Process a batch of rows through a transformer encoder.
 
         This method:
@@ -154,11 +158,15 @@ class RowInteraction(nn.Module):
             indices = torch.arange(HC, device=device).view(1, 1, HC).expand(B, T, HC)
             key_mask = indices >= d.view(B, 1, 1)  # (B, T, HC)
 
-        representations = self._aggregate_embeddings(embeddings, key_mask)  # (B, T, C*E)
+        representations = self._aggregate_embeddings(
+            embeddings, key_mask
+        )  # (B, T, C*E)
 
         return representations  # (B, T, C*E)
 
-    def _inference_forward(self, embeddings: Tensor, mgr_config: MgrConfig = None) -> Tensor:
+    def _inference_forward(
+        self, embeddings: Tensor, mgr_config: MgrConfig = None
+    ) -> Tensor:
         """Transform feature embeddings into row representations for inference.
 
         Parameters
@@ -201,7 +209,12 @@ class RowInteraction(nn.Module):
 
         return representations  # (B, T, C*E)
 
-    def forward(self, embeddings: Tensor, d: Optional[Tensor] = None, mgr_config: MgrConfig = None) -> Tensor:
+    def forward(
+        self,
+        embeddings: Tensor,
+        d: Optional[Tensor] = None,
+        mgr_config: MgrConfig = None,
+    ) -> Tensor:
         """Transform feature embeddings into row representations.
 
         Parameters

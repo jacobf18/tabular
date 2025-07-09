@@ -23,7 +23,9 @@ import torch.nn as nn
 
 def trunc_norm_sampler(mu, sigma):
     """Creates a sampler for truncated normal distribution with given mean and std."""
-    return lambda: stats.truncnorm((0 - mu) / sigma, (1000000 - mu) / sigma, loc=mu, scale=sigma).rvs(1)[0]
+    return lambda: stats.truncnorm(
+        (0 - mu) / sigma, (1000000 - mu) / sigma, loc=mu, scale=sigma
+    ).rvs(1)[0]
 
 
 def beta_sampler(a, b):
@@ -109,12 +111,15 @@ class HpSampler(nn.Module):
             setattr(
                 self,
                 attr_name,
-                HpSampler(distribution=distribution, device=self.device, min=min, max=max),
+                HpSampler(
+                    distribution=distribution, device=self.device, min=min, max=max
+                ),
             )
 
     def setup_meta_beta_sampler(self):
         """Sets up a meta-beta distribution sampler.
-        Returns a closure that samples beta distribution parameters and then samples from that beta."""
+        Returns a closure that samples beta distribution parameters and then samples from that beta.
+        """
         # Dynamically define b and k if not explicitly provided
         self.ensure_hyperparameter("b", "uniform", self.min, self.max)
         self.ensure_hyperparameter("k", "uniform", self.min, self.max)
@@ -128,7 +133,8 @@ class HpSampler(nn.Module):
 
     def setup_meta_gamma_sampler(self):
         """Sets up a meta-gamma distribution sampler.
-        Returns a closure that samples gamma distribution parameters and then samples from that gamma."""
+        Returns a closure that samples gamma distribution parameters and then samples from that gamma.
+        """
         # Dynamically define alpha and scale if not explicitly provided
         self.ensure_hyperparameter("alpha", "uniform", 0.0, math.log(self.max_alpha))
         self.ensure_hyperparameter("scale", "uniform", 0.0, self.max_scale)
@@ -139,7 +145,11 @@ class HpSampler(nn.Module):
 
             def sub_sampler():
                 sample = gamma_sampler(math.exp(alpha), scale / math.exp(alpha))()
-                return self.lower_bound + round(sample) if self.round else self.lower_bound + sample
+                return (
+                    self.lower_bound + round(sample)
+                    if self.round
+                    else self.lower_bound + sample
+                )
 
             return sub_sampler
 
@@ -147,7 +157,8 @@ class HpSampler(nn.Module):
 
     def setup_meta_trunc_norm_sampler(self):
         """Sets up a meta truncated normal distribution sampler.
-        Returns a closure that samples normal distribution parameters and then samples from that normal."""
+        Returns a closure that samples normal distribution parameters and then samples from that normal.
+        """
         # Dynamically define mean and std if not explicitly provided
         self.min_std = self.min_std if hasattr(self, "min_std") else 0.01
         self.max_std = self.max_std if hasattr(self, "max_std") else 1.0
@@ -160,7 +171,11 @@ class HpSampler(nn.Module):
 
             def sub_sampler():
                 sample = trunc_norm_sampler(mean, std)()
-                return self.lower_bound + round(sample) if self.round else self.lower_bound + sample
+                return (
+                    self.lower_bound + round(sample)
+                    if self.round
+                    else self.lower_bound + sample
+                )
 
             return sub_sampler
 
@@ -172,8 +187,12 @@ class HpSampler(nn.Module):
         # Dynamically define log_mean and log_std if not explicitly provided
         self.min_std = self.min_std if hasattr(self, "min_std") else 0.01
         self.max_std = self.max_std if hasattr(self, "max_std") else 1.0
-        self.ensure_hyperparameter("log_mean", "uniform", math.log(self.min_mean), math.log(self.max_mean))
-        self.ensure_hyperparameter("log_std", "uniform", math.log(self.min_std), math.log(self.max_std))
+        self.ensure_hyperparameter(
+            "log_mean", "uniform", math.log(self.min_mean), math.log(self.max_mean)
+        )
+        self.ensure_hyperparameter(
+            "log_std", "uniform", math.log(self.min_std), math.log(self.max_std)
+        )
 
         def sampler():
             log_mean = self.log_mean() if callable(self.log_mean) else self.log_mean
@@ -183,7 +202,11 @@ class HpSampler(nn.Module):
 
             def sub_sampler():
                 sample = trunc_norm_sampler(mu, sigma)()
-                return self.lower_bound + round(sample) if self.round else self.lower_bound + sample
+                return (
+                    self.lower_bound + round(sample)
+                    if self.round
+                    else self.lower_bound + sample
+                )
 
             return sub_sampler
 
@@ -191,10 +214,13 @@ class HpSampler(nn.Module):
 
     def setup_meta_choice_sampler(self):
         """Sets up a meta-categorical distribution sampler.
-        Returns a closure that samples probabilities and then samples categorical values."""
+        Returns a closure that samples probabilities and then samples categorical values.
+        """
         # Ensure that choice weights are defined or dynamically created
         for i in range(1, len(self.choice_values)):
-            self.ensure_hyperparameter(f"choice_{i}_weight", distribution="uniform", min=-3.0, max=5.0)
+            self.ensure_hyperparameter(
+                f"choice_{i}_weight", distribution="uniform", min=-3.0, max=5.0
+            )
 
         def sampler():
             weights = [1.0]
@@ -212,7 +238,9 @@ class HpSampler(nn.Module):
         Similar to meta_choice but with different probability scaling."""
         # Similar to meta_choice but may include different logic for mixed scenarios
         for i in range(1, len(self.choice_values)):
-            self.ensure_hyperparameter(f"choice_{i}_weight", distribution="uniform", min=-5.0, max=6.0)
+            self.ensure_hyperparameter(
+                f"choice_{i}_weight", distribution="uniform", min=-5.0, max=6.0
+            )
 
         def sampler():
             weights = [1.0]
@@ -262,7 +290,11 @@ class HpSamplerList(nn.Module):
         super().__init__()
         self.device = device
         self.hyperparameters = nn.ModuleDict(
-            {name: HpSampler(device=device, **params) for name, params in hyperparameters.items() if params}
+            {
+                name: HpSampler(device=device, **params)
+                for name, params in hyperparameters.items()
+                if params
+            }
         )
 
     def sample(self):

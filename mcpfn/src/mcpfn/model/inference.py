@@ -44,7 +44,11 @@ class MemoryEstimator:
 
     @staticmethod
     def estimate_peak_mem(
-        batch_size: int, seq_len: int, enc_name: str, include_inputs: bool = True, in_dim: Optional[int] = None
+        batch_size: int,
+        seq_len: int,
+        enc_name: str,
+        include_inputs: bool = True,
+        in_dim: Optional[int] = None,
     ) -> float:
         """Estimate peak memory usage for a given component with specified batch size and sequence length.
 
@@ -75,10 +79,17 @@ class MemoryEstimator:
         """
         coefs = MemoryEstimator.coefficients[enc_name]
         inter = MemoryEstimator.intercepts[enc_name]
-        peak_activation_mem = coefs[0] * batch_size + coefs[1] * seq_len + coefs[2] * batch_size * seq_len + inter
+        peak_activation_mem = (
+            coefs[0] * batch_size
+            + coefs[1] * seq_len
+            + coefs[2] * batch_size * seq_len
+            + inter
+        )
 
         if include_inputs:
-            assert in_dim is not None, "Input dimension must be provided for input memory estimation"
+            assert (
+                in_dim is not None
+            ), "Input dimension must be provided for input memory estimation"
             bytes_per_element = 4  # float32
             n_elements = batch_size * seq_len * in_dim
             mem_inputs = n_elements * bytes_per_element / (1024**2)  # Convert to MB
@@ -88,7 +99,11 @@ class MemoryEstimator:
 
     @staticmethod
     def estimate_batch_size(
-        seq_len: int, target_memory: float, enc_name: str, include_inputs: bool = True, in_dim: Optional[int] = None
+        seq_len: int,
+        target_memory: float,
+        enc_name: str,
+        include_inputs: bool = True,
+        in_dim: Optional[int] = None,
     ) -> int:
         """Estimate the batch size that would result in the target memory usage for a given sequence length.
 
@@ -119,7 +134,12 @@ class MemoryEstimator:
         """
 
         def objective_function(bs: float) -> float:
-            return MemoryEstimator.estimate_peak_mem(bs, seq_len, enc_name, include_inputs, in_dim) - target_memory
+            return (
+                MemoryEstimator.estimate_peak_mem(
+                    bs, seq_len, enc_name, include_inputs, in_dim
+                )
+                - target_memory
+            )
 
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -216,7 +236,9 @@ class InferenceManager:
         self.verbose = verbose
 
         if device is None:
-            self.exe_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            self.exe_device = torch.device(
+                "cuda" if torch.cuda.is_available() else "cpu"
+            )
         elif isinstance(device, str):
             self.exe_device = torch.device(device)
         else:
@@ -237,7 +259,11 @@ class InferenceManager:
         Tensor
             Tensor on the execution device
         """
-        if isinstance(tensor, torch.Tensor) and self.exe_device.type == "cuda" and not tensor.is_cuda:
+        if (
+            isinstance(tensor, torch.Tensor)
+            and self.exe_device.type == "cuda"
+            and not tensor.is_cuda
+        ):
             return tensor.to(self.exe_device)
         return tensor
 
@@ -265,10 +291,16 @@ class InferenceManager:
         # Synchronize and clear cache to get accurate memory reading
         torch.cuda.synchronize()
         torch.cuda.empty_cache()
-        return torch.cuda.mem_get_info(self.exe_device)[0] / (1024 * 1024)  # Convert to MB
+        return torch.cuda.mem_get_info(self.exe_device)[0] / (
+            1024 * 1024
+        )  # Convert to MB
 
     def estimate_safe_batch_size(
-        self, seq_len: int, include_inputs: bool = True, in_dim: Optional[int] = None, max_bs: int = 50000
+        self,
+        seq_len: int,
+        include_inputs: bool = True,
+        in_dim: Optional[int] = None,
+        max_bs: int = 50000,
     ) -> Tuple[float, int]:
         """Estimate safe batch size based on available memory.
 
@@ -298,7 +330,9 @@ class InferenceManager:
         target_mem = available_mem * self.safety_factor
 
         # Calculate batch size and ensure it's between min_batch_size and max_bs
-        estimated_bs = MemoryEstimator.estimate_batch_size(seq_len, target_mem, self.enc_name, include_inputs, in_dim)
+        estimated_bs = MemoryEstimator.estimate_batch_size(
+            seq_len, target_mem, self.enc_name, include_inputs, in_dim
+        )
 
         # Apply maximum batch size cap to avoid CUDA errors with flash attention
         if estimated_bs > max_bs and self.verbose:
@@ -405,7 +439,9 @@ class InferenceManager:
         total_bs = math.prod(batch_dims)
 
         # Estimate batch size based on available memory
-        gpu_mem, batch_size = self.estimate_safe_batch_size(seq_len, include_inputs=not inputs_on_cuda, in_dim=in_dim)
+        gpu_mem, batch_size = self.estimate_safe_batch_size(
+            seq_len, include_inputs=not inputs_on_cuda, in_dim=in_dim
+        )
 
         if self.verbose:
             print(
@@ -479,11 +515,16 @@ class InferenceManager:
                 split_sizes = self.compute_split_sizes(batch_dims, batch_size)
                 # Create batches based on the calculated structure
                 n_batches = self.compute_n_batches(batch_dims, split_sizes)
-                batch_iterator = self.create_multidim_batches(inputs, batch_dims, split_sizes)
+                batch_iterator = self.create_multidim_batches(
+                    inputs, batch_dims, split_sizes
+                )
 
                 if self.verbose:
                     batch_iterator = tqdm(
-                        batch_iterator, total=n_batches, desc=f"Processing {self.enc_name}", unit="batch"
+                        batch_iterator,
+                        total=n_batches,
+                        desc=f"Processing {self.enc_name}",
+                        unit="batch",
                     )
 
                 for batch_dict, indices in batch_iterator:
@@ -591,7 +632,10 @@ class InferenceManager:
         return n_batches
 
     def create_multidim_batches(
-        self, inputs: OrderedDict[str, Any], batch_dims: Tuple[int], split_sizes: List[int]
+        self,
+        inputs: OrderedDict[str, Any],
+        batch_dims: Tuple[int],
+        split_sizes: List[int],
     ) -> Iterator:
         """Create batches from input dictionary with multidimensional batching.
 

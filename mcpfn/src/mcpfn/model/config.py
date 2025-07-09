@@ -8,6 +8,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Literal
 
+
 @dataclass
 class ModelConfig:
     """Configuration for the TabPFN model."""

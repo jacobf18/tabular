@@ -81,7 +81,8 @@ class RandomFreqSineActivation(nn.Module):
         log_min_scale = np.log(min_scale)
         log_max_scale = np.log(max_scale)
         self.scale = nn.Parameter(
-            torch.exp(log_min_scale + (log_max_scale - log_min_scale) * torch.rand(1)), requires_grad=False
+            torch.exp(log_min_scale + (log_max_scale - log_min_scale) * torch.rand(1)),
+            requires_grad=False,
         )
         self.bias = nn.Parameter(2 * np.pi * torch.rand(1), requires_grad=False)
         self.stdscaler = StdScaleLayer()
@@ -103,15 +104,21 @@ class RandomFunctionActivation(nn.Module):
     def __init__(self, n_frequencies: int = 256):
         super().__init__()
 
-        self.freqs = nn.Parameter(n_frequencies * torch.rand(n_frequencies), requires_grad=False)
-        self.bias = nn.Parameter(2 * np.pi * torch.rand(n_frequencies), requires_grad=False)
+        self.freqs = nn.Parameter(
+            n_frequencies * torch.rand(n_frequencies), requires_grad=False
+        )
+        self.bias = nn.Parameter(
+            2 * np.pi * torch.rand(n_frequencies), requires_grad=False
+        )
         self.stdscaler = StdScaleLayer()
 
         decay_exponent = -np.exp(np.random.uniform(np.log(0.7), np.log(3.0)))
         with torch.no_grad():
             freq_factors = self.freqs**decay_exponent
             freq_factors = freq_factors / (freq_factors**2).sum().sqrt()
-        self.l2_weights = nn.Parameter(freq_factors * torch.randn(n_frequencies), requires_grad=False)
+        self.l2_weights = nn.Parameter(
+            freq_factors * torch.randn(n_frequencies), requires_grad=False
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.stdscaler(x)
@@ -194,7 +201,11 @@ class StdRandomScaleFactory:
         self.individual = individual
 
     def __call__(self):
-        return nn.Sequential(StdScaleLayer(), RandomScaleLayer(individual=self.individual), self.act_class())
+        return nn.Sequential(
+            StdScaleLayer(),
+            RandomScaleLayer(individual=self.individual),
+            self.act_class(),
+        )
 
 
 class RandomChoiceActivation(nn.Module):

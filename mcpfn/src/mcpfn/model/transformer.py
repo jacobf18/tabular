@@ -312,7 +312,9 @@ class PerFeatureTransformer(nn.Module):
     # such as forward, forward_with_test, forward_with_style?
     # The documentation generator complains about this function because we are
     # documenting parameters that don't exist in the signature
-    def forward(self, *args: Any, **kwargs: Any) -> dict[str, torch.Tensor]:  # noqa: D417
+    def forward(
+        self, *args: Any, **kwargs: Any
+    ) -> dict[str, torch.Tensor]:  # noqa: D417
         """Performs a forward pass through the model.
 
         This method supports multiple calling conventions:
@@ -559,7 +561,9 @@ class PerFeatureTransformer(nn.Module):
         ):
             # Transform cat. features accordingly to correspond to following to merge
             # of batch and feature_group dimensions below (i.e., concat lists)
-            extra_encoders_args["categorical_inds"] = sum(categorical_inds_to_use, [])  # noqa: RUF017
+            extra_encoders_args["categorical_inds"] = sum(
+                categorical_inds_to_use, []
+            )  # noqa: RUF017
 
         for k in x:
             x[k] = einops.rearrange(x[k], "b s f n -> s (b f) n")

@@ -19,7 +19,15 @@ class MgrConfig:
     - verbose: Whether to print detailed information during inference
     """
 
-    _ALLOWED_KEYS = {"min_batch_size", "safety_factor", "offload", "auto_offload_pct", "device", "use_amp", "verbose"}
+    _ALLOWED_KEYS = {
+        "min_batch_size",
+        "safety_factor",
+        "offload",
+        "auto_offload_pct",
+        "device",
+        "use_amp",
+        "verbose",
+    }
     _TYPE_SPECS = {
         "min_batch_size": {
             "expected_type": int,
@@ -46,8 +54,16 @@ class MgrConfig:
             "validator": None,
             "error_msg": "device must be a string or torch.device",
         },
-        "use_amp": {"expected_type": bool, "validator": None, "error_msg": "use_amp must be a boolean"},
-        "verbose": {"expected_type": bool, "validator": None, "error_msg": "verbose must be a boolean"},
+        "use_amp": {
+            "expected_type": bool,
+            "validator": None,
+            "error_msg": "use_amp must be a boolean",
+        },
+        "verbose": {
+            "expected_type": bool,
+            "validator": None,
+            "error_msg": "verbose must be a boolean",
+        },
     }
 
     def __init__(self, **kwargs):
@@ -65,7 +81,9 @@ class MgrConfig:
     def _validate_and_set(self, key, value):
         """Validate parameter type and value before setting."""
         if key not in self._ALLOWED_KEYS:
-            raise KeyError(f"Invalid config key: {key}. Allowed keys: {self._ALLOWED_KEYS}")
+            raise KeyError(
+                f"Invalid config key: {key}. Allowed keys: {self._ALLOWED_KEYS}"
+            )
 
         type_spec = self._TYPE_SPECS.get(key)
         expected_type = type_spec["expected_type"]
@@ -86,7 +104,9 @@ class MgrConfig:
 
     def __getitem__(self, key):
         if key not in self._ALLOWED_KEYS:
-            raise KeyError(f"Invalid config key: {key}. Allowed keys: {self._ALLOWED_KEYS}")
+            raise KeyError(
+                f"Invalid config key: {key}. Allowed keys: {self._ALLOWED_KEYS}"
+            )
         return getattr(self, key, None)
 
     def get(self, key, default=None):
@@ -109,14 +129,18 @@ class MgrConfig:
             value = self[key]
             return default if value is None else value
         except KeyError:
-            raise KeyError(f"Invalid config key: {key}. Allowed keys: {self._ALLOWED_KEYS}")
+            raise KeyError(
+                f"Invalid config key: {key}. Allowed keys: {self._ALLOWED_KEYS}"
+            )
 
     def update(self, other):
         """Update configuration with values from another dict-like object."""
         if not isinstance(other, (dict, MgrConfig)):
             raise TypeError(f"Expected dict or MgrConfig, got {type(other)}")
 
-        for key, value in other.items() if isinstance(other, dict) else vars(other).items():
+        for key, value in (
+            other.items() if isinstance(other, dict) else vars(other).items()
+        ):
             self._validate_and_set(key, value)
         return self
 
@@ -143,7 +167,9 @@ class InferenceConfig:
                 verbose=False,
             )
         elif not isinstance(self.COL_CONFIG, MgrConfig):
-            raise TypeError(f"COL_CONFIG must be a dict or MgrConfig, got {type(self.COL_CONFIG)}")
+            raise TypeError(
+                f"COL_CONFIG must be a dict or MgrConfig, got {type(self.COL_CONFIG)}"
+            )
 
         if isinstance(self.ROW_CONFIG, dict):
             self.ROW_CONFIG = MgrConfig(**self.ROW_CONFIG)
@@ -158,7 +184,9 @@ class InferenceConfig:
                 verbose=False,
             )
         elif not isinstance(self.ROW_CONFIG, MgrConfig):
-            raise TypeError(f"ROW_CONFIG must be a dict or MgrConfig, got {type(self.ROW_CONFIG)}")
+            raise TypeError(
+                f"ROW_CONFIG must be a dict or MgrConfig, got {type(self.ROW_CONFIG)}"
+            )
 
         if isinstance(self.ICL_CONFIG, dict):
             self.ICL_CONFIG = MgrConfig(**self.ICL_CONFIG)
@@ -173,7 +201,9 @@ class InferenceConfig:
                 verbose=False,
             )
         elif not isinstance(self.ICL_CONFIG, MgrConfig):
-            raise TypeError(f"ICL_CONFIG must be a dict or MgrConfig, got {type(self.ICL_CONFIG)}")
+            raise TypeError(
+                f"ICL_CONFIG must be a dict or MgrConfig, got {type(self.ICL_CONFIG)}"
+            )
 
     def update_from_dict(self, config_dict: Dict[str, Dict]):
         """Update configurations from a dictionary.
@@ -191,6 +221,8 @@ class InferenceConfig:
         allowed_keys = {"COL_CONFIG", "ROW_CONFIG", "ICL_CONFIG"}
         for key in config_dict:
             if key not in allowed_keys:
-                raise KeyError(f"Invalid config key: {key}. Allowed keys: {allowed_keys}")
+                raise KeyError(
+                    f"Invalid config key: {key}. Allowed keys: {allowed_keys}"
+                )
 
             getattr(self, key).update(config_dict[key])

@@ -220,6 +220,7 @@ if sklearn_version < parse_version("1.4"):
             raise NotImplementedError(
                 "Metadata routing is not implemented in scikit-learn < 1.3",
             )
+
     else:
 
         def process_routing(_obj, _method, /, **kwargs):

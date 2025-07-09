@@ -93,7 +93,9 @@ class ColEmbedding(nn.Module):
         self.inference_mgr = InferenceManager(enc_name="tf_col", out_dim=embed_dim)
 
     @staticmethod
-    def map_feature_shuffle(reference_pattern: List[int], other_pattern: List[int]) -> List[int]:
+    def map_feature_shuffle(
+        reference_pattern: List[int], other_pattern: List[int]
+    ) -> List[int]:
         """Map feature shuffle pattern from the reference table to another table.
 
         Parameters
@@ -115,7 +117,9 @@ class ColEmbedding(nn.Module):
 
         return mapping
 
-    def _compute_embeddings(self, features: Tensor, train_size: Optional[int] = None) -> Tensor:
+    def _compute_embeddings(
+        self, features: Tensor, train_size: Optional[int] = None
+    ) -> Tensor:
         """Feature embedding using a shared set transformer
 
         Parameters
@@ -144,7 +148,9 @@ class ColEmbedding(nn.Module):
 
         return embeddings
 
-    def _train_forward(self, X: Tensor, d: Optional[Tensor] = None, train_size: Optional[int] = None) -> Tensor:
+    def _train_forward(
+        self, X: Tensor, d: Optional[Tensor] = None, train_size: Optional[int] = None
+    ) -> Tensor:
         """Transform input table into embeddings for training.
 
         Parameters
@@ -177,7 +183,9 @@ class ColEmbedding(nn.Module):
 
         if d is None:
             features = X.transpose(1, 2).unsqueeze(-1)  # (B, H+C, T, 1)
-            embeddings = self._compute_embeddings(features, train_size)  # (B, H+C, T, E)
+            embeddings = self._compute_embeddings(
+                features, train_size
+            )  # (B, H+C, T, E)
         else:
             if self.reserve_cls_tokens > 0:
                 d = d + self.reserve_cls_tokens
@@ -189,7 +197,9 @@ class ColEmbedding(nn.Module):
             indices = torch.arange(HC, device=device).unsqueeze(0).expand(B, HC)
             mask = indices < d.unsqueeze(1)  # (B, H+C) used extract non-empty features
             features = X[mask].unsqueeze(-1)  # (N, T, 1) -> N = sum(d)
-            effective_embeddings = self._compute_embeddings(features, train_size)  # (N, T, E)
+            effective_embeddings = self._compute_embeddings(
+                features, train_size
+            )  # (N, T, E)
 
             embeddings = torch.zeros(B, HC, T, self.embed_dim, device=device)
             embeddings[mask] = effective_embeddings  # Fill in the computed embeddings
@@ -254,7 +264,10 @@ class ColEmbedding(nn.Module):
 
             features = X.transpose(1, 2).unsqueeze(-1)  # (B, H+C, T, 1)
             embeddings = self.inference_mgr(
-                self._compute_embeddings, inputs=OrderedDict([("features", features), ("train_size", train_size)])
+                self._compute_embeddings,
+                inputs=OrderedDict(
+                    [("features", features), ("train_size", train_size)]
+                ),
             )  # (B, H+C, T, E)
         else:
             B = X.shape[0]
@@ -262,17 +275,23 @@ class ColEmbedding(nn.Module):
             first_table = X[0]
             if self.reserve_cls_tokens > 0:
                 # Pad with -100.0 to mark inputs that should be skipped in SkippableLinear and SetTransformer
-                first_table = nn.functional.pad(first_table, (self.reserve_cls_tokens, 0), value=-100.0)
+                first_table = nn.functional.pad(
+                    first_table, (self.reserve_cls_tokens, 0), value=-100.0
+                )
 
             features = first_table.transpose(0, 1).unsqueeze(-1)  # (H+C, T, 1)
             first_embeddings = self.inference_mgr(
                 self._compute_embeddings,
-                inputs=OrderedDict([("features", features), ("train_size", train_size)]),
+                inputs=OrderedDict(
+                    [("features", features), ("train_size", train_size)]
+                ),
                 output_repeat=B,
             )  # (H+C, T, E)
 
             # Apply shuffles for tables after the first one
-            embeddings = first_embeddings.unsqueeze(0).repeat(B, 1, 1, 1)  # (B, H+C, T, E)
+            embeddings = first_embeddings.unsqueeze(0).repeat(
+                B, 1, 1, 1
+            )  # (B, H+C, T, E)
             first_pattern = feature_shuffles[0]
             for i in range(1, B):
                 mapping = self.map_feature_shuffle(first_pattern, feature_shuffles[i])
@@ -328,6 +347,8 @@ class ColEmbedding(nn.Module):
         if self.training:
             embeddings = self._train_forward(X, d, train_size)
         else:
-            embeddings = self._inference_forward(X, train_size, feature_shuffles, mgr_config)
+            embeddings = self._inference_forward(
+                X, train_size, feature_shuffles, mgr_config
+            )
 
         return embeddings  # (B, T, H+C, E)

@@ -20,14 +20,25 @@ DEFAULT_FIXED_HP = {
 
 DEFAULT_SAMPLED_HP = {
     # Reg2Cls
-    "multiclass_type": {"distribution": "meta_choice", "choice_values": ["value", "rank"]},
+    "multiclass_type": {
+        "distribution": "meta_choice",
+        "choice_values": ["value", "rank"],
+    },
     # MLPSCM
     "mlp_activations": {
         "distribution": "meta_choice_mixed",
         "choice_values": get_activations(random=True, scale=True, diverse=True),
     },
-    "block_wise_dropout": {"distribution": "meta_choice", "choice_values": [True, False]},
-    "mlp_dropout_prob": {"distribution": "meta_beta", "scale": 0.9, "min": 0.1, "max": 5.0},
+    "block_wise_dropout": {
+        "distribution": "meta_choice",
+        "choice_values": [True, False],
+    },
+    "mlp_dropout_prob": {
+        "distribution": "meta_beta",
+        "scale": 0.9,
+        "min": 0.1,
+        "max": 5.0,
+    },
     # MLPSCM and TreeSCM
     "is_causal": {"distribution": "meta_choice", "choice_values": [True, False]},
     "num_causes": {
@@ -68,7 +79,16 @@ DEFAULT_SAMPLED_HP = {
         "round": False,
         "lower_bound": 0.0,
     },
-    "sampling": {"distribution": "meta_choice", "choice_values": ["normal", "mixed", "uniform"]},
-    "pre_sample_cause_stats": {"distribution": "meta_choice", "choice_values": [True, False]},
-    "pre_sample_noise_std": {"distribution": "meta_choice", "choice_values": [True, False]},
+    "sampling": {
+        "distribution": "meta_choice",
+        "choice_values": ["normal", "mixed", "uniform"],
+    },
+    "pre_sample_cause_stats": {
+        "distribution": "meta_choice",
+        "choice_values": [True, False],
+    },
+    "pre_sample_noise_std": {
+        "distribution": "meta_choice",
+        "choice_values": [True, False],
+    },
 }

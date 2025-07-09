@@ -17,7 +17,7 @@ class MCPFN(nn.Module):
 
     Parameters
     ----------
-    
+
     """
 
     def __init__(
@@ -28,23 +28,25 @@ class MCPFN(nn.Module):
         nhead: int = 2,
         remove_duplicate_features: bool = True,
         num_buckets: int = 5000,
-        encoder_path: str = 'encoder.pth',
+        encoder_path: str = "encoder.pth",
     ):
         super().__init__()
-        
+
         self.config = ModelConfig(
             emsize=embed_dim,
             features_per_group=features_per_group,
-            max_num_classes=10, # won't be used
+            max_num_classes=10,  # won't be used
             nhead=nhead,
             remove_duplicate_features=remove_duplicate_features,
             num_buckets=num_buckets,
-            max_num_features=max_num_features
+            max_num_features=max_num_features,
         )
-        
+
         self.encoder = torch.load(encoder_path, weights_only=False)
-        
-        self.model = PerFeatureTransformer(config = self.config, encoder=self.encoder, n_out = 5000)
+
+        self.model = PerFeatureTransformer(
+            config=self.config, encoder=self.encoder, n_out=5000
+        )
 
     def forward(
         self,
@@ -86,10 +88,10 @@ class MCPFN(nn.Module):
         # the order used in TabPFN and then rearrange the dimensions back to the order
         # used in TabICL.
         train_size = y_train.shape[1]
-        
-        X = einops.rearrange(X, 'b t h -> t b h')
-        y_train = einops.rearrange(y_train, 'b t -> t b')
-        
-        out = self.model(X, y_train, single_eval_pos = train_size)
-        
-        return einops.rearrange(out, 't b h -> b t h')
+
+        X = einops.rearrange(X, "b t h -> t b h")
+        y_train = einops.rearrange(y_train, "b t -> t b")
+
+        out = self.model(X, y_train, single_eval_pos=train_size)
+
+        return einops.rearrange(out, "t b h -> b t h")

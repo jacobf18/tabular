@@ -82,9 +82,11 @@ def support_save_peak_mem_factor(method: MethodType) -> Callable:
 
             split_args = zip(
                 *[
-                    torch.split(arg, split_size)
-                    if isinstance(arg, torch.Tensor)
-                    else [arg] * save_peak_mem_factor
+                    (
+                        torch.split(arg, split_size)
+                        if isinstance(arg, torch.Tensor)
+                        else [arg] * save_peak_mem_factor
+                    )
                     for arg in (x, *args)
                 ],
             )
@@ -404,9 +406,9 @@ class MemoryUsageEstimator:
                 dtype_byte_size=dtype_byte_size,
                 safety_factor=safety_factor,
                 n_train_samples=n_train_samples,
-                max_free_mem=save_peak_mem
-                if isinstance(save_peak_mem, (float, int))
-                else None,
+                max_free_mem=(
+                    save_peak_mem if isinstance(save_peak_mem, (float, int)) else None
+                ),
             )
             save_peak_mem = memory_available_after_batch < 0
 

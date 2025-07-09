@@ -41,7 +41,14 @@ class TreeLayer(nn.Module):
         The device ('cpu' or 'cuda') on which to place the output tensor.
     """
 
-    def __init__(self, tree_model: str, max_depth: int, n_estimators: int, out_dim: int, device: str):
+    def __init__(
+        self,
+        tree_model: str,
+        max_depth: int,
+        n_estimators: int,
+        out_dim: int,
+        device: str,
+    ):
         super(TreeLayer, self).__init__()
         self.max_depth = max_depth
         self.n_estimators = n_estimators
@@ -49,14 +56,18 @@ class TreeLayer(nn.Module):
         self.device = device
 
         if tree_model == "decision_tree":
-            self.model = MultiOutputRegressor(DecisionTreeRegressor(max_depth=max_depth, splitter="random"), n_jobs=-1)
+            self.model = MultiOutputRegressor(
+                DecisionTreeRegressor(max_depth=max_depth, splitter="random"), n_jobs=-1
+            )
         elif tree_model == "extra_trees":
             self.model = MultiOutputRegressor(
-                ExtraTreesRegressor(n_estimators=n_estimators, max_depth=max_depth), n_jobs=-1
+                ExtraTreesRegressor(n_estimators=n_estimators, max_depth=max_depth),
+                n_jobs=-1,
             )
         elif tree_model == "random_forest":
             self.model = MultiOutputRegressor(
-                RandomForestRegressor(n_estimators=n_estimators, max_depth=max_depth), n_jobs=-1
+                RandomForestRegressor(n_estimators=n_estimators, max_depth=max_depth),
+                n_jobs=-1,
             )
         elif tree_model == "xgboost":
             self.model = XGBRegressor(
@@ -240,7 +251,9 @@ class TreeSCM(nn.Module):
 
         if self.is_causal:
             # Ensure enough intermediate variables for sampling X and y
-            self.hidden_dim = max(self.hidden_dim, self.num_outputs + 2 * self.num_features)
+            self.hidden_dim = max(
+                self.hidden_dim, self.num_outputs + 2 * self.num_features
+            )
         else:
             # In non-causal mode, features are the causes
             self.num_causes = self.num_features
@@ -288,7 +301,10 @@ class TreeSCM(nn.Module):
 
         if self.pre_sample_noise_std:
             noise_std = torch.abs(
-                torch.normal(torch.zeros(size=(1, out_dim), device=self.device), float(self.noise_std))
+                torch.normal(
+                    torch.zeros(size=(1, out_dim), device=self.device),
+                    float(self.noise_std),
+                )
             )
         else:
             noise_std = self.noise_std
@@ -304,7 +320,9 @@ class TreeSCM(nn.Module):
         outputs = [causes]
         for layer in self.layers:
             outputs.append(layer(outputs[-1]))
-        outputs = outputs[2:]  # Start from 2 because the first layer is only linear without activation
+        outputs = outputs[
+            2:
+        ]  # Start from 2 because the first layer is only linear without activation
 
         # Handle outputs based on causality
         X, y = self.handle_outputs(causes, outputs)
@@ -347,13 +365,21 @@ class TreeSCM(nn.Module):
             if self.in_clique:
                 # When in_clique=True, features and targets are sampled as a block, ensuring that
                 # selected variables may share dense dependencies.
-                start = random.randint(0, outputs_flat.shape[-1] - self.num_outputs - self.num_features)
-                random_perm = start + torch.randperm(self.num_outputs + self.num_features, device=self.device)
+                start = random.randint(
+                    0, outputs_flat.shape[-1] - self.num_outputs - self.num_features
+                )
+                random_perm = start + torch.randperm(
+                    self.num_outputs + self.num_features, device=self.device
+                )
             else:
                 # Otherwise, features and targets are randomly and independently selected
-                random_perm = torch.randperm(outputs_flat.shape[-1] - 1, device=self.device)
+                random_perm = torch.randperm(
+                    outputs_flat.shape[-1] - 1, device=self.device
+                )
 
-            indices_X = random_perm[self.num_outputs : self.num_outputs + self.num_features]
+            indices_X = random_perm[
+                self.num_outputs : self.num_outputs + self.num_features
+            ]
             if self.y_is_effect:
                 # If targets are effects, take last output dims
                 indices_y = list(range(-self.num_outputs, 0))
