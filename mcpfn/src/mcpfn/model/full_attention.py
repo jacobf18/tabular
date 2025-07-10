@@ -12,7 +12,9 @@ from typing_extensions import override
 import torch
 from torch.utils.checkpoint import checkpoint
 
-from mcpfn.model.attention import Attention
+import torch.nn as nn
+from abc import ABC, abstractmethod
+# from mcpfn.model.attention import Attention
 from mcpfn.model.memory import support_save_peak_mem_factor
 
 if TYPE_CHECKING:

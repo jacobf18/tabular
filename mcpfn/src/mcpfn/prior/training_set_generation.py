@@ -19,7 +19,7 @@ from scipy.stats import beta
 import warnings
 import os
 import sys
-
+from tqdm import tqdm
 
 class Prior:
     def __init__(self, **kwargs):
@@ -376,18 +376,32 @@ class TabICLSCMPrior(Prior):
     def get_batch(self, batch_size=None):
         _batch_size = batch_size or self.batch_size
         X_list, y_list, train_sizes = [], [], torch.zeros(_batch_size, dtype=torch.long)
-        for i in range(_batch_size):
-            X_full = self.generate_complete_matrix_pd()
-            if X_full.numel() == 0:
+        step = 0
+        pbar = tqdm(total=_batch_size, desc="Generating batches")
+        while step < _batch_size:
+        # for i in tqdm(range(_batch_size), desc="Generating batches"):
+            try:
+                X_full = self.generate_complete_matrix_pd()
+                if X_full.numel() == 0: # if the matrix is empty, skip
+                    continue
+                chosen_missing_func = np.random.choice(self.missingness_functions)
+                # chosen_missing_func = self.induce_mcar_fixed
+                X_missing = chosen_missing_func(X_full)
+                train_X, train_y, test_X, test_y = self.create_train_test_sets(
+                    X_missing, X_full=X_full
+                )
+                if train_X.shape[0] != train_X.shape[0] + test_X.shape[0] - self.num_missing:
+                    # print('Skipping batch because train_sizes[i] != train_X.shape[0] + test_X.shape[0] - self.num_missing')
+                    # print(f'train_sizes[i]: {train_X.shape[0]}')
+                    # print(f'train_X.shape[0] + test_X.shape[0] - self.num_missing: {train_X.shape[0] + test_X.shape[0] - self.num_missing}')
+                    raise ValueError('train_sizes[i] != train_X.shape[0] + test_X.shape[0] - self.num_missing')
+                X_list.append(torch.cat((train_X, test_X)))
+                y_list.append(torch.cat((train_y, test_y)))
+                train_sizes[step] = train_X.shape[0]
+                step += 1
+                pbar.update(1)
+            except Exception as e:
                 continue
-            chosen_missing_func = np.random.choice(self.missingness_functions)
-            X_missing = chosen_missing_func(X_full)
-            train_X, train_y, test_X, test_y = self.create_train_test_sets(
-                X_missing, X_full=X_full
-            )
-            X_list.append(torch.cat((train_X, test_X)))
-            y_list.append(torch.cat((train_y, test_y)))
-            train_sizes[i] = train_X.shape[0]
         if not X_list:
             return self.get_batch(batch_size)  # Retry if all generations failed
         # X_nested = nested_tensor(X_list, device=self.device)

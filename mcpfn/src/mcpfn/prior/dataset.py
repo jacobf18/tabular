@@ -34,7 +34,7 @@ from torch.utils.data import IterableDataset
 
 from .mlp_scm import MLPSCM
 from .tree_scm import TreeSCM
-from .training_set_generation import FixedMissingDataSCMPrior
+from .training_set_generation import TabICLSCMPrior
 
 from .hp_sampling import HpSamplerList
 from .reg2cls import Reg2Cls
@@ -1357,7 +1357,7 @@ class PriorDataset(IterableDataset):
                 device=device,
             )
         elif prior_type == "missing":
-            self.prior = FixedMissingDataSCMPrior(
+            self.prior = TabICLSCMPrior(
                 batch_size=batch_size,
                 num_samples=max_seq_len,
                 num_features=max_features,

@@ -9,6 +9,7 @@ from contextlib import nullcontext
 import math
 import numpy as np
 import pickle
+import einops
 
 import torch
 from torch import nn
@@ -200,9 +201,7 @@ class Trainer:
         }
 
         # model = TabICL(**self.model_config)
-        model = MCPFN(
-            encoder_path="/Users/jfeit/tabular/mcpfn/src/mcpfn/model/encoder.pth"
-        )
+        model = MCPFN(encoder_path = '/root/tabular/mcpfn/src/mcpfn/model/encoder.pth')
         model.to(device=self.config.device)
 
         if self.master_process:
@@ -268,8 +267,18 @@ class Trainer:
             )
         else:
             # Load pre-generated prior data from disk
-            dataset = LoadPriorDataset(
-                data_dir=self.config.prior_dir,
+            train_dataset = LoadPriorDataset(
+                data_dir=self.config.prior_dir + "/train",
+                batch_size=self.config.batch_size,
+                ddp_world_size=self.ddp_world_size,
+                ddp_rank=self.ddp_rank,
+                start_from=self.config.load_prior_start,
+                delete_after_load=self.config.delete_after_load,
+                device=self.config.prior_device,
+            )
+            
+            val_dataset = LoadPriorDataset(
+                data_dir=self.config.prior_dir + "/val",
                 batch_size=self.config.batch_size,
                 ddp_world_size=self.ddp_world_size,
                 ddp_rank=self.ddp_rank,
@@ -283,17 +292,25 @@ class Trainer:
 
         # Create dataloader for efficient loading and prefetching
         # print(self.config.device)
-        self.dataloader = DataLoader(
-            dataset,
+        self.train_dataloader = DataLoader(
+            train_dataset,
             batch_size=None,  # No additional batching since PriorDataset handles batching internally
             shuffle=False,
             num_workers=1,
             prefetch_factor=4,
-            # pin_memory=True if self.config.prior_device == "cpu" else False,
-            pin_memory=False,
-            # pin_memory_device=self.config.device if self.config.prior_device == "cpu" else "",
+            pin_memory=True if self.config.prior_device == "cpu" else False,
+            pin_memory_device=self.config.device if self.config.prior_device == "cpu" else "",
         )
-
+        self.val_dataloader = DataLoader(
+            val_dataset,
+            batch_size=None,  # No additional batching since PriorDataset handles batching internally
+            shuffle=False,
+            num_workers=1,
+            prefetch_factor=4,
+            pin_memory=True if self.config.prior_device == "cpu" else False,
+            pin_memory_device=self.config.device if self.config.prior_device == "cpu" else "",
+        )
+    
     def configure_optimizer(self):
         """Configure optimizer and scheduler."""
 
@@ -465,21 +482,28 @@ class Trainer:
         results = {
             "ce": 0.0,
             "mae": 0.0,
+            "val_ce": 0.0,
+            "val_mae": 0.0,
             "prior_time": 0.0,
             "train_time": 0.0,
             "lr": 0.0,
         }
 
-        dataloader = iter(self.dataloader)
+        train_dataloader = iter(self.train_dataloader)
+        val_dataloader = iter(self.val_dataloader)
+        
+        len_train = 8
+        len_val = 2
+        
         for step in step_progress:
             # Get the next batch
             with Timer() as prior_timer:
-                batch = next(dataloader)
+                batch = next(train_dataloader)
             prior_time = prior_timer.elapsed
 
             # Train the model on the batch
             with Timer() as train_timer:
-                results_batch = self.run_batch(batch)
+                results_batch = self.run_batch(batch, is_train=True)
                 results["ce"] += results_batch["ce"]
                 results["mae"] += results_batch["mae"]
             train_time = train_timer.elapsed
@@ -509,23 +533,36 @@ class Trainer:
                         and self.config.max_checkpoints > 0
                     ):
                         self.manage_checkpoint()
+                        
+        # Validate the model on the validation set
+        step_progress = tqdm(range(len_val), desc="Validation")
+        for batch in step_progress:
+            batch = next(val_dataloader)
+            results_batch = self.run_batch(batch, is_train=False)
+            results["val_ce"] += results_batch["ce"]
+            results["val_mae"] += results_batch["mae"]
+            
+            # Clear CUDA cache to free memory
+            torch.cuda.empty_cache()
+            
+        # Average results
+        results["ce"] /= len_train
+        results["mae"] /= len_train
+        results["val_ce"] /= len_val
+        results["val_mae"] /= len_val
+        results["prior_time"] /= len_train
+        results["train_time"] /= len_train
+            
+        # Update progress bar with rounded values for cleaner display
+        self.step_progress.set_postfix(
+            **{
+                k: round(v, 3) if isinstance(v, float) else v
+                for k, v in results.items()
+            }
+        )
 
         # Logging to Weights & Biases
         if self.wandb_run is not None:
-            # Average results
-            results["ce"] /= self.config.max_steps
-            results["mae"] /= self.config.max_steps
-            results["prior_time"] /= self.config.max_steps
-            results["train_time"] /= self.config.max_steps
-
-            # Update progress bar with rounded values for cleaner display
-            self.step_progress.set_postfix(
-                **{
-                    k: round(v, 3) if isinstance(v, float) else v
-                    for k, v in results.items()
-                }
-            )
-
             # wandb.log(results, step=self.curr_step)
             wandb.log(results)
 
@@ -614,7 +651,7 @@ class Trainer:
 
         return micro_X, micro_y
 
-    def run_micro_batch(self, micro_batch, micro_batch_idx, num_micro_batches):
+    def run_micro_batch(self, micro_batch, micro_batch_idx, num_micro_batches, is_train = True):
         """Process a micro batch for gradient accumulation.
 
         Parameters
@@ -665,40 +702,33 @@ class Trainer:
                 micro_batch_idx == num_micro_batches - 1
             )
 
-        with self.amp_ctx:
-            pred = self.model(micro_X, y_train, micro_d)  # (B, test_size, max_classes)
-            # pred = pred.flatten(end_dim=-2)
-
-            # true = y_test.long().flatten()
-            true = y_test.flatten()
-
-            true = torch.ones_like(true).to(self.config.device)
-
-            loss = self.bar_distribution(logits=pred, y=true)
-            # mse = torch.pow(self.bar_distribution.mean(logits = pred) - true, 2).mean()
-
-        # Scale loss for gradient accumulation and backpropagate
-        scaled_loss = loss.mean() / num_micro_batches
-        self.scaler.scale(scaled_loss).backward()
-        # scaled_loss = loss.mean() / num_micro_batches
-        # mse = mse / num_micro_batches
-        # self.scaler.scale(mse).backward()
+        if is_train: # train
+            with self.amp_ctx:
+                pred = self.model(micro_X, y_train, micro_d)  # (B, test_size, max_classes)
+                pred = einops.rearrange(pred, "b t h -> t b h")
+                loss = self.bar_distribution(logits=pred, y=einops.rearrange(y_test, "b t -> t b"))
+                
+            # Scale loss for gradient accumulation and backpropagate
+            scaled_loss = loss.mean() / num_micro_batches
+            self.scaler.scale(scaled_loss).backward()
+            
+        else: # val
+            with torch.no_grad():
+                pred = self.model(micro_X, y_train, micro_d)  # (B, test_size, max_classes)
+                pred = einops.rearrange(pred, "b t h -> t b h")
+                loss = self.bar_distribution(logits=pred, y=einops.rearrange(y_test, "b t -> t b"))
+                scaled_loss = loss.mean() / num_micro_batches
 
         with torch.no_grad():
             micro_results = {}
-            # scaled_loss = loss.mean() / num_micro_batches
             micro_results["ce"] = scaled_loss.item()
-            # accuracy = (pred.argmax(dim=1) == true).sum() / len(true)
-            # print(self.bar_distribution.median(logits=pred))
             median = self.bar_distribution.median(logits=pred)
-            accuracy = (median - true).abs().mean()  # mae
+            accuracy = (median - einops.rearrange(y_test, "b t -> t b")).abs().mean() # mae
             micro_results["mae"] = accuracy.item()
-
-            # print(median[0].item(), true[0])
 
         return micro_results
 
-    def run_batch(self, batch):
+    def run_batch(self, batch, is_train = True):
         """
         Trains the model on a batch of datasets. Handles gradient accumulation by
         splitting the batch into micro-batches. Supports variable-sized datasets
@@ -721,8 +751,11 @@ class Trainer:
         RuntimeError
             If more than 10% of micro-batches fail due to OOM errors.
         """
-        self.model.train()
-        self.optimizer.zero_grad(set_to_none=True)
+        if is_train:
+            self.model.train()
+            self.optimizer.zero_grad(set_to_none=True)
+        else:
+            self.model.eval()
 
         # Pad nested tensors to the same size
         batch = [t.to_padded_tensor(padding=0.0) if t.is_nested else t for t in batch]
@@ -736,13 +769,13 @@ class Trainer:
         ]
         micro_batches = list(zip(*micro_batches))
 
-        results = {"ce": 0.0, "mse": 0.0}
+        results = {"ce": 0.0, "mae": 0.0}
         failed_batches = 0
 
         for idx, micro_batch in enumerate(micro_batches):
             try:
                 micro_results = self.run_micro_batch(
-                    micro_batch, idx, num_micro_batches
+                    micro_batch, idx, num_micro_batches, is_train
                 )
                 for k, v in micro_results.items():
                     results[k] += v
@@ -753,6 +786,8 @@ class Trainer:
                 torch.cuda.empty_cache()
                 failed_batches += 1
                 continue
+        results['ce'] /= len(micro_batches)
+        results['mae'] /= len(micro_batches)
 
         failure_ratio = failed_batches / num_micro_batches
         if failure_ratio > 0.1:
@@ -761,20 +796,21 @@ class Trainer:
                 f"Please check configuration to reduce memory consumption."
             )
 
-        # Clip the gradient
-        if self.config.gradient_clipping > 0:
-            self.scaler.unscale_(self.optimizer)
-            nn.utils.clip_grad_norm_(
-                self.model.parameters(), self.config.gradient_clipping
-            )
+        if is_train:
+            # Clip the gradient
+            if self.config.gradient_clipping > 0:
+                self.scaler.unscale_(self.optimizer)
+                nn.utils.clip_grad_norm_(
+                    self.model.parameters(), self.config.gradient_clipping
+                )
+            
+            # Update parameters
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
 
-        # Update parameters
-        self.scaler.step(self.optimizer)
-        self.scaler.update()
-
-        # Update the learning rate
-        self.optimizer.zero_grad(set_to_none=True)
-        self.scheduler.step()
+            # Update the learning rate
+            self.optimizer.zero_grad(set_to_none=True)
+            self.scheduler.step()
 
         return results
 
@@ -796,7 +832,7 @@ if __name__ == "__main__":
     #     pass  # Ignore the error if the context has already been set
 
     # Create trainer and start training
-    step_progress = tqdm(range(100), desc="Epoch")
+    step_progress = tqdm(range(50), desc="Epoch")
     trainer = Trainer(config, step_progress)
     for epoch in step_progress:
         # print(f"Epoch {epoch}")
