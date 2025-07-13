@@ -1,13 +1,16 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Literal
 from torch import nn, Tensor
 import torch
 
 from mcpfn.model.config import ModelConfig
 from mcpfn.model.transformer import PerFeatureTransformer
+# from mcpfn.prior.training_set_generation import TabICLSCMPrior
+# from mcpfn.train.run import Trainer
 
 import einops
+import numpy as np
 
 
 class MCPFN(nn.Module):
@@ -24,10 +27,10 @@ class MCPFN(nn.Module):
         self,
         embed_dim: int = 192,
         max_num_features: int = 50,
-        features_per_group: int = 2,
+        features_per_group: Literal[1, 2] = 2,
         nhead: int = 2,
         remove_duplicate_features: bool = True,
-        num_buckets: int = 5000,
+        num_buckets: Literal[1000, 5000] = 5000,
         encoder_path: str = "encoder.pth",
     ):
         super().__init__()

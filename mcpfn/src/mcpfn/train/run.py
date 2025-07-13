@@ -5,6 +5,7 @@ import timeit
 import warnings
 import functools
 from contextlib import nullcontext
+from typing import Optional
 
 import math
 import numpy as np
@@ -85,7 +86,7 @@ class Trainer:
         optimizer, distributed training, and data generation.
     """
 
-    def __init__(self, config, step_progress):
+    def __init__(self, config, step_progress : Optional[tqdm] = None):
         self.config = config
         self.configure_ddp()
         self.configure_wandb()
@@ -554,12 +555,13 @@ class Trainer:
         results["train_time"] /= len_train
             
         # Update progress bar with rounded values for cleaner display
-        self.step_progress.set_postfix(
-            **{
-                k: round(v, 3) if isinstance(v, float) else v
-                for k, v in results.items()
-            }
-        )
+        if self.step_progress is not None:
+            self.step_progress.set_postfix(
+                **{
+                    k: round(v, 3) if isinstance(v, float) else v
+                    for k, v in results.items()
+                }
+            )
 
         # Logging to Weights & Biases
         if self.wandb_run is not None:

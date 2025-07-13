@@ -1,0 +1,110 @@
+from __future__ import annotations
+
+import torch
+
+from mcpfn.prior.training_set_generation import TabICLSCMPrior
+
+import numpy as np
+from mcpfn.model.mcpfn import MCPFN
+import argparse
+from mcpfn.model.bar_distribution import FullSupportBarDistribution
+
+
+class ImputePFN:
+    """A Tabular Foundation Model for Matrix Completion.
+
+    MCPFN is a transformer-based architecture for matrix completion on tabular data.
+
+    Parameters
+    ----------
+
+    """
+    def __init__(self, device: str = "cpu", encoder_path: str = "encoder.pth", borders_path: str = "borders.pt"):
+        config = argparse.Namespace(
+            emsize=192,
+            features_per_group=2,
+            max_num_classes=10,
+            nhead=2,
+            remove_duplicate_features=True,
+            num_buckets=5000,
+            max_num_features=85,
+            device=device
+        )
+        self.device = device
+        self.model = MCPFN(encoder_path=encoder_path).to(self.device)
+        self.borders_path = borders_path
+
+    def impute(self, X: np.ndarray) -> np.ndarray:
+        """Impute missing values in the input matrix.
+        Imputes the missing values in place.
+
+        Args:
+            X (np.ndarray): Input matrix of shape (T, H) where:
+             - T is the number of samples (rows)
+             - H is the number of features (columns)
+
+        Returns:
+            np.ndarray: Imputed matrix of shape (T, H)
+        """
+        # Verify that the input matrix is valid
+        if X.ndim != 2:
+            raise ValueError("Input matrix must be 2-dimensional")
+        
+        # Get means and stds per column
+        means = np.nanmean(X, axis=0)
+        stds = np.nanstd(X, axis=0)
+        
+        # Normalize the input matrix
+        X_normalized = (X - means) / (stds + 1e-8) # Add a small epsilon to avoid division by zero
+        
+        X_normalized_tensor = torch.from_numpy(X_normalized).to(self.device)
+        
+        # Impute the missing values
+        train_X, train_y, test_X, _ = TabICLSCMPrior.create_train_test_sets(X_normalized_tensor, X_normalized_tensor)
+        
+        missing_indices = np.where(np.isnan(X)) # This will always be the same order as the calculated train_X and test_X
+
+        # Move tensors to device
+        train_X = train_X.to(self.device)
+        train_y = train_y.to(self.device)
+        test_X = test_X.to(self.device)
+        
+        # batch = (train_X.unsqueeze(0), train_y.unsqueeze(0), test_X.unsqueeze(0), None)
+        
+        # Impute missing entries with means
+        X_input = torch.cat((train_X, test_X), dim = 0)
+        X_input = X_input.unsqueeze(0)
+        
+        with torch.no_grad():
+            preds = self.model(X_input, train_y.unsqueeze(0))
+        
+        # Get the median predictions
+        borders = torch.load(self.borders_path).to(self.device)
+        bar_distribution = FullSupportBarDistribution(borders=borders)
+        
+        medians = bar_distribution.median(logits = preds)
+        
+        # Impute the missing values with the median predictions
+        X_normalized[missing_indices] = medians.cpu().detach().numpy()   
+
+        # Denormalize the imputed matrix
+        X_imputed = X_normalized * (stds + 1e-8) + means
+
+        return X_imputed # Return the imputed matrix
+    
+    
+# How to use:
+"""
+from mcpfn.model.interface import ImputePFN
+
+imputer = ImputePFN(device='cpu', # 'cuda' if you have a GPU
+                    encoder_path='./src/mcpfn/model/encoder.pth', # Path to the encoder model
+                    borders_path='./borders.pt') # Path to the borders model
+
+X = np.random.rand(10, 10) # Test matrix of size 10 x 10
+X[np.random.rand(*X.shape) < 0.1] = np.nan # Set 10% of values to NaN
+
+out = imputer.impute(X) # Impute the missing values
+print(out)
+"""
+        
