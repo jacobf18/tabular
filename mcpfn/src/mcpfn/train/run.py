@@ -841,3 +841,6 @@ if __name__ == "__main__":
         trainer.train()
         # trainer.configure_prior()
         trainer.curr_step = 0
+        
+    # Save the trained model
+    trainer.save_checkpoint(name='test.ckpt')
