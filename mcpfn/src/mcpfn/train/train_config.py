@@ -73,6 +73,7 @@ def build_parser():
         default=8,
         help="Size of micro-batches for gradient accumulation",
     )
+    parser.add_argument("--epochs", type=int, default=50, help="Training epochs")
 
     # Optimization Config
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")

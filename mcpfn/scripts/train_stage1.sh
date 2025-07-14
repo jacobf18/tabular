@@ -75,7 +75,7 @@
 
 # Loading from disk and training
 python3 -m torch.distributed.run --standalone --nproc_per_node=1 /root/tabular/mcpfn/src/mcpfn/train/run.py \
-            --wandb_log True \
+            --wandb_log False \
             --wandb_project MCPFN \
             --wandb_name small_data_test_3 \
             --wandb_dir /root/tabular/mcpfn/wandb \
@@ -109,4 +109,5 @@ python3 -m torch.distributed.run --standalone --nproc_per_node=1 /root/tabular/m
             --norm_first True \
             --checkpoint_dir /root/tabular/mcpfn/stage1/checkpoint \
             --save_temp_every 50 \
-            --save_perm_every 5000
+            --save_perm_every 5000 \
+            --epochs 1

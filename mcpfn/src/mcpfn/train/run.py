@@ -834,7 +834,7 @@ if __name__ == "__main__":
     #     pass  # Ignore the error if the context has already been set
 
     # Create trainer and start training
-    step_progress = tqdm(range(50), desc="Epoch")
+    step_progress = tqdm(range(config.epochs), desc="Epoch")
     trainer = Trainer(config, step_progress)
     for epoch in step_progress:
         # print(f"Epoch {epoch}")

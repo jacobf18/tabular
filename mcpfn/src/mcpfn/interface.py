@@ -19,20 +19,18 @@ class ImputePFN:
     ----------
 
     """
-    def __init__(self, device: str = "cpu", encoder_path: str = "encoder.pth", borders_path: str = "borders.pt"):
-        config = argparse.Namespace(
-            emsize=192,
-            features_per_group=2,
-            max_num_classes=10,
-            nhead=2,
-            remove_duplicate_features=True,
-            num_buckets=5000,
-            max_num_features=85,
-            device=device
-        )
+    def __init__(self, device: str = "cpu", encoder_path: str = "encoder.pth", borders_path: str = "borders.pt", checkpoint_path: str = "test.ckpt"):
         self.device = device
+        
+        # Build model
         self.model = MCPFN(encoder_path=encoder_path).to(self.device)
+        
+        # Load borders tensor for outputting continuous values
         self.borders_path = borders_path
+        
+        # Load model state dict
+        checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=True)
+        self.model.load_state_dict(checkpoint['state_dict'])
 
     def impute(self, X: np.ndarray) -> np.ndarray:
         """Impute missing values in the input matrix.
@@ -99,7 +97,8 @@ from mcpfn.model.interface import ImputePFN
 
 imputer = ImputePFN(device='cpu', # 'cuda' if you have a GPU
                     encoder_path='./src/mcpfn/model/encoder.pth', # Path to the encoder model
-                    borders_path='./borders.pt') # Path to the borders model
+                    borders_path='./borders.pt',
+                    checkpoint_path='./test.ckpt') # Path to the borders model
 
 X = np.random.rand(10, 10) # Test matrix of size 10 x 10
 X[np.random.rand(*X.shape) < 0.1] = np.nan # Set 10% of values to NaN
