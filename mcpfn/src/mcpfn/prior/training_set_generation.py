@@ -20,10 +20,10 @@ import warnings
 import random
 import torch
 from torch.utils.data import IterableDataset
+from typing import Optional, Union
+from tqdm import tqdm
 
 # Helpers
-
-
 def sample_log_uniform(low, high, size=1, base=np.e):
     return np.power(
         base,
@@ -31,7 +31,6 @@ def sample_log_uniform(low, high, size=1, base=np.e):
             np.log(low) / np.log(base), np.log(high) / np.log(base), size
         ),
     )
-
 
 def sample_exponential(scale, min_val, size=1):
     return min_val + np.round(np.random.exponential(scale=scale, size=size)).astype(int)
@@ -438,8 +437,6 @@ class RobustPCAPrior(LatentFactorPrior):
 
 
 # Missingness Patterns
-
-
 class BaseMissingness:
     def __init__(self, config: dict):
         self.config = config
@@ -452,7 +449,13 @@ class MCARPattern(BaseMissingness):
     def _induce_missingness(self, X):
         X[torch.rand(*X.shape) < self.config.get("p_missing", 0.6)] = torch.nan
         return X
-
+    
+class MCARFixedPattern(BaseMissingness):
+    def _induce_missingness(self, X, num_missing = 10):
+        n_rows, n_cols = X.shape
+        missing_indices = torch.randperm(n_rows * n_cols)[:num_missing]
+        X.view(-1)[missing_indices] = torch.nan
+        return X
 
 class MARPattern(BaseMissingness):
     def _induce_missingness(self, X):
@@ -893,22 +896,24 @@ def create_train_test_sets(
 
 
 # Main class
-class PriorDataset(IterableDataset):
+class MissingnessPrior:
     """
     Main dataset class that provides an infinite iterator over synthetic tabular datasets.
     """
 
     def __init__(
         self,
-        generator_type: str,
-        missingness_type: str,
-        config: dict,
-        batch_size: int = 1,
+        generator_type: str = 'scm',
+        missingness_type: str = 'mcar',
+        config: dict = {},
+        num_missing: int = 10,
+        batch_size: int = 10,
+        device: str = 'cpu',
+        verbose: bool = False,
     ):
-        super().__init__()
-        self.batch_size = batch_size
         self.config = config
-
+        self.verbose = verbose
+        self.batch_size = batch_size
         generator_map = {
             "scm": SCMPrior,
             "latent_factor": LatentFactorPrior,
@@ -920,6 +925,7 @@ class PriorDataset(IterableDataset):
             "mcar": MCARPattern,
             "mar": MARPattern,
             "mnar": MNARPattern,
+            "mcar_fixed": MCARFixedPattern,
             # Specific MNAR Patterns
             "mnar_rec_sys": MNARRecSysPattern,
             "mnar_panel": MNARPanelPattern,
@@ -950,74 +956,94 @@ class PriorDataset(IterableDataset):
         self.missingness_inducer = missingness_map[missingness_type](config)
         self.generator_type = generator_type
         self.missingness_type = missingness_type
+        self.num_missing = num_missing
+        self.device = device
 
+    @torch.no_grad()
     def get_batch(self):
         """Generates a new batch of datasets by combining a generator and a missingness pattern."""
-        batch_data = []
-        for _ in range(self.batch_size):
-            print(
-                f"Generating with '{self.generator_type}' generator and '{self.missingness_type}' missingness..."
-            )
-            complete_df = self.generator.generate_complete_matrix()
-            X_full = torch.tensor(complete_df.values, dtype=torch.float32)
-            X_missing = self.missingness_inducer._induce_missingness(X_full.clone())
-            batch_data.append(create_train_test_sets(X_missing, X_full=X_full))
-        return batch_data
+        X_list, y_list, train_sizes = [], [], torch.zeros(self.batch_size, dtype=torch.long)
+        step = 0
+        if self.verbose:
+            pbar = tqdm(total=self.batch_size, desc="Generating batches")
+        while step < self.batch_size:
+        # for i in tqdm(range(self.batch_size), desc="Generating batches"):
+            try:
+                complete_df = self.generator.generate_complete_matrix()
+                X = torch.tensor(complete_df.values, dtype=torch.float32)
+                if X.numel() == 0: # if the matrix is empty, skip
+                    continue
+                X_missing = self.missingness_inducer._induce_missingness(X.clone())
+                train_X, train_y, test_X, test_y = create_train_test_sets(
+                    X_missing, X_full=X
+                )
+                if train_X.shape[0] != train_X.shape[0] + test_X.shape[0] - self.num_missing:
+                    # print('Skipping batch because train_sizes[i] != train_X.shape[0] + test_X.shape[0] - self.num_missing')
+                    # print(f'train_sizes[i]: {train_X.shape[0]}')
+                    # print(f'train_X.shape[0] + test_X.shape[0] - self.num_missing: {train_X.shape[0] + test_X.shape[0] - self.num_missing}')
+                    raise ValueError('train_sizes[i] != train_X.shape[0] + test_X.shape[0] - self.num_missing')
+                X_list.append(torch.cat((train_X, test_X)))
+                y_list.append(torch.cat((train_y, test_y)))
+                train_sizes[step] = train_X.shape[0]
+                step += 1
+                if self.verbose:
+                    pbar.update(1)
+            except Exception as _: # Skip if any error occurs
+                continue
+        if not X_list:
+            return self.get_batch()  # Retry if all generations failed
+        # X_nested = nested_tensor(X_list, device=self.device)
+        # y_nested = nested_tensor(y_list, device=self.device)
+        
+        X_full = torch.stack(X_list, dim = 0)
+        y_full = torch.stack(y_list, dim = 0)
+        
+        d = torch.tensor(X_list[0].shape[1], device=self.device).repeat(len(X_list))
+        seq_lens = torch.tensor(
+            [len(y) for y in y_list], device=self.device, dtype=torch.long
+        )
+        return X_full, y_full, d, seq_lens, train_sizes
 
-    def __iter__(self):
-        return self
+# Execution Block
+if __name__ == '__main__':
+    config = {
+        'num_rows_low': 10, 'num_rows_high': 10, 'num_cols_low': 5, 'num_cols_high': 5,
+        'p_missing': 0.4,
+        # SCM configs
+        'num_nodes_low': 60, 'num_nodes_high': 80, 'graph_generation_method': ['MLP-Dropout', 'Scale-Free'],
+        'root_node_noise_dist': ['Normal', 'Uniform'], 'scm_activation_functions': list(ACTIVATION_FUNCTIONS.keys()),
+        'xgb_n_estimators_exp_scale': 0.5, 'xgb_max_depth_exp_scale': 0.5,
+        'apply_feature_warping_prob': 0.1, 'apply_quantization_prob': 0.1,
+        # MNAR configs
+        'threshold_quantile': 0.25, 'n_core_items': 5, 'n_genres': 3, 'n_policies': 4,
+        # Latent Factor configs
+        'latent_rank_low': 1, 'latent_rank_high': 11, 'latent_spike_p': 0.3, 'latent_slab_sigma': 2.0,
+        # Non-linear Factor configs
+        'spline_knot_k': [3, 5, 7], 'gp_length_scale_low': 0.3, 'gp_length_scale_high': 2.0,
+        'fourier_dim_low': 100, 'fourier_dim_high': 501,
+        # Robust-PCA configs
+        'rpca_beta_a': 2, 'rpca_beta_b': 30,
+        # Soft Polarization configs
+        'soft_polarization_alpha': 2.5, 'soft_polarization_epsilon': 0.05,
+        # User Cascade configs
+        'cascade_n_genres': 5, 'cascade_delta': 1.5,
+        # Cluster Level configs
+        'cluster_level_n_row_clusters': 8, 'cluster_level_n_col_clusters': 8, 'cluster_level_tau_r_std': 1.0,
+        # Spatial Block configs
+        'spatial_block_n_blocks': 5, 'spatial_block_p_geom': 0.2,
+        # Last few ones
+        'censor_quantile': 0.1, 'two_phase_cheap_fraction': 0.4, 'two_phase_beta': 2.5,
+        'skip_logic_p_noise': 0.9, 'cold_start_fraction': 0.3, 'cold_start_gamma': 0.15,
+    }
 
-    def __next__(self):
-        return self.get_batch()
+    # Example, specify one data generation type and one missingness pattern
+    prior = MissingnessPrior(
+        generator_type="latent_factor",
+        missingness_type="mcar_fixed",
+        config=config,
+        batch_size=10,
+        verbose=False
+    )
 
-
-# # Execution Block
-# if __name__ == '__main__':
-#     config = {
-#         'num_rows_low': 100, 'num_rows_high': 101, 'num_cols_low': 50, 'num_cols_high': 51,
-#         'p_missing': 0.4,
-#         # SCM configs
-#         'num_nodes_low': 60, 'num_nodes_high': 80, 'graph_generation_method': ['MLP-Dropout', 'Scale-Free'],
-#         'root_node_noise_dist': ['Normal', 'Uniform'], 'scm_activation_functions': list(ACTIVATION_FUNCTIONS.keys()),
-#         'xgb_n_estimators_exp_scale': 0.5, 'xgb_max_depth_exp_scale': 0.5,
-#         'apply_feature_warping_prob': 0.1, 'apply_quantization_prob': 0.1,
-#         # MNAR configs
-#         'threshold_quantile': 0.25, 'n_core_items': 5, 'n_genres': 3, 'n_policies': 4,
-#         # Latent Factor configs
-#         'latent_rank_low': 1, 'latent_rank_high': 11, 'latent_spike_p': 0.3, 'latent_slab_sigma': 2.0,
-#         # Non-linear Factor configs
-#         'spline_knot_k': [3, 5, 7], 'gp_length_scale_low': 0.3, 'gp_length_scale_high': 2.0,
-#         'fourier_dim_low': 100, 'fourier_dim_high': 501,
-#         # Robust-PCA configs
-#         'rpca_beta_a': 2, 'rpca_beta_b': 30,
-#         # Soft Polarization configs
-#         'soft_polarization_alpha': 2.5, 'soft_polarization_epsilon': 0.05,
-#         # User Cascade configs
-#         'cascade_n_genres': 5, 'cascade_delta': 1.5,
-#         # Cluster Level configs
-#         'cluster_level_n_row_clusters': 8, 'cluster_level_n_col_clusters': 8, 'cluster_level_tau_r_std': 1.0,
-#         # Spatial Block configs
-#         'spatial_block_n_blocks': 5, 'spatial_block_p_geom': 0.2,
-#         # Last few ones
-#         'censor_quantile': 0.1, 'two_phase_cheap_fraction': 0.4, 'two_phase_beta': 2.5,
-#         'skip_logic_p_noise': 0.9, 'cold_start_fraction': 0.3, 'cold_start_gamma': 0.15,
-#     }
-
-#     # Example, specify one data generation type and one missingness pattern
-#     data_iterator = PriorDataset(
-#         generator_type="scm",
-#         missingness_type="mnar",
-#         config=config,
-#         batch_size=1
-#     )
-
-#     generated_batch = next(data_iterator)
-#     print(f"\nGenerated a batch of {len(generated_batch)} datasets.")
-
-#     # Inspect the first restructured dataset in the batch
-#     train_X, train_y, test_X, test_y = generated_batch[0]
-#     print(f"\n--- Inspecting First Dataset in Batch ---\n")
-#     print(f"Train Features Shape: {train_X.shape}")
-#     print(f"Train Targets Shape: {train_y.shape}")
-#     print(f"Test Features Shape: {test_X.shape}")
-#     print(f"Test Targets Shape: {test_y.shape}")
+    X_full, y_full, d, seq_lens, train_sizes = prior.get_batch()
+    print(X_full.shape, y_full.shape, d.shape, seq_lens.shape, train_sizes.shape)
