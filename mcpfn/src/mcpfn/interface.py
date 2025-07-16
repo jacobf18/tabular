@@ -19,18 +19,27 @@ class ImputePFN:
     ----------
 
     """
-    def __init__(self, device: str = "cpu", encoder_path: str = "encoder.pth", borders_path: str = "borders.pt", checkpoint_path: str = "test.ckpt"):
+
+    def __init__(
+        self,
+        device: str = "cpu",
+        encoder_path: str = "encoder.pth",
+        borders_path: str = "borders.pt",
+        checkpoint_path: str = "test.ckpt",
+    ):
         self.device = device
-        
+
         # Build model
         self.model = MCPFN(encoder_path=encoder_path).to(self.device)
-        
+
         # Load borders tensor for outputting continuous values
         self.borders_path = borders_path
-        
+
         # Load model state dict
-        checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=True)
-        self.model.load_state_dict(checkpoint['state_dict'])
+        checkpoint = torch.load(
+            checkpoint_path, map_location=self.device, weights_only=True
+        )
+        self.model.load_state_dict(checkpoint["state_dict"])
 
     def impute(self, X: np.ndarray) -> np.ndarray:
         """Impute missing values in the input matrix.
@@ -47,50 +56,56 @@ class ImputePFN:
         # Verify that the input matrix is valid
         if X.ndim != 2:
             raise ValueError("Input matrix must be 2-dimensional")
-        
+
         # Get means and stds per column
         means = np.nanmean(X, axis=0)
         stds = np.nanstd(X, axis=0)
-        
+
         # Normalize the input matrix
-        X_normalized = (X - means) / (stds + 1e-8) # Add a small epsilon to avoid division by zero
-        
+        X_normalized = (X - means) / (
+            stds + 1e-8
+        )  # Add a small epsilon to avoid division by zero
+
         X_normalized_tensor = torch.from_numpy(X_normalized).to(self.device)
-        
+
         # Impute the missing values
-        train_X, train_y, test_X, _ = TabICLSCMPrior.create_train_test_sets(X_normalized_tensor, X_normalized_tensor)
-        
-        missing_indices = np.where(np.isnan(X)) # This will always be the same order as the calculated train_X and test_X
+        train_X, train_y, test_X, _ = TabICLSCMPrior.create_train_test_sets(
+            X_normalized_tensor, X_normalized_tensor
+        )
+
+        missing_indices = np.where(
+            np.isnan(X)
+        )  # This will always be the same order as the calculated train_X and test_X
 
         # Move tensors to device
         train_X = train_X.to(self.device)
         train_y = train_y.to(self.device)
         test_X = test_X.to(self.device)
-        
+
         # batch = (train_X.unsqueeze(0), train_y.unsqueeze(0), test_X.unsqueeze(0), None)
-        
+
         # Impute missing entries with means
-        X_input = torch.cat((train_X, test_X), dim = 0)
+        X_input = torch.cat((train_X, test_X), dim=0)
         X_input = X_input.unsqueeze(0)
-        
+
         with torch.no_grad():
             preds = self.model(X_input, train_y.unsqueeze(0))
-        
+
         # Get the median predictions
         borders = torch.load(self.borders_path).to(self.device)
         bar_distribution = FullSupportBarDistribution(borders=borders)
-        
-        medians = bar_distribution.median(logits = preds)
-        
+
+        medians = bar_distribution.median(logits=preds)
+
         # Impute the missing values with the median predictions
-        X_normalized[missing_indices] = medians.cpu().detach().numpy()   
+        X_normalized[missing_indices] = medians.cpu().detach().numpy()
 
         # Denormalize the imputed matrix
         X_imputed = X_normalized * (stds + 1e-8) + means
 
-        return X_imputed # Return the imputed matrix
-    
-    
+        return X_imputed  # Return the imputed matrix
+
+
 # How to use:
 """
 from mcpfn.model.interface import ImputePFN
@@ -106,4 +121,3 @@ X[np.random.rand(*X.shape) < 0.1] = np.nan # Set 10% of values to NaN
 out = imputer.impute(X) # Impute the missing values
 print(out)
 """
-        

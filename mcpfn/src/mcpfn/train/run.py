@@ -86,7 +86,7 @@ class Trainer:
         optimizer, distributed training, and data generation.
     """
 
-    def __init__(self, config, step_progress : Optional[tqdm] = None):
+    def __init__(self, config, step_progress: Optional[tqdm] = None):
         self.config = config
         self.configure_ddp()
         self.configure_wandb()
@@ -202,7 +202,7 @@ class Trainer:
         }
 
         # model = TabICL(**self.model_config)
-        model = MCPFN(encoder_path = '/root/tabular/mcpfn/src/mcpfn/model/encoder.pth')
+        model = MCPFN(encoder_path="/root/tabular/mcpfn/src/mcpfn/model/encoder.pth")
         model.to(device=self.config.device)
 
         if self.master_process:
@@ -277,7 +277,7 @@ class Trainer:
                 delete_after_load=self.config.delete_after_load,
                 device=self.config.prior_device,
             )
-            
+
             val_dataset = LoadPriorDataset(
                 data_dir=self.config.prior_dir + "/val",
                 batch_size=self.config.batch_size,
@@ -300,7 +300,9 @@ class Trainer:
             num_workers=1,
             prefetch_factor=4,
             pin_memory=True if self.config.prior_device == "cpu" else False,
-            pin_memory_device=self.config.device if self.config.prior_device == "cpu" else "",
+            pin_memory_device=(
+                self.config.device if self.config.prior_device == "cpu" else ""
+            ),
         )
         self.val_dataloader = DataLoader(
             val_dataset,
@@ -309,9 +311,11 @@ class Trainer:
             num_workers=1,
             prefetch_factor=4,
             pin_memory=True if self.config.prior_device == "cpu" else False,
-            pin_memory_device=self.config.device if self.config.prior_device == "cpu" else "",
+            pin_memory_device=(
+                self.config.device if self.config.prior_device == "cpu" else ""
+            ),
         )
-    
+
     def configure_optimizer(self):
         """Configure optimizer and scheduler."""
 
@@ -492,10 +496,10 @@ class Trainer:
 
         train_dataloader = iter(self.train_dataloader)
         val_dataloader = iter(self.val_dataloader)
-        
+
         len_train = 8
         len_val = 2
-        
+
         for step in step_progress:
             # Get the next batch
             with Timer() as prior_timer:
@@ -534,7 +538,7 @@ class Trainer:
                         and self.config.max_checkpoints > 0
                     ):
                         self.manage_checkpoint()
-                        
+
         # Validate the model on the validation set
         step_progress = tqdm(range(len_val), desc="Validation")
         for batch in step_progress:
@@ -542,10 +546,10 @@ class Trainer:
             results_batch = self.run_batch(batch, is_train=False)
             results["val_ce"] += results_batch["ce"]
             results["val_mae"] += results_batch["mae"]
-            
+
             # Clear CUDA cache to free memory
             torch.cuda.empty_cache()
-            
+
         # Average results
         results["ce"] /= len_train
         results["mae"] /= len_train
@@ -553,7 +557,7 @@ class Trainer:
         results["val_mae"] /= len_val
         results["prior_time"] /= len_train
         results["train_time"] /= len_train
-            
+
         # Update progress bar with rounded values for cleaner display
         if self.step_progress is not None:
             self.step_progress.set_postfix(
@@ -653,7 +657,9 @@ class Trainer:
 
         return micro_X, micro_y
 
-    def run_micro_batch(self, micro_batch, micro_batch_idx, num_micro_batches, is_train = True):
+    def run_micro_batch(
+        self, micro_batch, micro_batch_idx, num_micro_batches, is_train=True
+    ):
         """Process a micro batch for gradient accumulation.
 
         Parameters
@@ -704,33 +710,43 @@ class Trainer:
                 micro_batch_idx == num_micro_batches - 1
             )
 
-        if is_train: # train
+        if is_train:  # train
             with self.amp_ctx:
-                pred = self.model(micro_X, y_train, micro_d)  # (B, test_size, max_classes)
+                pred = self.model(
+                    micro_X, y_train, micro_d
+                )  # (B, test_size, max_classes)
                 pred = einops.rearrange(pred, "b t h -> t b h")
-                loss = self.bar_distribution(logits=pred, y=einops.rearrange(y_test, "b t -> t b"))
-                
+                loss = self.bar_distribution(
+                    logits=pred, y=einops.rearrange(y_test, "b t -> t b")
+                )
+
             # Scale loss for gradient accumulation and backpropagate
             scaled_loss = loss.mean() / num_micro_batches
             self.scaler.scale(scaled_loss).backward()
-            
-        else: # val
+
+        else:  # val
             with torch.no_grad():
-                pred = self.model(micro_X, y_train, micro_d)  # (B, test_size, max_classes)
+                pred = self.model(
+                    micro_X, y_train, micro_d
+                )  # (B, test_size, max_classes)
                 pred = einops.rearrange(pred, "b t h -> t b h")
-                loss = self.bar_distribution(logits=pred, y=einops.rearrange(y_test, "b t -> t b"))
+                loss = self.bar_distribution(
+                    logits=pred, y=einops.rearrange(y_test, "b t -> t b")
+                )
                 scaled_loss = loss.mean() / num_micro_batches
 
         with torch.no_grad():
             micro_results = {}
             micro_results["ce"] = scaled_loss.item()
             median = self.bar_distribution.median(logits=pred)
-            accuracy = (median - einops.rearrange(y_test, "b t -> t b")).abs().mean() # mae
+            accuracy = (
+                (median - einops.rearrange(y_test, "b t -> t b")).abs().mean()
+            )  # mae
             micro_results["mae"] = accuracy.item()
 
         return micro_results
 
-    def run_batch(self, batch, is_train = True):
+    def run_batch(self, batch, is_train=True):
         """
         Trains the model on a batch of datasets. Handles gradient accumulation by
         splitting the batch into micro-batches. Supports variable-sized datasets
@@ -788,8 +804,8 @@ class Trainer:
                 torch.cuda.empty_cache()
                 failed_batches += 1
                 continue
-        results['ce'] /= len(micro_batches)
-        results['mae'] /= len(micro_batches)
+        results["ce"] /= len(micro_batches)
+        results["mae"] /= len(micro_batches)
 
         failure_ratio = failed_batches / num_micro_batches
         if failure_ratio > 0.1:
@@ -805,7 +821,7 @@ class Trainer:
                 nn.utils.clip_grad_norm_(
                     self.model.parameters(), self.config.gradient_clipping
                 )
-            
+
             # Update parameters
             self.scaler.step(self.optimizer)
             self.scaler.update()
@@ -841,6 +857,6 @@ if __name__ == "__main__":
         trainer.train()
         # trainer.configure_prior()
         trainer.curr_step = 0
-        
+
     # Save the trained model
-    trainer.save_checkpoint(name='test.ckpt')
+    trainer.save_checkpoint(name="test.ckpt")

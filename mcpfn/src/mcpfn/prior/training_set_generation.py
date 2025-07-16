@@ -23,23 +23,43 @@ from torch.utils.data import IterableDataset
 
 # Helpers
 
+
 def sample_log_uniform(low, high, size=1, base=np.e):
-    return np.power(base, np.random.uniform(np.log(low)/np.log(base), np.log(high)/np.log(base), size))
+    return np.power(
+        base,
+        np.random.uniform(
+            np.log(low) / np.log(base), np.log(high) / np.log(base), size
+        ),
+    )
+
 
 def sample_exponential(scale, min_val, size=1):
     return min_val + np.round(np.random.exponential(scale=scale, size=size)).astype(int)
 
+
 ACTIVATION_FUNCTIONS = {
-    'identity': lambda x: x, 'tanh': np.tanh, 'leaky_relu': lambda x: np.maximum(0.01 * x, x),
-    'elu': lambda x: np.where(x > 0, x, 0.5 * (np.exp(x) - 1)), 'silu': lambda x: x / (1 + np.exp(-np.clip(x, -50, 50))),
-    'sine': np.sin, 'relu': lambda x: np.maximum(0, x), 'relu6': lambda x: np.minimum(np.maximum(0, x), 6),
-    'selu': lambda x: 1.0507 * np.where(x > 0, x, 1.67326 * (np.exp(np.clip(x, -50, 50)) - 1)),
-    'softplus': lambda x: np.log(1 + np.exp(np.clip(x, -50, 50))),
-    'hardtanh': lambda x: np.maximum(-1, np.minimum(1, x)), 'sign': np.sign,
-    'rbf': lambda x: np.exp(-np.square(x)), 'exp': lambda x: np.exp(np.clip(x, -10, 10)),
-    'sqrt_abs': lambda x: np.sqrt(np.abs(x)), 'indicator_abs_le_1': lambda x: np.where(np.abs(x) <= 1, 1, 0),
-    'square': np.square, 'absolute': np.abs, 'relu_squared': lambda x: np.maximum(0, x)**2,
+    "identity": lambda x: x,
+    "tanh": np.tanh,
+    "leaky_relu": lambda x: np.maximum(0.01 * x, x),
+    "elu": lambda x: np.where(x > 0, x, 0.5 * (np.exp(x) - 1)),
+    "silu": lambda x: x / (1 + np.exp(-np.clip(x, -50, 50))),
+    "sine": np.sin,
+    "relu": lambda x: np.maximum(0, x),
+    "relu6": lambda x: np.minimum(np.maximum(0, x), 6),
+    "selu": lambda x: 1.0507
+    * np.where(x > 0, x, 1.67326 * (np.exp(np.clip(x, -50, 50)) - 1)),
+    "softplus": lambda x: np.log(1 + np.exp(np.clip(x, -50, 50))),
+    "hardtanh": lambda x: np.maximum(-1, np.minimum(1, x)),
+    "sign": np.sign,
+    "rbf": lambda x: np.exp(-np.square(x)),
+    "exp": lambda x: np.exp(np.clip(x, -10, 10)),
+    "sqrt_abs": lambda x: np.sqrt(np.abs(x)),
+    "indicator_abs_le_1": lambda x: np.where(np.abs(x) <= 1, 1, 0),
+    "square": np.square,
+    "absolute": np.abs,
+    "relu_squared": lambda x: np.maximum(0, x) ** 2,
 }
+
 
 class RandomFourierFeatureFunction:
     def __init__(self, N=256):
@@ -50,33 +70,50 @@ class RandomFourierFeatureFunction:
 
     def __call__(self, x: np.ndarray) -> np.ndarray:
         z = np.random.randn(self.N)
-        if x.ndim == 1: x = x[:, np.newaxis]
+        if x.ndim == 1:
+            x = x[:, np.newaxis]
         phi_x = (self.w / np.linalg.norm(self.w)) * np.sin(self.a * x + self.b)
         return np.dot(phi_x, z)
 
+
 # Data Generation Classes
+
 
 class SCMPrior:
     """Generates a complete data matrix from a Structural Causal Model."""
+
     def __init__(self, config: dict):
         self.config = config
 
-    def _generate_mlp_dropout_dag(self, num_nodes: int, num_layers: int, edge_dropout_prob: float = 0.2) -> nx.DiGraph:
+    def _generate_mlp_dropout_dag(
+        self, num_nodes: int, num_layers: int, edge_dropout_prob: float = 0.2
+    ) -> nx.DiGraph:
         G = nx.DiGraph()
         nodes_per_layer_base = np.zeros(num_layers, dtype=int) + 1
         nodes_remaining = num_nodes - num_layers
         if nodes_remaining > 0:
-            splits = np.sort(np.random.choice(nodes_remaining + num_layers - 1, num_layers - 1, replace=False))
-            layer_sizes = np.diff(np.concatenate(([0], splits, [nodes_remaining + num_layers - 1]))) - 1
+            splits = np.sort(
+                np.random.choice(
+                    nodes_remaining + num_layers - 1, num_layers - 1, replace=False
+                )
+            )
+            layer_sizes = (
+                np.diff(
+                    np.concatenate(([0], splits, [nodes_remaining + num_layers - 1]))
+                )
+                - 1
+            )
             nodes_per_layer_base += layer_sizes
         node_indices = np.arange(num_nodes)
         nodes_per_layer = np.split(node_indices, np.cumsum(nodes_per_layer_base)[:-1])
         for i, layer_nodes in enumerate(nodes_per_layer):
-            for node in layer_nodes: G.add_node(node, layer=i)
+            for node in layer_nodes:
+                G.add_node(node, layer=i)
         for i in range(num_layers - 1):
             for u in nodes_per_layer[i]:
-                for v in nodes_per_layer[i+1]:
-                    if np.random.rand() > edge_dropout_prob: G.add_edge(u, v)
+                for v in nodes_per_layer[i + 1]:
+                    if np.random.rand() > edge_dropout_prob:
+                        G.add_edge(u, v)
         return G
 
     def _generate_scale_free_dag(self, num_nodes: int, m_edges: int = 2) -> nx.DiGraph:
@@ -84,173 +121,309 @@ class SCMPrior:
         G = nx.DiGraph()
         G.add_nodes_from(undirected_G.nodes())
         for u, v in undirected_G.edges():
-            if u < v: G.add_edge(u, v)
-            else: G.add_edge(v, u)
+            if u < v:
+                G.add_edge(u, v)
+            else:
+                G.add_edge(v, u)
         return G
 
     def _sample_dag_structure(self) -> nx.DiGraph:
-        graph_type = np.random.choice(self.config['graph_generation_method'])
-        num_nodes = int(sample_log_uniform(self.config['num_nodes_low'], self.config['num_nodes_high'])[0])
-        if graph_type == 'MLP-Dropout':
-            return self._generate_mlp_dropout_dag(num_nodes=num_nodes, num_layers=np.random.randint(2, 8))
-        elif graph_type == 'Scale-Free':
-            return self._generate_scale_free_dag(num_nodes=num_nodes, m_edges=np.random.randint(1, 5))
+        graph_type = np.random.choice(self.config["graph_generation_method"])
+        num_nodes = int(
+            sample_log_uniform(
+                self.config["num_nodes_low"], self.config["num_nodes_high"]
+            )[0]
+        )
+        if graph_type == "MLP-Dropout":
+            return self._generate_mlp_dropout_dag(
+                num_nodes=num_nodes, num_layers=np.random.randint(2, 8)
+            )
+        elif graph_type == "Scale-Free":
+            return self._generate_scale_free_dag(
+                num_nodes=num_nodes, m_edges=np.random.randint(1, 5)
+            )
 
     def _assign_functional_mechanisms(self, dag: nx.DiGraph):
         for node in dag.nodes():
             parents = list(dag.predecessors(node))
-            if not parents: continue
-            choice = np.random.choice(['scm', 'tree', 'random_fourier'], p=[0.6, 0.2, 0.2])
-            if choice == 'scm':
-                func_name = np.random.choice(self.config['scm_activation_functions'])
-                dag.nodes[node].update({'type': 'scm', 'function': ACTIVATION_FUNCTIONS[func_name],'weights': np.random.randn(len(parents)), 'bias': np.random.randn()})
-            elif choice == 'random_fourier':
-                dag.nodes[node].update({'type': 'random_fourier', 'function': RandomFourierFeatureFunction(), 'parent_selector': np.random.randint(len(parents))})
-            else: # Tree-based
-                params = {'n_estimators': sample_exponential(self.config['xgb_n_estimators_exp_scale'], 1)[0],
-                          'max_depth': sample_exponential(self.config['xgb_max_depth_exp_scale'], 2)[0], 'n_jobs': 1}
-                dag.nodes[node].update({'type': 'tree', 'function': xgb.XGBRegressor(**params)})
+            if not parents:
+                continue
+            choice = np.random.choice(
+                ["scm", "tree", "random_fourier"], p=[0.6, 0.2, 0.2]
+            )
+            if choice == "scm":
+                func_name = np.random.choice(self.config["scm_activation_functions"])
+                dag.nodes[node].update(
+                    {
+                        "type": "scm",
+                        "function": ACTIVATION_FUNCTIONS[func_name],
+                        "weights": np.random.randn(len(parents)),
+                        "bias": np.random.randn(),
+                    }
+                )
+            elif choice == "random_fourier":
+                dag.nodes[node].update(
+                    {
+                        "type": "random_fourier",
+                        "function": RandomFourierFeatureFunction(),
+                        "parent_selector": np.random.randint(len(parents)),
+                    }
+                )
+            else:  # Tree-based
+                params = {
+                    "n_estimators": sample_exponential(
+                        self.config["xgb_n_estimators_exp_scale"], 1
+                    )[0],
+                    "max_depth": sample_exponential(
+                        self.config["xgb_max_depth_exp_scale"], 2
+                    )[0],
+                    "n_jobs": 1,
+                }
+                dag.nodes[node].update(
+                    {"type": "tree", "function": xgb.XGBRegressor(**params)}
+                )
 
     def generate_complete_matrix(self) -> pd.DataFrame:
         dag = self._sample_dag_structure()
         self._assign_functional_mechanisms(dag)
-        n_rows = int(sample_log_uniform(self.config['num_rows_low'], self.config['num_rows_high'])[0])
+        n_rows = int(
+            sample_log_uniform(
+                self.config["num_rows_low"], self.config["num_rows_high"]
+            )[0]
+        )
         node_data = {node: np.zeros(n_rows) for node in nx.topological_sort(dag)}
         for node in nx.topological_sort(dag):
             parents = list(dag.predecessors(node))
             node_info = dag.nodes[node]
             if not parents:
-                node_data[node] = np.random.randn(n_rows) if np.random.choice(self.config['root_node_noise_dist']) == 'Normal' else np.random.uniform(-1, 1, n_rows)
+                node_data[node] = (
+                    np.random.randn(n_rows)
+                    if np.random.choice(self.config["root_node_noise_dist"]) == "Normal"
+                    else np.random.uniform(-1, 1, n_rows)
+                )
             else:
                 parent_values = np.vstack([node_data[p] for p in parents]).T
-                if node_info.get('type') == 'scm':
-                    node_data[node] = node_info['function'](np.dot(parent_values, node_info['weights']) + node_info['bias'])
-                elif node_info.get('type') == 'random_fourier':
-                    node_data[node] = node_info['function'](parent_values[:, node_info['parent_selector']])
-                elif node_info.get('type') == 'tree':
-                    node_info['function'].fit(parent_values, np.random.randn(n_rows))
-                    node_data[node] = node_info['function'].predict(parent_values)
+                if node_info.get("type") == "scm":
+                    node_data[node] = node_info["function"](
+                        np.dot(parent_values, node_info["weights"]) + node_info["bias"]
+                    )
+                elif node_info.get("type") == "random_fourier":
+                    node_data[node] = node_info["function"](
+                        parent_values[:, node_info["parent_selector"]]
+                    )
+                elif node_info.get("type") == "tree":
+                    node_info["function"].fit(parent_values, np.random.randn(n_rows))
+                    node_data[node] = node_info["function"].predict(parent_values)
         num_scm_nodes = dag.number_of_nodes()
-        m_cols = np.random.randint(self.config['num_cols_low'], min(num_scm_nodes + 1, self.config['num_cols_high']))
+        m_cols = np.random.randint(
+            self.config["num_cols_low"],
+            min(num_scm_nodes + 1, self.config["num_cols_high"]),
+        )
         final_cols = np.random.choice(list(node_data.keys()), m_cols, replace=False)
-        matrix = pd.DataFrame({f"feature_{i}": node_data[col] for i, col in enumerate(final_cols)})
-        if np.random.rand() < self.config['apply_feature_warping_prob']:
+        matrix = pd.DataFrame(
+            {f"feature_{i}": node_data[col] for i, col in enumerate(final_cols)}
+        )
+        if np.random.rand() < self.config["apply_feature_warping_prob"]:
             scaler = MinMaxScaler()
             for col in matrix.columns:
                 col_data = scaler.fit_transform(matrix[[col]])
                 a, b = np.random.rand() * 5 + 0.5, np.random.rand() * 5 + 0.5
-                matrix[col] = scaler.inverse_transform(beta.ppf(np.clip(col_data, 1e-10, 1 - 1e-10), a, b).reshape(-1, 1)).flatten()
-        if np.random.rand() < self.config['apply_quantization_prob']:
+                matrix[col] = scaler.inverse_transform(
+                    beta.ppf(np.clip(col_data, 1e-10, 1 - 1e-10), a, b).reshape(-1, 1)
+                ).flatten()
+        if np.random.rand() < self.config["apply_quantization_prob"]:
             col_to_quantize = np.random.choice(matrix.columns)
-            try: matrix[col_to_quantize] = pd.qcut(matrix[col_to_quantize], q=np.random.randint(2, 20), labels=False, duplicates='drop')
-            except (ValueError, IndexError): pass
+            try:
+                matrix[col_to_quantize] = pd.qcut(
+                    matrix[col_to_quantize],
+                    q=np.random.randint(2, 20),
+                    labels=False,
+                    duplicates="drop",
+                )
+            except (ValueError, IndexError):
+                pass
         return matrix
+
 
 class LatentFactorPrior:
     """Generates a complete data matrix using the Latent-Factor Families approach."""
+
     def __init__(self, config: dict):
         self.config = config
-        self.distributions = ['Gaussian', 'Laplace', 't_v', 'Spike+Slab', 'Dirichlet']
+        self.distributions = ["Gaussian", "Laplace", "t_v", "Spike+Slab", "Dirichlet"]
 
     def _sample_latent_vectors(self, num_vectors: int, rank: int) -> np.ndarray:
         latent_matrix = np.zeros((num_vectors, rank))
         for i in range(num_vectors):
             choice = np.random.choice(self.distributions)
-            if choice == 'Gaussian':
-                latent_matrix[i, :] = np.random.normal(0, self.config.get('latent_gaussian_sigma', 1.0), size=rank)
-            elif choice == 'Laplace':
-                latent_matrix[i, :] = np.random.laplace(0, self.config.get('latent_laplace_b', 1.0), size=rank)
-            elif choice == 't_v':
-                df = np.random.randint(self.config.get('latent_t_df_low', 2), self.config.get('latent_t_df_high', 11))
+            if choice == "Gaussian":
+                latent_matrix[i, :] = np.random.normal(
+                    0, self.config.get("latent_gaussian_sigma", 1.0), size=rank
+                )
+            elif choice == "Laplace":
+                latent_matrix[i, :] = np.random.laplace(
+                    0, self.config.get("latent_laplace_b", 1.0), size=rank
+                )
+            elif choice == "t_v":
+                df = np.random.randint(
+                    self.config.get("latent_t_df_low", 2),
+                    self.config.get("latent_t_df_high", 11),
+                )
                 latent_matrix[i, :] = np.random.standard_t(df, size=rank)
-            elif choice == 'Spike+Slab':
-                is_spike = np.random.rand(rank) < self.config.get('latent_spike_p', 0.5)
-                samples = np.random.normal(0, self.config.get('latent_slab_sigma', 3.0), size=rank)
+            elif choice == "Spike+Slab":
+                is_spike = np.random.rand(rank) < self.config.get("latent_spike_p", 0.5)
+                samples = np.random.normal(
+                    0, self.config.get("latent_slab_sigma", 3.0), size=rank
+                )
                 samples[is_spike] = 0
                 latent_matrix[i, :] = samples
-            elif choice == 'Dirichlet':
-                alpha = np.full(rank, self.config.get('latent_dirichlet_alpha', 1.0))
+            elif choice == "Dirichlet":
+                alpha = np.full(rank, self.config.get("latent_dirichlet_alpha", 1.0))
                 latent_matrix[i, :] = np.random.dirichlet(alpha) - (1 / rank)
         return latent_matrix
 
     def generate_complete_matrix(self) -> pd.DataFrame:
-        n_rows = int(sample_log_uniform(self.config['num_rows_low'], self.config['num_rows_high'])[0])
-        n_cols = int(sample_log_uniform(self.config['num_cols_low'], self.config['num_cols_high'])[0])
-        rank = np.random.randint(self.config.get('latent_rank_low', 1), self.config.get('latent_rank_high', 11))
+        n_rows = int(
+            sample_log_uniform(
+                self.config["num_rows_low"], self.config["num_rows_high"]
+            )[0]
+        )
+        n_cols = int(
+            sample_log_uniform(
+                self.config["num_cols_low"], self.config["num_cols_high"]
+            )[0]
+        )
+        rank = np.random.randint(
+            self.config.get("latent_rank_low", 1),
+            self.config.get("latent_rank_high", 11),
+        )
         U = self._sample_latent_vectors(n_rows, rank)
         V = self._sample_latent_vectors(n_cols, rank)
         Y = U @ V.T
         matrix = pd.DataFrame(Y, columns=[f"feature_{i}" for i in range(n_cols)])
-        if np.random.rand() < self.config.get('apply_feature_warping_prob', 0.1):
+        if np.random.rand() < self.config.get("apply_feature_warping_prob", 0.1):
             scaler = MinMaxScaler()
             for col in matrix.columns:
                 col_data = scaler.fit_transform(matrix[[col]])
                 a, b = np.random.rand() * 5 + 0.5, np.random.rand() * 5 + 0.5
-                matrix[col] = scaler.inverse_transform(beta.ppf(np.clip(col_data, 1e-10, 1 - 1e-10), a, b).reshape(-1, 1)).flatten()
-        if np.random.rand() < self.config['apply_quantization_prob']:
+                matrix[col] = scaler.inverse_transform(
+                    beta.ppf(np.clip(col_data, 1e-10, 1 - 1e-10), a, b).reshape(-1, 1)
+                ).flatten()
+        if np.random.rand() < self.config["apply_quantization_prob"]:
             col_to_quantize = np.random.choice(matrix.columns)
-            try: matrix[col_to_quantize] = pd.qcut(matrix[col_to_quantize], q=np.random.randint(2, 20), labels=False, duplicates='drop')
-            except (ValueError, IndexError): pass
+            try:
+                matrix[col_to_quantize] = pd.qcut(
+                    matrix[col_to_quantize],
+                    q=np.random.randint(2, 20),
+                    labels=False,
+                    duplicates="drop",
+                )
+            except (ValueError, IndexError):
+                pass
         return matrix
+
 
 class NonLinearFactorPrior(LatentFactorPrior):
     """Generates a complete data matrix using Non-linear Factor Models."""
+
     def __init__(self, config: dict):
         super().__init__(config)
-        self.nonlinear_functions = ['sigmoid', 'tanh', 'relu_squared', 'spline', 'gp_draw', 'random_fourier']
+        self.nonlinear_functions = [
+            "sigmoid",
+            "tanh",
+            "relu_squared",
+            "spline",
+            "gp_draw",
+            "random_fourier",
+        ]
 
     def _get_nonlinear_function(self, data_range: tuple[float, float]):
         choice = np.random.choice(self.nonlinear_functions)
-        if choice == 'sigmoid': return lambda x: 1 / (1 + np.exp(-np.clip(x, -50, 50)))
-        elif choice == 'tanh': return np.tanh
-        elif choice == 'relu_squared': return lambda x: np.maximum(0, x)**2
-        elif choice == 'spline':
-            k = np.random.choice(self.config.get('spline_knot_k', [3, 5, 7]))
+        if choice == "sigmoid":
+            return lambda x: 1 / (1 + np.exp(-np.clip(x, -50, 50)))
+        elif choice == "tanh":
+            return np.tanh
+        elif choice == "relu_squared":
+            return lambda x: np.maximum(0, x) ** 2
+        elif choice == "spline":
+            k = np.random.choice(self.config.get("spline_knot_k", [3, 5, 7]))
             x_knots = np.linspace(data_range[0], data_range[1], k)
             y_knots = np.random.randn(k)
             return CubicSpline(x_knots, y_knots, extrapolate=True)
-        elif choice == 'gp_draw':
-            l = np.random.uniform(self.config.get('gp_length_scale_low', 0.3), self.config.get('gp_length_scale_high', 2.0))
+        elif choice == "gp_draw":
+            l = np.random.uniform(
+                self.config.get("gp_length_scale_low", 0.3),
+                self.config.get("gp_length_scale_high", 2.0),
+            )
             gp = GaussianProcessRegressor(kernel=1.0 * RBF(length_scale=l))
             x_grid = np.linspace(data_range[0], data_range[1], 1000).reshape(-1, 1)
             y_grid = gp.sample_y(x_grid, 1, random_state=None).flatten()
             return lambda x: np.interp(x, x_grid.flatten(), y_grid)
-        elif choice == 'random_fourier':
-            d_phi = np.random.randint(self.config.get('fourier_dim_low', 100), self.config.get('fourier_dim_high', 501))
+        elif choice == "random_fourier":
+            d_phi = np.random.randint(
+                self.config.get("fourier_dim_low", 100),
+                self.config.get("fourier_dim_high", 501),
+            )
             rff = RandomFourierFeatureFunction(N=d_phi)
             return lambda x: rff(x.flatten()).reshape(x.shape)
 
     def generate_complete_matrix(self) -> pd.DataFrame:
-        n_rows = int(sample_log_uniform(self.config['num_rows_low'], self.config['num_rows_high'])[0])
-        n_cols = int(sample_log_uniform(self.config['num_cols_low'], self.config['num_cols_high'])[0])
-        rank = np.random.randint(self.config.get('latent_rank_low', 1), self.config.get('latent_rank_high', 11))
+        n_rows = int(
+            sample_log_uniform(
+                self.config["num_rows_low"], self.config["num_rows_high"]
+            )[0]
+        )
+        n_cols = int(
+            sample_log_uniform(
+                self.config["num_cols_low"], self.config["num_cols_high"]
+            )[0]
+        )
+        rank = np.random.randint(
+            self.config.get("latent_rank_low", 1),
+            self.config.get("latent_rank_high", 11),
+        )
         U = self._sample_latent_vectors(n_rows, rank)
         V = self._sample_latent_vectors(n_cols, rank)
         dot_products = U @ V.T
-        f = self._get_nonlinear_function(data_range=(dot_products.min(), dot_products.max()))
+        f = self._get_nonlinear_function(
+            data_range=(dot_products.min(), dot_products.max())
+        )
         Y = f(dot_products)
         matrix = pd.DataFrame(Y, columns=[f"feature_{i}" for i in range(n_cols)])
-        if np.random.rand() < self.config['apply_feature_warping_prob']:
+        if np.random.rand() < self.config["apply_feature_warping_prob"]:
             scaler = MinMaxScaler()
             for col in matrix.columns:
                 col_data = scaler.fit_transform(matrix[[col]])
                 a, b = np.random.rand() * 5 + 0.5, np.random.rand() * 5 + 0.5
-                matrix[col] = scaler.inverse_transform(beta.ppf(np.clip(col_data, 1e-10, 1 - 1e-10), a, b).reshape(-1, 1)).flatten()
-        if np.random.rand() < self.config['apply_quantization_prob']:
+                matrix[col] = scaler.inverse_transform(
+                    beta.ppf(np.clip(col_data, 1e-10, 1 - 1e-10), a, b).reshape(-1, 1)
+                ).flatten()
+        if np.random.rand() < self.config["apply_quantization_prob"]:
             col_to_quantize = np.random.choice(matrix.columns)
-            try: matrix[col_to_quantize] = pd.qcut(matrix[col_to_quantize], q=np.random.randint(2, 20), labels=False, duplicates='drop')
-            except (ValueError, IndexError): pass
+            try:
+                matrix[col_to_quantize] = pd.qcut(
+                    matrix[col_to_quantize],
+                    q=np.random.randint(2, 20),
+                    labels=False,
+                    duplicates="drop",
+                )
+            except (ValueError, IndexError):
+                pass
         return matrix
+
 
 class RobustPCAPrior(LatentFactorPrior):
     """Generates a complete data matrix using a Sparse + Low-Rank (Robust-PCA) approach."""
+
     def __init__(self, config: dict):
         super().__init__(config)
 
     def generate_complete_matrix(self) -> pd.DataFrame:
         L_df = super().generate_complete_matrix()
         L = L_df.values
-        p_out = np.random.beta(self.config.get('rpca_beta_a', 2), self.config.get('rpca_beta_b', 30))
+        p_out = np.random.beta(
+            self.config.get("rpca_beta_a", 2), self.config.get("rpca_beta_b", 30)
+        )
         outlier_mask = np.random.rand(*L.shape) < p_out
         std_L = L.std()
         if std_L > 1e-6:
@@ -263,104 +436,136 @@ class RobustPCAPrior(LatentFactorPrior):
             Y = L
         return pd.DataFrame(Y, columns=L_df.columns)
 
+
 # Missingness Patterns
+
 
 class BaseMissingness:
     def __init__(self, config: dict):
         self.config = config
+
     def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError
 
+
 class MCARPattern(BaseMissingness):
     def _induce_missingness(self, X):
-        X[torch.rand(*X.shape) < self.config.get('p_missing', 0.6)] = torch.nan
+        X[torch.rand(*X.shape) < self.config.get("p_missing", 0.6)] = torch.nan
         return X
+
 
 class MARPattern(BaseMissingness):
     def _induce_missingness(self, X):
-        p, (_, n_cols) = self.config.get('p_missing', 0.6), X.shape
+        p, (_, n_cols) = self.config.get("p_missing", 0.6), X.shape
         num_predictors = np.random.randint(1, max(2, n_cols // 2))
         predictor_indices = np.random.choice(n_cols, num_predictors, replace=False)
         target_indices = np.setdiff1d(np.arange(n_cols), predictor_indices)
-        predictors = X[:, predictor_indices]; predictors[torch.isnan(predictors)] = 0
+        predictors = X[:, predictor_indices]
+        predictors[torch.isnan(predictors)] = 0
         log_odds = predictors @ torch.randn(len(predictor_indices))
         probs = torch.sigmoid(log_odds - torch.quantile(log_odds, 1 - p))
-        for col_idx in target_indices: X[torch.rand(len(X)) < probs, col_idx] = torch.nan
+        for col_idx in target_indices:
+            X[torch.rand(len(X)) < probs, col_idx] = torch.nan
         return X
+
 
 class MNARPattern(BaseMissingness):
     def _induce_missingness(self, X):
-        p, (_, n_cols) = self.config.get('p_missing', 0.6), X.shape
-        target_indices = np.random.choice(n_cols, np.random.randint(1, n_cols + 1), replace=False)
+        p, (_, n_cols) = self.config.get("p_missing", 0.6), X.shape
+        target_indices = np.random.choice(
+            n_cols, np.random.randint(1, n_cols + 1), replace=False
+        )
         for col_idx in target_indices:
-            col_data = X[:, col_idx]; log_odds = col_data * np.random.choice([-2, -1, 1, 2])
+            col_data = X[:, col_idx]
+            log_odds = col_data * np.random.choice([-2, -1, 1, 2])
             if not torch.isnan(log_odds).all():
                 beta_0 = -torch.quantile(log_odds[~torch.isnan(log_odds)], 1 - p)
                 probs = torch.sigmoid(log_odds + beta_0)
                 X[torch.rand(len(X)) < probs, col_idx] = torch.nan
         return X
 
+
 class MNARRecSysPattern(BaseMissingness):
     def _induce_missingness(self, X):
-        n_core, n_genres = self.config.get('n_core_items', 5), self.config.get('n_genres', 4)
+        n_core, n_genres = self.config.get("n_core_items", 5), self.config.get(
+            "n_genres", 4
+        )
         n_users, n_items = X.shape
-        if n_core >= n_items: n_core = n_items - 1
+        if n_core >= n_items:
+            n_core = n_items - 1
         item_genres = torch.randint(0, n_genres, (n_items - n_core,))
         user_genres = torch.randint(0, n_genres, (n_users,))
-        mask = torch.full(X.shape, False); mask[:, :n_core] = True
+        mask = torch.full(X.shape, False)
+        mask[:, :n_core] = True
         for i in range(n_users):
             matching_items = torch.where(item_genres == user_genres[i])[0] + n_core
-            if len(matching_items) > 0: mask[i, matching_items] = True
+            if len(matching_items) > 0:
+                mask[i, matching_items] = True
         X[~mask] = torch.nan
         return X
+
 
 class MNARPanelPattern(BaseMissingness):
     def _induce_missingness(self, X):
         n_users, n_timesteps = X.shape
-        if n_timesteps <= 1: return X
+        if n_timesteps <= 1:
+            return X
         treatment_times = torch.randint(1, n_timesteps, (n_users,))
-        for i in range(n_users): X[i, treatment_times[i]:] = torch.nan
+        for i in range(n_users):
+            X[i, treatment_times[i] :] = torch.nan
         return X
+
 
 class MNARSequentialPattern(BaseMissingness):
     def _induce_missingness(self, X):
-        n_policies = self.config.get('n_policies', 4)
+        n_policies = self.config.get("n_policies", 4)
         n_users, n_cols = X.shape
-        if n_policies <= 0 or n_cols < n_policies or n_cols % n_policies != 0: return X
-        n_timesteps = n_cols // n_policies; mask = torch.full(X.shape, False)
+        if n_policies <= 0 or n_cols < n_policies or n_cols % n_policies != 0:
+            return X
+        n_timesteps = n_cols // n_policies
+        mask = torch.full(X.shape, False)
         for i in range(n_users):
             for t in range(n_timesteps):
                 mask[i, t * n_policies + torch.randint(0, n_policies, (1,))] = True
         X[~mask] = torch.nan
         return X
 
+
 class MNARPolarizationPattern(BaseMissingness):
     def _induce_missingness(self, X):
-        threshold = self.config.get('threshold_quantile', 0.25)
+        threshold = self.config.get("threshold_quantile", 0.25)
         for j in range(X.shape[1]):
             col_data = X[:, j]
-            if len(torch.unique(col_data[~torch.isnan(col_data)])) < 2: continue
+            if len(torch.unique(col_data[~torch.isnan(col_data)])) < 2:
+                continue
             low = torch.quantile(col_data[~torch.isnan(col_data)], threshold)
             high = torch.quantile(col_data[~torch.isnan(col_data)], 1 - threshold)
-            if low != high: X[(col_data > low) & (col_data < high), j] = torch.nan
+            if low != high:
+                X[(col_data > low) & (col_data < high), j] = torch.nan
         return X
+
 
 class MNARSoftPolarizationPattern(BaseMissingness):
     """Induces missingness using a soft polarization pattern."""
+
     def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
-        alpha = self.config.get('soft_polarization_alpha', np.random.uniform(1.1, 5.0))
-        epsilon = self.config.get('soft_polarization_epsilon', np.random.uniform(0.0, 0.1))
+        alpha = self.config.get("soft_polarization_alpha", np.random.uniform(1.1, 5.0))
+        epsilon = self.config.get(
+            "soft_polarization_epsilon", np.random.uniform(0.0, 0.1)
+        )
 
         for j in range(X.shape[1]):
             col_data = X[:, j]
             valid_data = col_data[~torch.isnan(col_data)]
-            if len(torch.unique(valid_data)) < 2: continue
+            if len(torch.unique(valid_data)) < 2:
+                continue
 
             mu = torch.median(valid_data)
-            deviation = torch.abs(col_data - mu)**alpha
+            deviation = torch.abs(col_data - mu) ** alpha
             max_deviation = torch.max(deviation[~torch.isnan(deviation)])
 
-            if max_deviation < 1e-6: continue
+            if max_deviation < 1e-6:
+                continue
 
             normalized_deviation = deviation / max_deviation
             p_obs = epsilon + (1 - 2 * epsilon) * normalized_deviation
@@ -369,17 +574,19 @@ class MNARSoftPolarizationPattern(BaseMissingness):
             X[:, j] = col_data
         return X
 
+
 class MNARLatentFactorPattern(BaseMissingness):
     """
     Induces missingness where the probability is determined by a low-rank
     dot-product of latent factors for rows and columns.
     p_ij = sigmoid(u_i^T v_j + b_i + c_j)
     """
+
     def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
         n_rows, n_cols = X.shape
         rank = np.random.randint(
-            self.config.get('latent_rank_low', 1),
-            self.config.get('latent_rank_high', 11)
+            self.config.get("latent_rank_low", 1),
+            self.config.get("latent_rank_high", 11),
         )
 
         # Sample latent factors and biases
@@ -397,10 +604,12 @@ class MNARLatentFactorPattern(BaseMissingness):
         X[mask] = torch.nan
         return X
 
+
 class MNARPositivityViolationPattern(BaseMissingness):
     """
     Induces missingness by zeroing-out entire blocks of rows and columns,
     """
+
     def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
         n_rows, n_cols = X.shape
 
@@ -419,20 +628,25 @@ class MNARPositivityViolationPattern(BaseMissingness):
         X[row_indices, col_indices] = torch.nan
         return X
 
+
 class MNARUserCascadePattern(BaseMissingness):
     """
     Induces missingness based on a user cascade model, where observing one
     item increases the probability of observing related items (of the same genre).
     """
+
     def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
         n_rows, n_cols = X.shape
-        n_genres = self.config.get('cascade_n_genres', 5)
-        delta = self.config.get('cascade_delta', 1.5) #bump factor
+        n_genres = self.config.get("cascade_n_genres", 5)
+        delta = self.config.get("cascade_delta", 1.5)  # bump factor
 
         # Assign a random genre to each column (item)
         item_genres = torch.randint(0, n_genres, (n_cols,))
 
-        rank = np.random.randint(self.config.get('latent_rank_low', 1), self.config.get('latent_rank_high', 11))
+        rank = np.random.randint(
+            self.config.get("latent_rank_low", 1),
+            self.config.get("latent_rank_high", 11),
+        )
         U = torch.randn(n_rows, rank)
         V = torch.randn(n_cols, rank)
         base_logits = U @ V.T
@@ -456,20 +670,22 @@ class MNARUserCascadePattern(BaseMissingness):
         X[~final_mask] = torch.nan
         return X
 
+
 class MNARClusterLevelPattern(BaseMissingness):
     """
     Induces missingness based on cluster-level random effects. Rows and columns
     are assigned to clusters, and each cluster has an offset that affects the
     observation probability of all its members.
     """
+
     def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
         n_rows, n_cols = X.shape
 
-        num_row_clusters = self.config.get('cluster_level_n_row_clusters', 5)
-        num_col_clusters = self.config.get('cluster_level_n_col_clusters', 5)
-        tau_r_std = self.config.get('cluster_level_tau_r_std', 1.0)
-        tau_c_std = self.config.get('cluster_level_tau_c_std', 1.0)
-        epsilon_std = self.config.get('cluster_level_epsilon_std', 1.0)
+        num_row_clusters = self.config.get("cluster_level_n_row_clusters", 5)
+        num_col_clusters = self.config.get("cluster_level_n_col_clusters", 5)
+        tau_r_std = self.config.get("cluster_level_tau_r_std", 1.0)
+        tau_c_std = self.config.get("cluster_level_tau_c_std", 1.0)
+        epsilon_std = self.config.get("cluster_level_epsilon_std", 1.0)
 
         row_assignments = torch.randint(0, num_row_clusters, (n_rows,))
         col_assignments = torch.randint(0, num_col_clusters, (n_cols,))
@@ -489,16 +705,18 @@ class MNARClusterLevelPattern(BaseMissingness):
         X[mask] = torch.nan
         return X
 
+
 class MNARSpatialBlockPattern(BaseMissingness):
     """
     Induces missingness by setting contiguous rectangular blocks to NaN,
     """
+
     def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
         n_rows, n_cols = X.shape
-        n_blocks = self.config.get('spatial_block_n_blocks', 3)
+        n_blocks = self.config.get("spatial_block_n_blocks", 3)
 
         # p for geometric distribution of block size
-        p_geom = self.config.get('spatial_block_p_geom', 0.1)
+        p_geom = self.config.get("spatial_block_p_geom", 0.1)
 
         for _ in range(n_blocks):
             # Sample block height and width
@@ -508,32 +726,36 @@ class MNARSpatialBlockPattern(BaseMissingness):
             row_start = np.random.randint(0, n_rows - height + 1)
             col_start = np.random.randint(0, n_cols - width + 1)
 
-            X[row_start:row_start+height, col_start:col_start+width] = torch.nan
+            X[row_start : row_start + height, col_start : col_start + width] = torch.nan
 
         return X
+
 
 class MNARCensoringPattern(BaseMissingness):
     """
     Induces missingness by censoring values that are above or below a certain
     detection threshold
     """
+
     def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
-        censor_quantile = self.config.get('censor_quantile', 0.1)
+        censor_quantile = self.config.get("censor_quantile", 0.1)
 
         for j in range(X.shape[1]):
             col_data = X[:, j]
             valid_data = col_data[~torch.isnan(col_data)]
-            if len(torch.unique(valid_data)) < 2: continue
+            if len(torch.unique(valid_data)) < 2:
+                continue
 
             # Randomly choose left or right censoring
-            if np.random.rand() < 0.5: # Left-censoring
+            if np.random.rand() < 0.5:  # Left-censoring
                 cutoff = torch.quantile(valid_data, censor_quantile)
                 col_data[col_data < cutoff] = torch.nan
-            else: # Right-censoring
+            else:  # Right-censoring
                 cutoff = torch.quantile(valid_data, 1 - censor_quantile)
                 col_data[col_data > cutoff] = torch.nan
             X[:, j] = col_data
         return X
+
 
 class MNARTwoPhaseSubsetPattern(BaseMissingness):
     """
@@ -541,11 +763,13 @@ class MNARTwoPhaseSubsetPattern(BaseMissingness):
     "expensive" columns are missing for rows based on their values in
     "cheap" (always observed) columns.
     """
+
     def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
         n_rows, n_cols = X.shape
-        if n_cols < 2: return X
+        if n_cols < 2:
+            return X
 
-        frac = self.config.get('two_phase_cheap_fraction', 0.5)
+        frac = self.config.get("two_phase_cheap_fraction", 0.5)
         n_cheap = max(1, int(n_cols * frac))
         col_indices = np.random.permutation(n_cols)
         cheap_cols, expensive_cols = col_indices[:n_cheap], col_indices[n_cheap:]
@@ -553,17 +777,20 @@ class MNARTwoPhaseSubsetPattern(BaseMissingness):
         X_cheap = X[:, cheap_cols]
         weights = torch.randn(n_cheap)
         scores = X_cheap @ weights
-        scores = (scores - scores.mean()) / (scores.std() + 1e-6) # Normalize
+        scores = (scores - scores.mean()) / (scores.std() + 1e-6)  # Normalize
 
-        alpha = self.config.get('two_phase_alpha', 0)
-        beta = self.config.get('two_phase_beta', 2.0)
+        alpha = self.config.get("two_phase_alpha", 0)
+        beta = self.config.get("two_phase_beta", 2.0)
         logits = alpha + beta * scores
         p_obs = torch.sigmoid(logits)
 
         is_missing = torch.rand(n_rows) > p_obs
-        X[is_missing, :] = X[is_missing, :].index_fill(1, torch.tensor(expensive_cols), torch.nan)
+        X[is_missing, :] = X[is_missing, :].index_fill(
+            1, torch.tensor(expensive_cols), torch.nan
+        )
 
         return X
+
 
 class MNARSkipLogicPattern(BaseMissingness):
     """
@@ -571,11 +798,13 @@ class MNARSkipLogicPattern(BaseMissingness):
     nested missingness patterns. Follow-up questions are missing if a
     "gate" question is answered a certain way.
     """
+
     def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
         _, n_cols = X.shape
-        if n_cols < 2: return X
+        if n_cols < 2:
+            return X
 
-        p_noise = self.config.get('skip_logic_p_noise', 0.95)
+        p_noise = self.config.get("skip_logic_p_noise", 0.95)
 
         # Select a gate column and dependent columns
         gate_col = np.random.randint(0, n_cols)
@@ -585,15 +814,19 @@ class MNARSkipLogicPattern(BaseMissingness):
         gate_condition_met = X[:, gate_col] > torch.median(X[:, gate_col])
 
         rows_to_mask = ~gate_condition_met
-        X[rows_to_mask, :] = X[rows_to_mask, :].index_fill(1, torch.tensor(dependent_cols), torch.nan)
+        X[rows_to_mask, :] = X[rows_to_mask, :].index_fill(
+            1, torch.tensor(dependent_cols), torch.nan
+        )
 
         rows_passed = torch.where(gate_condition_met)[0]
         if len(rows_passed) > 0:
             rand_mask = torch.rand(len(rows_passed), len(dependent_cols)) > p_noise
-            X[rows_passed.unsqueeze(1), torch.tensor(dependent_cols).unsqueeze(0)] \
-                [rand_mask] = torch.nan
+            X[rows_passed.unsqueeze(1), torch.tensor(dependent_cols).unsqueeze(0)][
+                rand_mask
+            ] = torch.nan
 
         return X
+
 
 class MNARColdStartPattern(BaseMissingness):
     """
@@ -601,12 +834,14 @@ class MNARColdStartPattern(BaseMissingness):
     some rows (users) have no data before a random entry time. The columns
     are treated as a time dimension.
     """
+
     def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
         n_rows, n_cols = X.shape
-        if n_cols <= 1: return X
+        if n_cols <= 1:
+            return X
 
-        frac = self.config.get('cold_start_fraction', 0.3)
-        gamma = self.config.get('cold_start_gamma', 0.1)
+        frac = self.config.get("cold_start_fraction", 0.3)
+        gamma = self.config.get("cold_start_gamma", 0.1)
 
         n_new_rows = int(n_rows * frac)
         new_row_indices = np.random.choice(n_rows, n_new_rows, replace=False)
@@ -617,33 +852,59 @@ class MNARColdStartPattern(BaseMissingness):
             X[i, :t0] = torch.nan
 
             for t in range(t0, n_cols):
-                p_obs = 1 - torch.exp(-torch.tensor(gamma * (t - t0), dtype=torch.float32))
+                p_obs = 1 - torch.exp(
+                    -torch.tensor(gamma * (t - t0), dtype=torch.float32)
+                )
                 if torch.rand(1) > p_obs:
                     X[i, t] = torch.nan
         return X
 
 
-def create_train_test_sets(X: torch.Tensor, X_full: torch.Tensor) -> tuple[torch.Tensor, ...]:
-    missing_indices, non_missing_indices = torch.where(torch.isnan(X)), torch.where(~torch.isnan(X))
+def create_train_test_sets(
+    X: torch.Tensor, X_full: torch.Tensor
+) -> tuple[torch.Tensor, ...]:
+    missing_indices, non_missing_indices = torch.where(torch.isnan(X)), torch.where(
+        ~torch.isnan(X)
+    )
     train_X_list, test_X_list, train_y_list, test_y_list = [], [], [], []
     for i, j in zip(non_missing_indices[0], non_missing_indices[1]):
-        row = torch.cat((X[i, :j], X[i, j + 1 :])); col = torch.cat((X[:i, j], X[i + 1 :, j]))
-        train_X_list.append(torch.cat((row, col))); train_y_list.append(X[i, j])
+        row = torch.cat((X[i, :j], X[i, j + 1 :]))
+        col = torch.cat((X[:i, j], X[i + 1 :, j]))
+        train_X_list.append(torch.cat((row, col)))
+        train_y_list.append(X[i, j])
     for i, j in zip(missing_indices[0], missing_indices[1]):
-        row = torch.cat((X[i, :j], X[i, j + 1 :])); col = torch.cat((X[:i, j], X[i + 1 :, j]))
-        test_X_list.append(torch.cat((row, col))); test_y_list.append(X_full[i, j])
-    train_X = torch.stack(train_X_list) if train_X_list else torch.empty(0, X.shape[0] + X.shape[1] - 2)
+        row = torch.cat((X[i, :j], X[i, j + 1 :]))
+        col = torch.cat((X[:i, j], X[i + 1 :, j]))
+        test_X_list.append(torch.cat((row, col)))
+        test_y_list.append(X_full[i, j])
+    train_X = (
+        torch.stack(train_X_list)
+        if train_X_list
+        else torch.empty(0, X.shape[0] + X.shape[1] - 2)
+    )
     train_y = torch.stack(train_y_list) if train_y_list else torch.empty(0)
-    test_X = torch.stack(test_X_list) if test_X_list else torch.empty(0, X.shape[0] + X.shape[1] - 2)
+    test_X = (
+        torch.stack(test_X_list)
+        if test_X_list
+        else torch.empty(0, X.shape[0] + X.shape[1] - 2)
+    )
     test_y = torch.stack(test_y_list) if test_y_list else torch.empty(0)
     return train_X, train_y, test_X, test_y
+
 
 # Main class
 class PriorDataset(IterableDataset):
     """
     Main dataset class that provides an infinite iterator over synthetic tabular datasets.
     """
-    def __init__(self, generator_type: str, missingness_type: str, config: dict, batch_size: int = 1):
+
+    def __init__(
+        self,
+        generator_type: str,
+        missingness_type: str,
+        config: dict,
+        batch_size: int = 1,
+    ):
         super().__init__()
         self.batch_size = batch_size
         self.config = config
@@ -677,9 +938,13 @@ class PriorDataset(IterableDataset):
         }
 
         if generator_type not in generator_map:
-            raise ValueError(f"Unknown generator type: {generator_type}. Available: {list(generator_map.keys())}")
+            raise ValueError(
+                f"Unknown generator type: {generator_type}. Available: {list(generator_map.keys())}"
+            )
         if missingness_type not in missingness_map:
-            raise ValueError(f"Unknown missingness type: {missingness_type}. Available: {list(missingness_map.keys())}")
+            raise ValueError(
+                f"Unknown missingness type: {missingness_type}. Available: {list(missingness_map.keys())}"
+            )
 
         self.generator = generator_map[generator_type](config)
         self.missingness_inducer = missingness_map[missingness_type](config)
@@ -690,7 +955,9 @@ class PriorDataset(IterableDataset):
         """Generates a new batch of datasets by combining a generator and a missingness pattern."""
         batch_data = []
         for _ in range(self.batch_size):
-            print(f"Generating with '{self.generator_type}' generator and '{self.missingness_type}' missingness...")
+            print(
+                f"Generating with '{self.generator_type}' generator and '{self.missingness_type}' missingness..."
+            )
             complete_df = self.generator.generate_complete_matrix()
             X_full = torch.tensor(complete_df.values, dtype=torch.float32)
             X_missing = self.missingness_inducer._induce_missingness(X_full.clone())
@@ -702,6 +969,7 @@ class PriorDataset(IterableDataset):
 
     def __next__(self):
         return self.get_batch()
+
 
 # # Execution Block
 # if __name__ == '__main__':
@@ -753,4 +1021,3 @@ class PriorDataset(IterableDataset):
 #     print(f"Train Targets Shape: {train_y.shape}")
 #     print(f"Test Features Shape: {test_X.shape}")
 #     print(f"Test Targets Shape: {test_y.shape}")
-

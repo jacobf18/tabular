@@ -6,6 +6,7 @@ import torch
 
 from mcpfn.model.config import ModelConfig
 from mcpfn.model.transformer import PerFeatureTransformer
+
 # from mcpfn.prior.training_set_generation import TabICLSCMPrior
 # from mcpfn.train.run import Trainer
 
