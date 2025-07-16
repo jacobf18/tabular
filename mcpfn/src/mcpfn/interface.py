@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch
 
-from mcpfn.prior.training_set_generation import TabICLSCMPrior
+from mcpfn.prior.training_set_generation import create_train_test_sets
 
 import numpy as np
 from mcpfn.model.mcpfn import MCPFN
@@ -64,12 +64,12 @@ class ImputePFN:
         # Normalize the input matrix
         X_normalized = (X - means) / (
             stds + 1e-8
-        )  # Add a small epsilon to avoid division by zero
+        ) # Add a small epsilon to avoid division by zero
 
         X_normalized_tensor = torch.from_numpy(X_normalized).to(self.device)
 
         # Impute the missing values
-        train_X, train_y, test_X, _ = TabICLSCMPrior.create_train_test_sets(
+        train_X, train_y, test_X, _ = create_train_test_sets(
             X_normalized_tensor, X_normalized_tensor
         )
 
@@ -112,8 +112,8 @@ from mcpfn.model.interface import ImputePFN
 
 imputer = ImputePFN(device='cpu', # 'cuda' if you have a GPU
                     encoder_path='./src/mcpfn/model/encoder.pth', # Path to the encoder model
-                    borders_path='./borders.pt',
-                    checkpoint_path='./test.ckpt') # Path to the borders model
+                    borders_path='./borders.pt', # Path to the borders model
+                    checkpoint_path='./test.ckpt') 
 
 X = np.random.rand(10, 10) # Test matrix of size 10 x 10
 X[np.random.rand(*X.shape) < 0.1] = np.nan # Set 10% of values to NaN
