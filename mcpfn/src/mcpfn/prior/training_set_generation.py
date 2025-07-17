@@ -871,25 +871,29 @@ def create_train_test_sets(
     )
     train_X_list, test_X_list, train_y_list, test_y_list = [], [], [], []
     for i, j in zip(non_missing_indices[0], non_missing_indices[1]):
-        row = torch.cat((X[i, :j], X[i, j + 1 :]))
-        col = torch.cat((X[:i, j], X[i + 1 :, j]))
+        # row = torch.cat((X[i, :j], X[i, j + 1 :]))
+        # col = torch.cat((X[:i, j], X[i + 1 :, j]))
+        row = X[i,:]
+        col = X[:,j]
         train_X_list.append(torch.cat((row, col)))
-        train_y_list.append(X[i, j])
+        train_y_list.append(X_full[i, j])
     for i, j in zip(missing_indices[0], missing_indices[1]):
-        row = torch.cat((X[i, :j], X[i, j + 1 :]))
-        col = torch.cat((X[:i, j], X[i + 1 :, j]))
+        # row = torch.cat((X[i, :j], X[i, j + 1 :]))
+        # col = torch.cat((X[:i, j], X[i + 1 :, j]))
+        row = X[i,:]
+        col = X[:,j]
         test_X_list.append(torch.cat((row, col)))
         test_y_list.append(X_full[i, j])
     train_X = (
         torch.stack(train_X_list)
         if train_X_list
-        else torch.empty(0, X.shape[0] + X.shape[1] - 2)
+        else torch.empty(0, X.shape[0] + X.shape[1])
     )
     train_y = torch.stack(train_y_list) if train_y_list else torch.empty(0)
     test_X = (
         torch.stack(test_X_list)
         if test_X_list
-        else torch.empty(0, X.shape[0] + X.shape[1] - 2)
+        else torch.empty(0, X.shape[0] + X.shape[1])
     )
     test_y = torch.stack(test_y_list) if test_y_list else torch.empty(0)
     return train_X, train_y, test_X, test_y
