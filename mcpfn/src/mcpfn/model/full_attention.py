@@ -32,7 +32,7 @@ try:
 except (ModuleNotFoundError, ImportError):
     HAVE_FLASH_ATTN = False
 
-print(f"Using FlashAttention: {HAVE_FLASH_ATTN}")
+# print(f"Using FlashAttention: {HAVE_FLASH_ATTN}")
 
 
 class Attention(ABC, nn.Module):

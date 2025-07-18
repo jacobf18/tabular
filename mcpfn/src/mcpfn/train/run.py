@@ -452,10 +452,10 @@ class Trainer:
         """
 
         if self.master_process:
-            step_progress = tqdm(
-                range(self.curr_step, self.config.max_steps), desc="Step", leave=True
-            )
-            # step_progress = range(self.curr_step, self.config.max_steps)
+            # step_progress = tqdm(
+            #     range(self.curr_step, self.config.max_steps), desc="Step", leave=True
+            # )
+            step_progress = range(self.curr_step, self.config.max_steps)
         else:
             step_progress = range(self.curr_step, self.config.max_steps)
 
@@ -515,7 +515,8 @@ class Trainer:
                         self.manage_checkpoint()
 
         # Validate the model on the validation set
-        step_progress = tqdm(range(len_val), desc="Validation")
+        # step_progress = tqdm(range(len_val), desc="Validation")
+        step_progress = range(len_val)
         for batch in step_progress:
             batch = next(val_dataloader)
             results_batch = self.run_batch(batch, is_train=False)

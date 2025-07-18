@@ -111,7 +111,7 @@ python /Users/jfeit/tabular/mcpfn/src/mcpfn/train/run.py \
             --checkpoint_dir /Users/jfeit/tabular/mcpfn/stage1/checkpoint \
             --save_temp_every 50 \
             --save_perm_every 5000 \
-            --epochs 1 \
+            --epochs 50 \
             --encoder_path /Users/jfeit/tabular/mcpfn/src/mcpfn/model/encoder.pth \
             --borders_path /Users/jfeit/tabular/mcpfn/borders.pt \
             --model_name test.ckpt
