@@ -52,46 +52,47 @@
 # ------------------------------------------------------
 
 # Saving to disk
-python /root/tabular/mcpfn/src/mcpfn/prior/genload.py \
-    --save_dir /mnt/volume_nyc2_1750872154987/data/small_mcar \
-    --np_seed 42 \
-    --torch_seed 42 \
-    --num_batches 10 \
-    --resume_from 0 \
-    --batch_size 10000 \
-    --batch_size_per_gp 10000 \
-    --prior_type missing \
-    --min_features 5 \
-    --max_features 5 \
-    --max_classes 10 \
-    --max_seq_len 10 \
-    --min_train_size 0.1 \
-    --max_train_size 0.9 \
-    --n_jobs -1 \
-    --num_threads_per_generate 1 \
-    --device cpu \
-    --num_missing 10
+# python /Users/jfeit/tabular/mcpfn/src/mcpfn/prior/genload.py \
+#     --save_dir /Users/jfeit/tabular/mcpfn/data \
+#     --np_seed 42 \
+#     --torch_seed 42 \
+#     --num_batches 10 \
+#     --resume_from 0 \
+#     --batch_size 5 \
+#     --batch_size_per_gp 5 \
+#     --prior_type missing \
+#     --min_features 5 \
+#     --max_features 5 \
+#     --max_classes 10 \
+#     --max_seq_len 10 \
+#     --min_train_size 0.1 \
+#     --max_train_size 0.9 \
+#     --n_jobs -1 \
+#     --num_threads_per_generate 1 \
+#     --device cpu \
+#     --num_missing 10
 
 
 # Loading from disk and training
-python3 -m torch.distributed.run --standalone --nproc_per_node=1 /root/tabular/mcpfn/src/mcpfn/train/run.py \
+# torchrun --standalone --nproc_per_node=1 /Users/jfeit/tabular/mcpfn/src/mcpfn/train/run.py \
+python /Users/jfeit/tabular/mcpfn/src/mcpfn/train/run.py \
             --wandb_log False \
             --wandb_project MCPFN \
             --wandb_name small_data_test_3 \
-            --wandb_dir /root/tabular/mcpfn/wandb \
+            --wandb_dir /Users/jfeit/tabular/mcpfn/wandb \
             --wandb_mode online \
-            --device cuda \
+            --device cpu \
             --dtype float32 \
             --np_seed 42 \
             --torch_seed 42 \
             --max_steps 8 \
-            --batch_size 10000 \
-            --micro_batch_size 100 \
+            --batch_size 5 \
+            --micro_batch_size 5 \
             --lr 1e-4 \
             --scheduler cosine_warmup \
             --warmup_proportion 0.02 \
             --gradient_clipping 1.0 \
-            --prior_dir /mnt/volume_nyc2_1750872154987/data/small_mcar \
+            --prior_dir /Users/jfeit/tabular/mcpfn/data \
             --load_prior_start 0 \
             --delete_after_load False \
             --prior_device cpu \
@@ -107,7 +108,9 @@ python3 -m torch.distributed.run --standalone --nproc_per_node=1 /root/tabular/m
             --icl_nhead 4 \
             --ff_factor 2 \
             --norm_first True \
-            --checkpoint_dir /root/tabular/mcpfn/stage1/checkpoint \
+            --checkpoint_dir /Users/jfeit/tabular/mcpfn/stage1/checkpoint \
             --save_temp_every 50 \
             --save_perm_every 5000 \
-            --epochs 1
+            --epochs 1 \
+            --encoder_path /Users/jfeit/tabular/mcpfn/src/mcpfn/model/encoder.pth \
+            --borders_path /Users/jfeit/tabular/mcpfn/borders.pt

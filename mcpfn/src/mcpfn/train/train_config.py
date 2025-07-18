@@ -312,6 +312,18 @@ def build_parser():
         type=str2bool,
         help="Whether to freeze the ICL predictor",
     )
+    parser.add_argument(
+        "--encoder_path",
+        type=str,
+        default="/Users/jfeit/tabular/mcpfn/src/mcpfn/model/encoder.pth",
+        help="Path to the encoder model",
+    )
+    parser.add_argument(
+        "--borders_path",
+        type=str,
+        default="/Users/jfeit/tabular/mcpfn/borders.pt",
+        help="Path to the borders model",
+    )
 
     # Shared Architecture Config
     parser.add_argument(

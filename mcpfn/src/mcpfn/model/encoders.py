@@ -585,7 +585,6 @@ class NanHandlingEncoderStep(SeqEncStep):
                 + torch.logical_and(torch.isinf(x), torch.sign(x) == -1)
                 * NanHandlingEncoderStep.neg_inf_indicator
             ).to(x.dtype)
-
         nan_mask = torch.logical_or(torch.isnan(x), torch.isinf(x))
         # replace nans with the mean of the corresponding feature
         x = x.clone()  # clone to avoid inplace operations

@@ -964,8 +964,10 @@ class MissingnessPrior:
         self.device = device
 
     @torch.no_grad()
-    def get_batch(self):
+    def get_batch(self, batch_size: Optional[int] = None):
         """Generates a new batch of datasets by combining a generator and a missingness pattern."""
+        if batch_size is None:
+            batch_size = self.batch_size
         X_list, y_list, train_sizes = [], [], torch.zeros(self.batch_size, dtype=torch.long)
         step = 0
         if self.verbose:
@@ -981,11 +983,8 @@ class MissingnessPrior:
                 train_X, train_y, test_X, test_y = create_train_test_sets(
                     X_missing, X_full=X
                 )
-                if train_X.shape[0] != train_X.shape[0] + test_X.shape[0] - self.num_missing:
-                    # print('Skipping batch because train_sizes[i] != train_X.shape[0] + test_X.shape[0] - self.num_missing')
-                    # print(f'train_sizes[i]: {train_X.shape[0]}')
-                    # print(f'train_X.shape[0] + test_X.shape[0] - self.num_missing: {train_X.shape[0] + test_X.shape[0] - self.num_missing}')
-                    raise ValueError('train_sizes[i] != train_X.shape[0] + test_X.shape[0] - self.num_missing')
+                # if train_X.shape[0] != train_X.shape[0] + test_X.shape[0] - self.num_missing:
+                #     raise ValueError('train_sizes[i] != train_X.shape[0] + test_X.shape[0] - self.num_missing')
                 X_list.append(torch.cat((train_X, test_X)))
                 y_list.append(torch.cat((train_y, test_y)))
                 train_sizes[step] = train_X.shape[0]
@@ -996,16 +995,16 @@ class MissingnessPrior:
                 continue
         if not X_list:
             return self.get_batch()  # Retry if all generations failed
-        # X_nested = nested_tensor(X_list, device=self.device)
-        # y_nested = nested_tensor(y_list, device=self.device)
         
         X_full = torch.stack(X_list, dim = 0)
         y_full = torch.stack(y_list, dim = 0)
         
+        # d is the number of columns. This should always be the same across datasets.
         d = torch.tensor(X_list[0].shape[1], device=self.device).repeat(len(X_list))
         seq_lens = torch.tensor(
             [len(y) for y in y_list], device=self.device, dtype=torch.long
         )
+        # train sizes is the part that is different
         return X_full, y_full, d, seq_lens, train_sizes
 
 # Execution Block
@@ -1043,11 +1042,12 @@ if __name__ == '__main__':
     # Example, specify one data generation type and one missingness pattern
     prior = MissingnessPrior(
         generator_type="latent_factor",
-        missingness_type="mcar_fixed",
+        missingness_type="mcar",
         config=config,
-        batch_size=10,
+        batch_size=5,
         verbose=False
     )
 
     X_full, y_full, d, seq_lens, train_sizes = prior.get_batch()
     print(X_full.shape, y_full.shape, d.shape, seq_lens.shape, train_sizes.shape)
+    print(train_sizes)

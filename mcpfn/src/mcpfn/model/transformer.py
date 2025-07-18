@@ -422,7 +422,7 @@ class PerFeatureTransformer(nn.Module):
                 assert y is None
         else:
             assert y is not None
-            assert single_eval_pos
+            # assert single_eval_pos
 
         single_eval_pos_ = single_eval_pos or 0
         if isinstance(x, dict):
@@ -510,7 +510,6 @@ class PerFeatureTransformer(nn.Module):
                 y[k] = y[k].unsqueeze(-1)  # s b -> s b 1
 
             y[k] = y[k].transpose(0, 1)  # s b 1 -> b s 1
-
             if y[k].shape[1] < x["main"].shape[1]:
                 assert (
                     y[k].shape[1] == single_eval_pos_
@@ -538,8 +537,8 @@ class PerFeatureTransformer(nn.Module):
 
             y[k] = y[k].transpose(0, 1)  # b s 1 -> s b 1
 
-        # making sure no label leakage ever happens
-        y["main"][single_eval_pos_:] = torch.nan
+        # # making sure no label leakage ever happens
+        # y["main"][single_eval_pos_:] = torch.nan
 
         embedded_y = self.y_encoder(
             y,
@@ -655,10 +654,9 @@ class PerFeatureTransformer(nn.Module):
 
             # out: s b e
             train_encoder_out = encoder_out[:, :single_eval_pos_, -1].transpose(0, 1)
-            output_decoded["train_embeddings"] = train_encoder_out
-            output_decoded["test_embeddings"] = test_encoder_out
-
-        return output_decoded
+            output_decoded["train_out"] = self.decoder_dict["standard"](train_encoder_out)
+            # output_decoded["test_out"] = self.decoder_dict["standard"](test_encoder_out)
+        return output_decoded["train_out"]
 
     def add_embeddings(  # noqa: C901, PLR0912
         self,

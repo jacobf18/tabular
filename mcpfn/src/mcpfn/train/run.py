@@ -96,7 +96,7 @@ class Trainer:
         self.configure_amp()
         self.load_checkpoint()
 
-        borders = torch.load("/root/tabular/mcpfn/borders.pt").to(self.config.device)
+        borders = torch.load(self.config.borders_path).to(self.config.device)
         self.bar_distribution = FullSupportBarDistribution(borders=borders)
 
         self.step_progress = step_progress
@@ -202,7 +202,7 @@ class Trainer:
         }
 
         # model = TabICL(**self.model_config)
-        model = MCPFN(encoder_path="/root/tabular/mcpfn/src/mcpfn/model/encoder.pth")
+        model = MCPFN(encoder_path=self.config.encoder_path)
         model.to(device=self.config.device)
 
         if self.master_process:
@@ -299,10 +299,10 @@ class Trainer:
             shuffle=False,
             num_workers=1,
             prefetch_factor=4,
-            pin_memory=True if self.config.prior_device == "cpu" else False,
-            pin_memory_device=(
-                self.config.device if self.config.prior_device == "cpu" else ""
-            ),
+            # pin_memory=True if self.config.prior_device == "cpu" else False,
+            # pin_memory_device=(
+            #     self.config.device if self.config.prior_device == "cpu" else ""
+            # ),
         )
         self.val_dataloader = DataLoader(
             val_dataset,
@@ -310,10 +310,10 @@ class Trainer:
             shuffle=False,
             num_workers=1,
             prefetch_factor=4,
-            pin_memory=True if self.config.prior_device == "cpu" else False,
-            pin_memory_device=(
-                self.config.device if self.config.prior_device == "cpu" else ""
-            ),
+            # pin_memory=True if self.config.prior_device == "cpu" else False,
+            # pin_memory_device=(
+            #     self.config.device if self.config.prior_device == "cpu" else ""
+            # ),
         )
 
     def configure_optimizer(self):
@@ -679,7 +679,8 @@ class Trainer:
             Result dictionary
         """
         micro_X, micro_y, micro_d, micro_seq_len, micro_train_size = micro_batch
-        seq_len, train_size = self.validate_micro_batch(micro_seq_len, micro_train_size)
+        # seq_len, train_size = self.validate_micro_batch(micro_seq_len, micro_train_size)
+        seq_len = micro_seq_len[0].item() # this should be the same for all datasets in the micro batch
         micro_X, micro_y = self.align_micro_batch(micro_X, micro_y, micro_d, seq_len)
 
         # Move to device
@@ -698,6 +699,8 @@ class Trainer:
 
         # Replace NaNs with corresponding mean values
         micro_X[nan_mask] = mean_vals_expanded[nan_mask]
+        
+        exit()
 
         train_size = int(train_size)
 

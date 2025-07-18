@@ -95,7 +95,7 @@ class MCPFN(nn.Module):
 
         X = einops.rearrange(X, "b t h -> t b h")
         y_train = einops.rearrange(y_train, "b t -> t b")
-
-        out = self.model(X, y_train, single_eval_pos=train_size)
+        
+        out = self.model(X, y_train, single_eval_pos = X.shape[0], only_return_standard_out=False)
 
         return einops.rearrange(out, "t b h -> b t h")

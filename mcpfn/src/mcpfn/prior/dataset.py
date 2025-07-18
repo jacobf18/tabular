@@ -1362,7 +1362,8 @@ class PriorDataset(IterableDataset):
                 'p_missing': 0.4,
                 # SCM configs
                 'num_nodes_low': 60, 'num_nodes_high': 80, 'graph_generation_method': ['MLP-Dropout', 'Scale-Free'],
-                'root_node_noise_dist': ['Normal', 'Uniform'], 'scm_activation_functions': list(ACTIVATION_FUNCTIONS.keys()),
+                'root_node_noise_dist': ['Normal', 'Uniform'], 
+                # 'scm_activation_functions': list(ACTIVATION_FUNCTIONS.keys()),
                 'xgb_n_estimators_exp_scale': 0.5, 'xgb_max_depth_exp_scale': 0.5,
                 'apply_feature_warping_prob': 0.1, 'apply_quantization_prob': 0.1,
                 # MNAR configs
@@ -1388,9 +1389,8 @@ class PriorDataset(IterableDataset):
             }
             self.prior = MissingnessPrior(
                 generator_type="latent_factor",
-                missingness_type="mcar_fixed",
+                missingness_type="mcar",
                 config=config,
-                num_missing = 10,
                 batch_size=batch_size,
                 verbose=True
             )
