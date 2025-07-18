@@ -215,6 +215,12 @@ def build_parser():
         type=str,
         help="Device for prior data generation",
     )
+    parser.add_argument(
+        "--model_name",
+        type=str,
+        default="test.ckpt",
+        help="Name of the model",
+    )
 
     ###########################################################################
     ##### Model Architecture Config ###########################################

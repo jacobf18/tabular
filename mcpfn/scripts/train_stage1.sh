@@ -113,4 +113,5 @@ python /Users/jfeit/tabular/mcpfn/src/mcpfn/train/run.py \
             --save_perm_every 5000 \
             --epochs 1 \
             --encoder_path /Users/jfeit/tabular/mcpfn/src/mcpfn/model/encoder.pth \
-            --borders_path /Users/jfeit/tabular/mcpfn/borders.pt
+            --borders_path /Users/jfeit/tabular/mcpfn/borders.pt \
+            --model_name test.ckpt

@@ -201,7 +201,6 @@ class Trainer:
             "norm_first": self.config.norm_first,
         }
 
-        # model = TabICL(**self.model_config)
         model = MCPFN(encoder_path=self.config.encoder_path)
         model.to(device=self.config.device)
 
@@ -246,50 +245,26 @@ class Trainer:
         Sets up a tabular dataset generator that creates synthetic datasets
         during training with controllable properties and data distributions.
         """
+        # Load pre-generated prior data from disk
+        train_dataset = LoadPriorDataset(
+            data_dir=self.config.prior_dir + "/train",
+            batch_size=self.config.batch_size,
+            ddp_world_size=self.ddp_world_size,
+            ddp_rank=self.ddp_rank,
+            start_from=self.config.load_prior_start,
+            delete_after_load=self.config.delete_after_load,
+            device=self.config.prior_device,
+        )
 
-        if self.config.prior_dir is None:
-            # Generate prior data on the fly
-            dataset = PriorDataset(
-                batch_size=self.config.batch_size,
-                batch_size_per_gp=self.config.batch_size_per_gp,
-                min_features=self.config.min_features,
-                max_features=self.config.max_features,
-                max_classes=self.config.max_classes,
-                min_seq_len=self.config.min_seq_len,
-                max_seq_len=self.config.max_seq_len,
-                log_seq_len=self.config.log_seq_len,
-                seq_len_per_gp=self.config.seq_len_per_gp,
-                min_train_size=self.config.min_train_size,
-                max_train_size=self.config.max_train_size,
-                replay_small=self.config.replay_small,
-                prior_type=self.config.prior_type,
-                device=self.config.prior_device,
-                n_jobs=1,  # Set to 1 to avoid nested parallelism during DDP
-            )
-        else:
-            # Load pre-generated prior data from disk
-            train_dataset = LoadPriorDataset(
-                data_dir=self.config.prior_dir + "/train",
-                batch_size=self.config.batch_size,
-                ddp_world_size=self.ddp_world_size,
-                ddp_rank=self.ddp_rank,
-                start_from=self.config.load_prior_start,
-                delete_after_load=self.config.delete_after_load,
-                device=self.config.prior_device,
-            )
-
-            val_dataset = LoadPriorDataset(
-                data_dir=self.config.prior_dir + "/val",
-                batch_size=self.config.batch_size,
-                ddp_world_size=self.ddp_world_size,
-                ddp_rank=self.ddp_rank,
-                start_from=self.config.load_prior_start,
-                delete_after_load=self.config.delete_after_load,
-                device=self.config.prior_device,
-            )
-
-        # if self.master_process:
-        #     print(dataset)
+        val_dataset = LoadPriorDataset(
+            data_dir=self.config.prior_dir + "/val",
+            batch_size=self.config.batch_size,
+            ddp_world_size=self.ddp_world_size,
+            ddp_rank=self.ddp_rank,
+            start_from=self.config.load_prior_start,
+            delete_after_load=self.config.delete_after_load,
+            device=self.config.prior_device,
+        )
 
         # Create dataloader for efficient loading and prefetching
         # print(self.config.device)
@@ -700,12 +675,18 @@ class Trainer:
         # Replace NaNs with corresponding mean values
         micro_X[nan_mask] = mean_vals_expanded[nan_mask]
         
-        exit()
+        y_train = micro_y.clone()
 
-        train_size = int(train_size)
+        # Create a mask for each row up to its train_size
+        mask = torch.zeros_like(micro_y, dtype=torch.bool)
+        for i in range(len(micro_train_size)):
+            mask[i, :micro_train_size[i]] = True
 
-        y_train = micro_y[:, :train_size]
-        y_test = micro_y[:, train_size:]
+        # Set values after train_size to nan for each row
+        y_train[~mask] = torch.nan
+
+        # y_train = micro_y[:, :train_size]
+        # y_test = micro_y[:, train_size:]
 
         # Set DDP gradient sync for last micro batch only
         if self.ddp:
@@ -720,7 +701,7 @@ class Trainer:
                 )  # (B, test_size, max_classes)
                 pred = einops.rearrange(pred, "b t h -> t b h")
                 loss = self.bar_distribution(
-                    logits=pred, y=einops.rearrange(y_test, "b t -> t b")
+                    logits=pred, y=einops.rearrange(micro_y, "b t -> t b")
                 )
 
             # Scale loss for gradient accumulation and backpropagate
@@ -734,7 +715,7 @@ class Trainer:
                 )  # (B, test_size, max_classes)
                 pred = einops.rearrange(pred, "b t h -> t b h")
                 loss = self.bar_distribution(
-                    logits=pred, y=einops.rearrange(y_test, "b t -> t b")
+                    logits=pred, y=einops.rearrange(micro_y, "b t -> t b")
                 )
                 scaled_loss = loss.mean() / num_micro_batches
 
@@ -743,7 +724,7 @@ class Trainer:
             micro_results["ce"] = scaled_loss.item()
             median = self.bar_distribution.median(logits=pred)
             accuracy = (
-                (median - einops.rearrange(y_test, "b t -> t b")).abs().mean()
+                (median - einops.rearrange(micro_y, "b t -> t b")).abs().mean()
             )  # mae
             micro_results["mae"] = accuracy.item()
 
@@ -862,4 +843,4 @@ if __name__ == "__main__":
         trainer.curr_step = 0
 
     # Save the trained model
-    trainer.save_checkpoint(name="test.ckpt")
+    trainer.save_checkpoint(name=config.model_name)
