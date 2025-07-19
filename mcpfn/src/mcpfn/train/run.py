@@ -462,8 +462,12 @@ class Trainer:
         results = {
             "ce": 0.0,
             "mae": 0.0,
+            "missing_ce": 0.0,
+            "missing_mae": 0.0,
             "val_ce": 0.0,
             "val_mae": 0.0,
+            "val_missing_ce": 0.0,
+            "val_missing_mae": 0.0,
             "prior_time": 0.0,
             "train_time": 0.0,
             "lr": 0.0,
@@ -486,6 +490,8 @@ class Trainer:
                 results_batch = self.run_batch(batch, is_train=True)
                 results["ce"] += results_batch["ce"]
                 results["mae"] += results_batch["mae"]
+                results["missing_ce"] += results_batch["missing_ce"]
+                results["missing_mae"] += results_batch["missing_mae"]
             train_time = train_timer.elapsed
 
             # Clear CUDA cache to free memory
@@ -522,6 +528,8 @@ class Trainer:
             results_batch = self.run_batch(batch, is_train=False)
             results["val_ce"] += results_batch["ce"]
             results["val_mae"] += results_batch["mae"]
+            results["val_missing_ce"] += results_batch["missing_ce"]
+            results["val_missing_mae"] += results_batch["missing_mae"]
 
             # Clear CUDA cache to free memory
             torch.cuda.empty_cache()
@@ -529,8 +537,12 @@ class Trainer:
         # Average results
         results["ce"] /= len_train
         results["mae"] /= len_train
+        results["missing_ce"] /= len_train
+        results["missing_mae"] /= len_train
         results["val_ce"] /= len_val
         results["val_mae"] /= len_val
+        results["val_missing_ce"] /= len_val
+        results["val_missing_mae"] /= len_val
         results["prior_time"] /= len_train
         results["train_time"] /= len_train
 
@@ -685,6 +697,8 @@ class Trainer:
 
         # Set values after train_size to nan for each row
         y_train[~mask] = torch.nan
+        
+        mask_reshaped = einops.rearrange(mask, "b t -> t b")
 
         # y_train = micro_y[:, :train_size]
         # y_test = micro_y[:, train_size:]
@@ -708,6 +722,7 @@ class Trainer:
             # Scale loss for gradient accumulation and backpropagate
             scaled_loss = loss.mean() / num_micro_batches
             self.scaler.scale(scaled_loss).backward()
+            missing_loss = loss[~mask_reshaped].mean() / num_micro_batches
 
         else:  # val
             with torch.no_grad():
@@ -719,15 +734,18 @@ class Trainer:
                     logits=pred, y=einops.rearrange(micro_y, "b t -> t b")
                 )
                 scaled_loss = loss.mean() / num_micro_batches
+                missing_loss = loss[~mask_reshaped].mean() / num_micro_batches
 
         with torch.no_grad():
             micro_results = {}
             micro_results["ce"] = scaled_loss.item()
+            micro_results["missing_ce"] = missing_loss.item()
             median = self.bar_distribution.median(logits=pred)
             accuracy = (
-                (median - einops.rearrange(micro_y, "b t -> t b")).abs().mean()
+                (median - einops.rearrange(micro_y, "b t -> t b")).abs()
             )  # mae
-            micro_results["mae"] = accuracy.item()
+            micro_results["mae"] = accuracy.mean().item()
+            micro_results["missing_mae"] = accuracy[~mask_reshaped].mean().item()
 
         return micro_results
 
@@ -772,7 +790,7 @@ class Trainer:
         ]
         micro_batches = list(zip(*micro_batches))
 
-        results = {"ce": 0.0, "mae": 0.0}
+        results = {"ce": 0.0, "mae": 0.0, "missing_ce": 0.0, "missing_mae": 0.0}
         failed_batches = 0
 
         for idx, micro_batch in enumerate(micro_batches):
@@ -791,6 +809,8 @@ class Trainer:
                 continue
         results["ce"] /= len(micro_batches)
         results["mae"] /= len(micro_batches)
+        results["missing_ce"] /= len(micro_batches)
+        results["missing_mae"] /= len(micro_batches)
 
         failure_ratio = failed_batches / num_micro_batches
         if failure_ratio > 0.1:
