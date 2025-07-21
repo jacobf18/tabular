@@ -62,16 +62,19 @@ class ImputePFN:
         stds = np.nanstd(X, axis=0)
 
         # Normalize the input matrix
-        X_normalized = (X - means) / (
-            stds + 1e-8
-        ) # Add a small epsilon to avoid division by zero
+        X_normalized = (X - means) / (stds + 1e-8) 
+        # Add a small epsilon to avoid division by zero
 
         X_normalized_tensor = torch.from_numpy(X_normalized).to(self.device)
 
         # Impute the missing values
-        train_X, train_y, test_X, _ = create_train_test_sets(
+        train_X, train_y, test_X, test_y = create_train_test_sets(
             X_normalized_tensor, X_normalized_tensor
         )
+        
+        input_y = torch.cat((train_y, 
+                             torch.full_like(test_y, torch.nan)), 
+                            dim=0)
 
         missing_indices = np.where(
             np.isnan(X)
@@ -79,7 +82,7 @@ class ImputePFN:
 
         # Move tensors to device
         train_X = train_X.to(self.device)
-        train_y = train_y.to(self.device)
+        input_y = input_y.to(self.device)
         test_X = test_X.to(self.device)
 
         # batch = (train_X.unsqueeze(0), train_y.unsqueeze(0), test_X.unsqueeze(0), None)
@@ -87,15 +90,19 @@ class ImputePFN:
         # Impute missing entries with means
         X_input = torch.cat((train_X, test_X), dim=0)
         X_input = X_input.unsqueeze(0)
+        
+        X_input = X_input.float()
+        input_y = input_y.float()
 
         with torch.no_grad():
-            preds = self.model(X_input, train_y.unsqueeze(0))
+            preds = self.model(X_input, input_y.unsqueeze(0))
+            preds = preds[:, train_y.shape[0]:] # Only keep the predictions for the test set
 
-        # Get the median predictions
-        borders = torch.load(self.borders_path).to(self.device)
-        bar_distribution = FullSupportBarDistribution(borders=borders)
+            # Get the median predictions
+            borders = torch.load(self.borders_path).to(self.device)
+            bar_distribution = FullSupportBarDistribution(borders=borders)
 
-        medians = bar_distribution.median(logits=preds)
+            medians = bar_distribution.median(logits=preds)
 
         # Impute the missing values with the median predictions
         X_normalized[missing_indices] = medians.cpu().detach().numpy()

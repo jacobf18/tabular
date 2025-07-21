@@ -28,7 +28,7 @@ class MCPFN(nn.Module):
         self,
         embed_dim: int = 192,
         max_num_features: int = 50,
-        features_per_group: Literal[1, 2] = 2,
+        features_per_group = 2,
         nhead: int = 2,
         remove_duplicate_features: bool = True,
         num_buckets: Literal[1000, 5000] = 5000,

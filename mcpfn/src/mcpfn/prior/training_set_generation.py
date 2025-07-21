@@ -980,6 +980,7 @@ class MissingnessPrior:
                 if X.numel() == 0: # if the matrix is empty, skip
                     continue
                 X_missing = self.missingness_inducer._induce_missingness(X.clone())
+                return X, X_missing
                 train_X, train_y, test_X, test_y = create_train_test_sets(
                     X_missing, X_full=X
                 )
@@ -1010,7 +1011,7 @@ class MissingnessPrior:
 # Execution Block
 if __name__ == '__main__':
     config = {
-        'num_rows_low': 10, 'num_rows_high': 10, 'num_cols_low': 5, 'num_cols_high': 5.5,
+        'num_rows_low': 12, 'num_rows_high': 12, 'num_cols_low': 5, 'num_cols_high': 5.5,
         'p_missing': 0.4,
         # SCM configs
         'num_nodes_low': 60, 'num_nodes_high': 80, 'graph_generation_method': ['MLP-Dropout', 'Scale-Free'],
@@ -1043,11 +1044,57 @@ if __name__ == '__main__':
     prior = MissingnessPrior(
         generator_type="latent_factor",
         missingness_type="mcar",
+        num_missing=10,
         config=config,
-        batch_size=5,
+        batch_size=1,
         verbose=False
     )
+    
+    # X_full, y_full, d, seq_lens, train_sizes = prior.get_batch()
+    
+    mcpfn_errors = []
+    tabpfn_errors = []
+    
+    import os
+    from mcpfn.interface import ImputePFN
+    
+    for _ in tqdm(range(50)):
+        X, X_missing = prior.get_batch()
+        
+        os.environ["OMP_NUM_THREADS"] = "1"
+        os.environ["TABPFN_ALLOW_CPU_LARGE_DATASET"] = "1"
+        
+        imputer = ImputePFN(device='cpu', 
+                            encoder_path='/Users/jfeit/tabular/mcpfn/src/mcpfn/model/encoder.pth',
+                            borders_path='/Users/jfeit/tabular/mcpfn/borders.pt',
+                            checkpoint_path='/Users/jfeit/Downloads/small_data.ckpt')
+        
+        X_missing_np = X_missing.numpy()
+        X_np = X.numpy()
+        imputed_X = imputer.impute(X_missing_np)
+        missing_inds = np.where(np.isnan(X_missing_np))
+        # print(f'Max: {X_np[missing_inds].max():.2f}, Min: {X_np[missing_inds].min():.2f}, Std: {X_np[missing_inds].std():.2f}')
+        # print(np.abs(X_np[missing_inds] - imputed_X[missing_inds]).mean())
+        mcpfn_errors.append(np.abs(X_np[missing_inds] - imputed_X[missing_inds]).mean())
+        
+        train_X, train_y, test_X, test_y = create_train_test_sets(
+                        X_missing, X_full=X
+                    )
+        
+        import tabpfn_client
 
-    X_full, y_full, d, seq_lens, train_sizes = prior.get_batch()
-    print(X_full.shape, y_full.shape, d.shape, seq_lens.shape, train_sizes.shape)
-    print(train_sizes)
+        tabpfn_client.set_access_token('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjoiYjFlMzMxOTktNDEyZC00NDAwLWI0YzEtZTY0NmRlMGRlMWU5IiwiZXhwIjoxNzg0NjUzNzQzfQ.k1y3hdiFMivdsVc1EvQAHTxN1jF1wEjfJP3vM7fdEvo')
+        
+        reg = tabpfn_client.TabPFNRegressor()
+        
+        reg.fit(train_X.numpy(), train_y.numpy())
+        preds = reg.predict(test_X.numpy())
+        # print(np.mean(np.abs(preds - test_y.numpy())))
+        tabpfn_errors.append(np.mean(np.abs(preds - test_y.numpy())))
+    
+    import pickle 
+    # save errors to pickle
+    with open('mcpfn_errors.pkl', 'wb') as f:
+        pickle.dump(mcpfn_errors, f)
+    with open('tabpfn_errors.pkl', 'wb') as f:
+        pickle.dump(tabpfn_errors, f)
