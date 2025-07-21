@@ -8,6 +8,7 @@ import numpy as np
 from mcpfn.model.mcpfn import MCPFN
 import argparse
 from mcpfn.model.bar_distribution import FullSupportBarDistribution
+from tabpfn import TabPFNRegressor
 
 
 class ImputePFN:
@@ -111,6 +112,35 @@ class ImputePFN:
         X_imputed = X_normalized * (stds + 1e-8) + means
 
         return X_imputed  # Return the imputed matrix
+    
+class TabPFNImputer:
+    def __init__(self, device: str = "cpu"):
+        self.device = device
+        self.reg = TabPFNRegressor(device=device)
+        
+    def impute(self, X: np.ndarray) -> np.ndarray:
+        """Impute missing values in the input matrix.
+        Imputes the missing values in place.
+        """
+        X_tensor = torch.from_numpy(X).to(self.device)
+        
+        # Impute the missing values
+        train_X, train_y, test_X, _ = create_train_test_sets(
+            X_tensor, X_tensor
+        )
+        
+        train_X_npy = train_X.cpu().numpy()
+        train_y_npy = train_y.cpu().numpy()
+        test_X_npy = test_X.cpu().numpy()
+        # test_y_npy = test_y.cpu().numpy()
+        
+        self.reg.fit(train_X_npy, train_y_npy)
+        
+        preds = self.reg.predict(test_X_npy)
+        
+        X[np.where(np.isnan(X))] = preds
+        
+        return X
 
 
 # How to use:
