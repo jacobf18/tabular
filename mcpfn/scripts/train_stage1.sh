@@ -88,7 +88,7 @@ python /Users/jfeit/tabular/mcpfn/src/mcpfn/train/run.py \
             --max_steps 8 \
             --batch_size 5 \
             --micro_batch_size 5 \
-            --lr 1e-4 \
+            --lr 1e-3 \
             --scheduler cosine_warmup \
             --warmup_proportion 0.02 \
             --gradient_clipping 1.0 \
@@ -114,4 +114,4 @@ python /Users/jfeit/tabular/mcpfn/src/mcpfn/train/run.py \
             --epochs 50 \
             --encoder_path /Users/jfeit/tabular/mcpfn/src/mcpfn/model/encoder.pth \
             --borders_path /Users/jfeit/tabular/mcpfn/borders.pt \
-            --model_name test.ckpt
+            --model_name test_save.ckpt
