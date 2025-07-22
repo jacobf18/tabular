@@ -863,7 +863,7 @@ if __name__ == "__main__":
         # trainer.configure_prior()
         trainer.curr_step = 0
         
-        if epoch % 15 == 0 and epoch != 0:
+        if epoch % config.save_every == 0 and epoch != 0:
             trainer.save_checkpoint(name=f"epoch_{epoch}_{config.model_name}")
 
     # Save the trained model

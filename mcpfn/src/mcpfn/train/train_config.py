@@ -221,6 +221,12 @@ def build_parser():
         default="test.ckpt",
         help="Name of the model",
     )
+    parser.add_argument(
+        "--save_every",
+        type=int,
+        default=15,
+        help="Save the model every n epochs",
+    )
 
     ###########################################################################
     ##### Model Architecture Config ###########################################
