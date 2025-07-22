@@ -5,9 +5,9 @@ import torch
 def fetch_clean_openml_datasets(
     num_datasets: int = 5,
     min_rows: int = 50,
-    max_rows: int = 5000,
+    max_rows: int = 250,
     min_cols: int = 5,
-    max_cols: int = 100,
+    max_cols: int = 60,
     seed: int = 42,
     verbose: bool = True
 ):

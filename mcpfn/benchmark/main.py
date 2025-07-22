@@ -1,52 +1,97 @@
 import torch
 import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from mcpfn.prior.training_set_generation import (
+    MCARPattern, MCARFixedPattern, MARPattern, MNARPattern
+)
+from mcpfn.interface import ImputePFN, TabPFNImputer
 from download_openml import fetch_clean_openml_datasets
-from mcpfn.prior.training_set_generation import MCARPattern
-from mcpfn.interface import ImputePFN  # your imputer
+from fancyimpute import SoftImpute
 
-
-def compute_mad(X_true: torch.Tensor, X_missing: torch.Tensor, X_imputed: np.ndarray) -> float:
-    """
-    Compute Mean Absolute Deviation (MAD) between imputed and ground truth,
-    restricted to only the entries that were originally missing.
-
-    Args:
-        X_true: full torch tensor with no missing values
-        X_missing: tensor with NaNs in some entries
-        X_imputed: full imputed matrix (numpy array of same shape)
-
-    Returns:
-        Mean Absolute Deviation (float)
-    """
+# --- compute absolute errors on missing entries ---
+def compute_abs_errors(X_true: torch.Tensor, X_missing: torch.Tensor, X_imputed: np.ndarray) -> np.ndarray:
     mask = torch.isnan(X_missing)
     true_vals = X_true[mask]
     imputed_vals = torch.tensor(X_imputed)[mask]
+    return torch.abs(true_vals - imputed_vals).numpy()
 
-    mad = torch.mean(torch.abs(true_vals - imputed_vals)).item()
-    return mad
+# --- Column-wise scaling while ignoring NaNs for softimpute ---
+def scale_columns_ignoring_nans(X: np.ndarray) -> np.ndarray:
+    X_scaled = X.copy()
+    for j in range(X.shape[1]):
+        col = X[:, j]
+        non_nan_mask = ~np.isnan(col)
+        if np.any(non_nan_mask):
+            mean = np.mean(col[non_nan_mask])
+            std = np.std(col[non_nan_mask])
+            if std > 0:
+                X_scaled[non_nan_mask, j] = (col[non_nan_mask] - mean) / std
+            else:
+                X_scaled[non_nan_mask, j] = 0.0
+    return X_scaled
 
+# --- Fetch datasets ---
+datasets = fetch_clean_openml_datasets(num_datasets=4)
 
-# Step 1: Download datasets
-datasets = fetch_clean_openml_datasets(num_datasets=3)
+# --- Define missingness patterns ---
+# add the one I said there was a bug in: MCARFixedPattern
+patterns = {
+    "MCAR": MCARPattern(config={"p_missing": 0.5}),
+    "MAR": MARPattern(config={"p_missing": 0.5}),
+    "MNAR": MNARPattern(config={"p_missing": 0.5}),
+}
 
-# Step 2: Define missingness pattern
-missingness = MCARPattern(config={"p_missing": 0.5})
-
-print(type(datasets[0][0]), missingness)
-
-# Step 3: Load imputer
-imputer = ImputePFN(
-    device='cpu',
-    encoder_path='/Users/dwaipayansaha/researchProjects/tabular/mcpfn/src/mcpfn/model/encoder.pth',
-    borders_path='/Users/dwaipayansaha/researchProjects/tabular/mcpfn/borders.pt',
-    checkpoint_path='./test.ckpt'
+# --- Load imputer classes ---
+mcpfn = ImputePFN(
+    device='cuda',
+    encoder_path='/root/tabular/mcpfn/src/mcpfn/model/encoder.pth',
+    borders_path='/root/tabular/mcpfn/borders.pt',
+    checkpoint_path='/mnt/volume_nyc2_1750872154987/checkpoints/small_data.ckpt'
 )
+tabpfn = TabPFNImputer()
 
+# --- Store all results ---
+results = {}
+
+# --- Run benchmark ---
 for X, name, did in datasets:
-    X_missing = missingness._induce_missingness(X.clone())
-    # print(X_missing.shape, type(X_missing))
-    X_filled = imputer.impute(X_missing.numpy())  # assuming numpy input
-    print(f"✔️ Completed imputation for {name} (ID: {did})")
+    for pattern_name, pattern in patterns.items():
+        X_missing = pattern._induce_missingness(X.clone())
+        imputer_errors = {}
 
-    mad = compute_mad(X, X_missing, X_filled)  # compute MAD for each dataset
-    print(f"MAD for {name} (ID: {did}): {mad}")
+        # MCPFN
+        X_mcpfn = mcpfn.impute(X_missing.numpy())
+        imputer_errors["MCPFN"] = compute_abs_errors(X, X_missing, X_mcpfn)
+
+        # # TabPFN; right now this is not working unsure why
+        # X_tabpfn = tabpfn.impute(X_missing.numpy())
+        # imputer_errors["TabPFN"] = compute_abs_errors(X, X_missing, X_tabpfn)
+
+        # SoftImpute with safe scaling
+        X_np = X_missing.numpy()
+        X_scaled = scale_columns_ignoring_nans(X_np)
+        X_soft = SoftImpute().fit_transform(X_scaled)
+        imputer_errors["SoftImpute"] = compute_abs_errors(X, X_missing, X_soft)
+
+        # Store results
+        results[(name, pattern_name)] = imputer_errors
+        print(f"✅ {name} | {pattern_name} done.")
+
+# --- Plotting ---
+sns.set(style="whitegrid")
+
+for (dataset_name, pattern_name), imputer_errors in results.items():
+    imputer_names = list(imputer_errors.keys())
+    error_data = [imputer_errors[imp] for imp in imputer_names]
+
+    plt.figure(figsize=(8, 5))
+    ax = sns.boxplot(data=error_data)
+    ax.set_xticks(range(len(imputer_names)))
+    ax.set_xticklabels(imputer_names)
+    ax.set_ylabel("Absolute Error")
+    ax.set_title(f"Dataset: {dataset_name} | Pattern: {pattern_name}")
+    plt.xticks(rotation=20)
+    plt.tight_layout()
+    plt.savefig(f"boxplot_{dataset_name}_{pattern_name}.png")
+    plt.close()
