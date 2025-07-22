@@ -1358,7 +1358,7 @@ class PriorDataset(IterableDataset):
             )
         elif prior_type == "missing":
             config = {
-                'num_rows_low': 10, 'num_rows_high': 10, 'num_cols_low': 5, 'num_cols_high': 5.5,
+                'num_rows_low': 20, 'num_rows_high': 20, 'num_cols_low': 10, 'num_cols_high': 10.5,
                 'p_missing': 0.4,
                 # SCM configs
                 'num_nodes_low': 60, 'num_nodes_high': 80, 'graph_generation_method': ['MLP-Dropout', 'Scale-Free'],
@@ -1388,8 +1388,8 @@ class PriorDataset(IterableDataset):
                 'skip_logic_p_noise': 0.9, 'cold_start_fraction': 0.3, 'cold_start_gamma': 0.15,
             }
             self.prior = MissingnessPrior(
-                generator_type="latent_factor",
-                missingness_type="mcar",
+                generator_type="nonlinear_factor",
+                missingness_type="mar",
                 config=config,
                 batch_size=batch_size,
                 verbose=True

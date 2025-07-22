@@ -980,7 +980,6 @@ class MissingnessPrior:
                 if X.numel() == 0: # if the matrix is empty, skip
                     continue
                 X_missing = self.missingness_inducer._induce_missingness(X.clone())
-                return X, X_missing
                 train_X, train_y, test_X, test_y = create_train_test_sets(
                     X_missing, X_full=X
                 )

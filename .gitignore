@@ -2,6 +2,8 @@
 
 .venv/
 
+*.png
+
 # Ignore Python bytecode files
 *.py[cod]
 # Ignore Jupyter Notebook checkpoints

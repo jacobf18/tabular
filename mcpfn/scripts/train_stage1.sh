@@ -52,14 +52,14 @@
 # ------------------------------------------------------
 
 # Saving to disk
-# python /Users/jfeit/tabular/mcpfn/src/mcpfn/prior/genload.py \
-#     --save_dir /Users/jfeit/tabular/mcpfn/data \
+# python3 /root/tabular/mcpfn/src/mcpfn/prior/genload.py \
+#     --save_dir /mnt/volume_nyc2_1750872154988/data/small_20_10_nonlinear_factor_mar \
 #     --np_seed 42 \
 #     --torch_seed 42 \
 #     --num_batches 10 \
 #     --resume_from 0 \
-#     --batch_size 5 \
-#     --batch_size_per_gp 5 \
+#     --batch_size 10000 \
+#     --batch_size_per_gp 10000 \
 #     --prior_type missing \
 #     --min_features 5 \
 #     --max_features 5 \
@@ -75,11 +75,11 @@
 
 # Loading from disk and training
 # torchrun --standalone --nproc_per_node=1 /Users/jfeit/tabular/mcpfn/src/mcpfn/train/run.py \
-python /Users/jfeit/tabular/mcpfn/src/mcpfn/train/run.py \
+python /root/tabular/mcpfn/src/mcpfn/train/run.py \
             --wandb_log False \
             --wandb_project MCPFN \
             --wandb_name small_data_test_3 \
-            --wandb_dir /Users/jfeit/tabular/mcpfn/wandb \
+            --wandb_dir /root/tabular/mcpfn/wandb \
             --wandb_mode online \
             --device cpu \
             --dtype float32 \
@@ -92,7 +92,7 @@ python /Users/jfeit/tabular/mcpfn/src/mcpfn/train/run.py \
             --scheduler cosine_warmup \
             --warmup_proportion 0.02 \
             --gradient_clipping 1.0 \
-            --prior_dir /Users/jfeit/tabular/mcpfn/data \
+            --prior_dir /mnt/volume_nyc2_1750872154988/data/small_20_10_nonlinear_factor_mar \
             --load_prior_start 0 \
             --delete_after_load False \
             --prior_device cpu \
@@ -108,11 +108,11 @@ python /Users/jfeit/tabular/mcpfn/src/mcpfn/train/run.py \
             --icl_nhead 4 \
             --ff_factor 2 \
             --norm_first True \
-            --checkpoint_dir /Users/jfeit/tabular/mcpfn/stage1/checkpoint \
+            --checkpoint_dir /mnt/volume_nyc2_1750872154988 \
             --save_temp_every 50 \
             --save_perm_every 5000 \
             --epochs 50 \
-            --encoder_path /Users/jfeit/tabular/mcpfn/src/mcpfn/model/encoder.pth \
-            --borders_path /Users/jfeit/tabular/mcpfn/borders.pt \
-            --model_name test_save.ckpt \
+            --encoder_path /root/tabular/mcpfn/src/mcpfn/model/encoder.pth \
+            --borders_path /root/tabular/mcpfn/borders.pt \
+            --model_name nonlinear_factor_mar_20_10.ckpt \
             --save_every 15
