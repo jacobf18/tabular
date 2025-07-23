@@ -1,6 +1,6 @@
 # Training the model
 
-The training script is located in `mcpfn/scripts/train_stage1.sh`. Read this entire markdown file before running the script.
+Make sure to always pull the newest version of the code before running the script. The training script is located in `mcpfn/scripts/train_stage1.sh`. Read this entire markdown file before running the script.
 
 ## Running the script
 
