@@ -111,7 +111,7 @@ python /root/tabular/mcpfn/src/mcpfn/train/run.py \
             --checkpoint_dir /mnt/volume_nyc2_1750872154988 \
             --save_temp_every 50 \
             --save_perm_every 5000 \
-            --epochs 50 \
+            --epochs 100 \
             --encoder_path /root/tabular/mcpfn/src/mcpfn/model/encoder.pth \
             --borders_path /root/tabular/mcpfn/borders.pt \
             --model_name nonlinear_factor_mar_20_10.ckpt \
