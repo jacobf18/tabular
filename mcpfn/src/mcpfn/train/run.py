@@ -546,14 +546,18 @@ class Trainer:
         results["prior_time"] /= len_train
         results["train_time"] /= len_train
 
+        print_vals = {
+            'ce': round(results["ce"], 3),
+            'mae': round(results["mae"], 3),
+            'missing_ce': round(results["missing_ce"], 3),
+            'missing_mae': round(results["missing_mae"], 3),
+            'val_ce': round(results["val_ce"], 3),
+            'val_mae': round(results["val_mae"], 3),
+            'val_missing_ce': round(results["val_missing_ce"], 3),
+        }
         # Update progress bar with rounded values for cleaner display
         if self.step_progress is not None:
-            self.step_progress.set_postfix(
-                **{
-                    k: round(v, 3) if isinstance(v, float) else v
-                    for k, v in results.items()
-                }
-            )
+            self.step_progress.set_postfix(**print_vals)
 
         # Logging to Weights & Biases
         if self.wandb_run is not None:
@@ -842,12 +846,6 @@ if __name__ == "__main__":
     parser = build_parser()
     config = parser.parse_args()
 
-    # print(config)
-
-    # # save config to pickle
-    # with open('config.pkl', 'wb') as f:
-    #     pickle.dump(config, f)
-
     # try:
     #     # Set the start method for subprocesses to 'spawn'
     #     set_start_method("spawn")
@@ -858,7 +856,6 @@ if __name__ == "__main__":
     step_progress = tqdm(range(config.epochs), desc="Epoch")
     trainer = Trainer(config, step_progress)
     for epoch in step_progress:
-        # print(f"Epoch {epoch}")
         trainer.train()
         # trainer.configure_prior()
         trainer.curr_step = 0

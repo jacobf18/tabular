@@ -27,3 +27,11 @@ print(X)
 out = imputer.impute(X)
 print(out)
 ```
+
+## Generate data
+
+Run the `generate_data.sh` script to generate the data.
+
+## Train
+
+Run the `train.sh` script to train the model.
