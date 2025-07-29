@@ -38,6 +38,7 @@ from torch.utils.data import IterableDataset
 
 from mcpfn.prior.dataset import PriorDataset
 from mcpfn.prior.prior_config import DEFAULT_FIXED_HP, DEFAULT_SAMPLED_HP
+from mcpfn.prior.training_set_generation import MissingnessPrior
 
 warnings.filterwarnings(
     "ignore",
@@ -525,6 +526,8 @@ class SavePriorDataset:
             num_threads_per_generate=self.args.num_threads_per_generate,
             device=self.args.device,
             num_missing=self.args.num_missing,
+            missingness_type=self.args.missingness_type,
+            missingness_generator_type=self.args.missingness_generator_type,
         )
         print(self.prior)
 
@@ -732,6 +735,20 @@ if __name__ == "__main__":
         default="cpu",
         choices=["cpu", "cuda"],
         help="Device to use for generation",
+    )
+    parser.add_argument(
+        "--missingness_type",
+        type=str,
+        default="mcar",
+        choices=list(MissingnessPrior.missingness_map.keys()),
+        help="Type of missingness to induce",
+    )
+    parser.add_argument(
+        "--missingness_generator_type",
+        type=str,
+        default="linear_factor",
+        choices=list(MissingnessPrior.generator_map.keys()),
+        help="Type of missingness generator to use",
     )
 
     args = parser.parse_args()

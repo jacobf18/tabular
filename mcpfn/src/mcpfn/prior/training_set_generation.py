@@ -22,6 +22,7 @@ import torch
 from torch.utils.data import IterableDataset
 from typing import Optional, Union
 from tqdm import tqdm
+from mcpfn.model.encoders import normalize_data
 
 # Helpers
 def sample_log_uniform(low, high, size=1, base=np.e):
@@ -448,13 +449,6 @@ class BaseMissingness:
 class MCARPattern(BaseMissingness):
     def _induce_missingness(self, X):
         X[torch.rand(*X.shape) < self.config.get("p_missing", 0.6)] = torch.nan
-        return X
-    
-class MCARFixedPattern(BaseMissingness):
-    def _induce_missingness(self, X, num_missing = 10):
-        n_rows, n_cols = X.shape
-        missing_indices = torch.randperm(n_rows * n_cols)[:num_missing]
-        X.view(-1)[missing_indices] = torch.nan
         return X
 
 class MARPattern(BaseMissingness):
@@ -904,6 +898,33 @@ class MissingnessPrior:
     """
     Main dataset class that provides an infinite iterator over synthetic tabular datasets.
     """
+    generator_map = {
+            "scm": SCMPrior,
+            "latent_factor": LatentFactorPrior,
+            "nonlinear_factor": NonLinearFactorPrior,
+            "robust_pca": RobustPCAPrior,
+        }
+    missingness_map = {
+        # Standard Patterns
+        "mcar": MCARPattern,
+        "mar": MARPattern,
+        "mnar": MNARPattern,
+        # Specific MNAR Patterns
+        "mnar_rec_sys": MNARRecSysPattern,
+        "mnar_panel": MNARPanelPattern,
+        "mnar_sequential": MNARSequentialPattern,
+        "mnar_polarization": MNARPolarizationPattern,
+        "mnar_soft_polarization": MNARSoftPolarizationPattern,
+        "mnar_latent_factor": MNARLatentFactorPattern,
+        "mnar_positivity_violation": MNARPositivityViolationPattern,
+        "mnar_user_cascade": MNARUserCascadePattern,
+        "mnar_cluster_level": MNARClusterLevelPattern,
+        "mnar_spatial_block": MNARSpatialBlockPattern,
+        "mnar_censoring": MNARCensoringPattern,
+        "mnar_two_phase_subset": MNARTwoPhaseSubsetPattern,
+        "mnar_skip_logic": MNARSkipLogicPattern,
+        "mnar_cold_start": MNARColdStartPattern,
+    }
 
     def __init__(
         self,
@@ -918,46 +939,18 @@ class MissingnessPrior:
         self.config = config
         self.verbose = verbose
         self.batch_size = batch_size
-        generator_map = {
-            "scm": SCMPrior,
-            "latent_factor": LatentFactorPrior,
-            "nonlinear_factor": NonLinearFactorPrior,
-            "robust_pca": RobustPCAPrior,
-        }
-        missingness_map = {
-            # Standard Patterns
-            "mcar": MCARPattern,
-            "mar": MARPattern,
-            "mnar": MNARPattern,
-            "mcar_fixed": MCARFixedPattern,
-            # Specific MNAR Patterns
-            "mnar_rec_sys": MNARRecSysPattern,
-            "mnar_panel": MNARPanelPattern,
-            "mnar_sequential": MNARSequentialPattern,
-            "mnar_polarization": MNARPolarizationPattern,
-            "mnar_soft_polarization": MNARSoftPolarizationPattern,
-            "mnar_latent_factor": MNARLatentFactorPattern,
-            "mnar_positivity_violation": MNARPositivityViolationPattern,
-            "mnar_user_cascade": MNARUserCascadePattern,
-            "mnar_cluster_level": MNARClusterLevelPattern,
-            "mnar_spatial_block": MNARSpatialBlockPattern,
-            "mnar_censoring": MNARCensoringPattern,
-            "mnar_two_phase_subset": MNARTwoPhaseSubsetPattern,
-            "mnar_skip_logic": MNARSkipLogicPattern,
-            "mnar_cold_start": MNARColdStartPattern,
-        }
 
-        if generator_type not in generator_map:
+        if generator_type not in self.generator_map:
             raise ValueError(
-                f"Unknown generator type: {generator_type}. Available: {list(generator_map.keys())}"
+                f"Unknown generator type: {generator_type}. Available: {list(self.generator_map.keys())}"
             )
-        if missingness_type not in missingness_map:
+        if missingness_type not in self.missingness_map:
             raise ValueError(
-                f"Unknown missingness type: {missingness_type}. Available: {list(missingness_map.keys())}"
+                f"Unknown missingness type: {missingness_type}. Available: {list(self.missingness_map.keys())}"
             )
 
-        self.generator = generator_map[generator_type](config)
-        self.missingness_inducer = missingness_map[missingness_type](config)
+        self.generator = self.generator_map[generator_type](config)
+        self.missingness_inducer = self.missingness_map[missingness_type](config)
         self.generator_type = generator_type
         self.missingness_type = missingness_type
         self.num_missing = num_missing
@@ -977,6 +970,10 @@ class MissingnessPrior:
             try:
                 complete_df = self.generator.generate_complete_matrix()
                 X = torch.tensor(complete_df.values, dtype=torch.float32)
+                
+                # Normalize the data
+                X = torch.squeeze(normalize_data(torch.unsqueeze(X, 1)), 1)
+                
                 if X.numel() == 0: # if the matrix is empty, skip
                     continue
                 X_missing = self.missingness_inducer._induce_missingness(X.clone())

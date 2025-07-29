@@ -39,6 +39,7 @@ from .training_set_generation import MissingnessPrior
 from .hp_sampling import HpSamplerList
 from .reg2cls import Reg2Cls
 from .prior_config import DEFAULT_FIXED_HP, DEFAULT_SAMPLED_HP
+from .training_set_generation import ACTIVATION_FUNCTIONS
 
 
 warnings.filterwarnings(
@@ -1305,6 +1306,8 @@ class PriorDataset(IterableDataset):
         num_threads_per_generate: int = 1,
         device: str = "cpu",
         num_missing: int = 10,
+        missingness_type: str = "mcar",
+        missingness_generator_type: str = "linear_factor",
     ):
         super().__init__()
         if prior_type == "dummy":
@@ -1358,12 +1361,12 @@ class PriorDataset(IterableDataset):
             )
         elif prior_type == "missing":
             config = {
-                'num_rows_low': 20, 'num_rows_high': 20, 'num_cols_low': 10, 'num_cols_high': 10.5,
+                'num_rows_low': min_seq_len, 'num_rows_high': min_seq_len, 'num_cols_low': min_features, 'num_cols_high': min_features + 0.5,
                 'p_missing': 0.4,
                 # SCM configs
                 'num_nodes_low': 60, 'num_nodes_high': 80, 'graph_generation_method': ['MLP-Dropout', 'Scale-Free'],
                 'root_node_noise_dist': ['Normal', 'Uniform'], 
-                # 'scm_activation_functions': list(ACTIVATION_FUNCTIONS.keys()),
+                'scm_activation_functions': list(ACTIVATION_FUNCTIONS.keys()),
                 'xgb_n_estimators_exp_scale': 0.5, 'xgb_max_depth_exp_scale': 0.5,
                 'apply_feature_warping_prob': 0.1, 'apply_quantization_prob': 0.1,
                 # MNAR configs
@@ -1388,8 +1391,8 @@ class PriorDataset(IterableDataset):
                 'skip_logic_p_noise': 0.9, 'cold_start_fraction': 0.3, 'cold_start_gamma': 0.15,
             }
             self.prior = MissingnessPrior(
-                generator_type="nonlinear_factor",
-                missingness_type="mar",
+                generator_type=missingness_generator_type,
+                missingness_type=missingness_type,
                 config=config,
                 batch_size=batch_size,
                 verbose=True
