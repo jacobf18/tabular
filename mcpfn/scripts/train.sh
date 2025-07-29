@@ -1,23 +1,23 @@
 # Loading from disk and training
 # torchrun --standalone --nproc_per_node=1 /Users/jfeit/tabular/mcpfn/src/mcpfn/train/run.py \
-python /root/tabular/mcpfn/src/mcpfn/train/run.py \
-            --wandb_log False \
+python3 /root/tabular/mcpfn/src/mcpfn/train/run.py \
+            --wandb_log True \
             --wandb_project MCPFN \
-            --wandb_name nonlinear_factor_mar_20_10 \
+            --wandb_name nonlinear_factor_mar_10_8_missing_grad \
             --wandb_dir /root/tabular/mcpfn/wandb \
             --wandb_mode online \
-            --device cpu \
+            --device cuda \
             --dtype float32 \
             --np_seed 42 \
             --torch_seed 42 \
             --max_steps 8 \
-            --batch_size 5 \
-            --micro_batch_size 5 \
+            --batch_size 10000 \
+            --micro_batch_size 100 \
             --lr 1e-3 \
             --scheduler cosine_warmup \
             --warmup_proportion 0.02 \
             --gradient_clipping 1.0 \
-            --prior_dir /mnt/volume_nyc2_1750872154988/data/small_20_10_nonlinear_factor_mar \
+            --prior_dir /mnt/volume_nyc2_1750872154987/data/small_10_8_nonlinear_factor_mar \
             --load_prior_start 0 \
             --delete_after_load False \
             --prior_device cpu \
@@ -33,7 +33,7 @@ python /root/tabular/mcpfn/src/mcpfn/train/run.py \
             --icl_nhead 4 \
             --ff_factor 2 \
             --norm_first True \
-            --checkpoint_dir /mnt/volume_nyc2_1750872154988/checkpoints/nonlinear_factor_mar_small \
+            --checkpoint_dir /mnt/volume_nyc2_1750872154987/checkpoints/nonlinear_factor_mar_missing_grad \
             --save_temp_every 50 \
             --save_perm_every 5000 \
             --epochs 100 \

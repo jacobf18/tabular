@@ -31,6 +31,7 @@ from mcpfn.prior.genload import LoadPriorDataset
 from mcpfn.train.optim import get_scheduler
 from mcpfn.train.train_config import build_parser
 from mcpfn.model.bar_distribution import FullSupportBarDistribution
+from mcpfn.model.encoders import torch_nanmean
 
 warnings.filterwarnings(
     "ignore",
@@ -157,7 +158,6 @@ class Trainer:
 
     def configure_wandb(self):
         """Set up Weights & Biases logging."""
-
         if self.config.wandb_log and self.master_process:
             id_path = os.path.join(self.config.checkpoint_dir, "wand_id.txt")
             if self.config.wandb_id is None:
@@ -452,10 +452,10 @@ class Trainer:
         """
 
         if self.master_process:
-            # step_progress = tqdm(
-            #     range(self.curr_step, self.config.max_steps), desc="Step", leave=True
-            # )
-            step_progress = range(self.curr_step, self.config.max_steps)
+            step_progress = tqdm(
+                range(self.curr_step, self.config.max_steps), desc="Step", leave=True
+            )
+            # step_progress = range(self.curr_step, self.config.max_steps)
         else:
             step_progress = range(self.curr_step, self.config.max_steps)
 
@@ -725,8 +725,9 @@ class Trainer:
 
             # Scale loss for gradient accumulation and backpropagate
             scaled_loss = loss.mean() / num_micro_batches
-            self.scaler.scale(scaled_loss).backward()
+            # self.scaler.scale(scaled_loss).backward()
             missing_loss = loss[~mask_reshaped].mean() / num_micro_batches
+            self.scaler.scale(missing_loss).backward()
 
         else:  # val
             with torch.no_grad():
@@ -737,8 +738,8 @@ class Trainer:
                 loss = self.bar_distribution(
                     logits=pred, y=einops.rearrange(micro_y, "b t -> t b")
                 )
-                scaled_loss = loss.mean() / num_micro_batches
-                missing_loss = loss[~mask_reshaped].mean() / num_micro_batches
+                scaled_loss = torch_nanmean(loss).mean() / num_micro_batches
+                missing_loss = torch_nanmean(loss[~mask_reshaped]).mean() / num_micro_batches
 
         with torch.no_grad():
             micro_results = {}
@@ -748,8 +749,8 @@ class Trainer:
             accuracy = (
                 (median - einops.rearrange(micro_y, "b t -> t b")).abs()
             )  # mae
-            micro_results["mae"] = accuracy.mean().item()
-            micro_results["missing_mae"] = accuracy[~mask_reshaped].mean().item()
+            micro_results["mae"] = torch_nanmean(accuracy).mean().item()
+            micro_results["missing_mae"] = torch_nanmean(accuracy[~mask_reshaped]).mean().item()
 
         return micro_results
 
