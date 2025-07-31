@@ -3,11 +3,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from mcpfn.prior.training_set_generation import (
-    MCARPattern, MCARFixedPattern, MARPattern, MNARPattern
+    MCARPattern, MARPattern, MNARPattern
 )
 from mcpfn.interface import ImputePFN, TabPFNImputer
 from download_openml import fetch_clean_openml_datasets
 from fancyimpute import SoftImpute
+from hyperimpute.plugins.imputers import Imputers
+import warnings
+
+# --- Suppress warnings ---
+warnings.filterwarnings("ignore")
 
 # --- compute absolute errors on missing entries ---
 def compute_abs_errors(X_true: torch.Tensor, X_missing: torch.Tensor, X_imputed: np.ndarray) -> np.ndarray:
@@ -47,33 +52,45 @@ mcpfn = ImputePFN(
     device='cuda',
     encoder_path='/root/tabular/mcpfn/src/mcpfn/model/encoder.pth',
     borders_path='/root/tabular/mcpfn/borders.pt',
-    checkpoint_path='/mnt/volume_nyc2_1750872154987/checkpoints/small_data.ckpt'
+    checkpoint_path='/mnt/volume_nyc2_1750872154988/zero_noise_small.ckpt'
 )
-tabpfn = TabPFNImputer()
+tabpfn = TabPFNImputer(device='cuda')
 
 # --- Store all results ---
 results = {}
 
 # --- Run benchmark ---
 for X, name, did in datasets:
+    # Normalize the data
+    X_normalized = (X - X.mean(dim=0)) / (X.std(dim=0) + 1e-8)
     
     for pattern_name, pattern in patterns.items():
-        X_missing = pattern._induce_missingness(X.clone())
+        X_missing = pattern._induce_missingness(X_normalized.clone())
         imputer_errors = {}
 
         # MCPFN
-        X_mcpfn = mcpfn.impute(X_missing.numpy())
-        imputer_errors["MCPFN"] = compute_abs_errors(X, X_missing, X_mcpfn)
+        X_mcpfn = mcpfn.impute(X_missing.numpy().copy())
+        imputer_errors["MCPFN"] = compute_abs_errors(X_normalized, X_missing, X_mcpfn)
 
-        # # TabPFN; right now this is not working unsure why
-        # X_tabpfn = tabpfn.impute(X_missing.numpy())
-        # imputer_errors["TabPFN"] = compute_abs_errors(X, X_missing, X_tabpfn)
+        # TabPFN; right now this is not working unsure why
+        X_tabpfn = tabpfn.impute(X_missing.numpy().copy())
+        imputer_errors["TabPFN"] = compute_abs_errors(X_normalized, X_missing, X_tabpfn)
 
         # SoftImpute with safe scaling
         X_np = X_missing.numpy()
         X_scaled = scale_columns_ignoring_nans(X_np)
         X_soft = SoftImpute().fit_transform(X_scaled)
-        imputer_errors["SoftImpute"] = compute_abs_errors(X, X_missing, X_soft)
+        imputer_errors["SoftImpute"] = compute_abs_errors(X_normalized, X_missing, X_soft)
+        
+        # Mean imputation
+        plugin = Imputers().get("mean")
+        out = plugin.fit_transform(X_missing.numpy().copy()).to_numpy()
+        imputer_errors["Column Mean"] = compute_abs_errors(X_normalized, X_missing, out)
+        
+        # Mean imputation
+        plugin = Imputers().get("hyperimpute")
+        out = plugin.fit_transform(X_missing.numpy().copy()).to_numpy()
+        imputer_errors["HyperImpute"] = compute_abs_errors(X_normalized, X_missing, out)
 
         # Store results
         results[(name, pattern_name)] = imputer_errors
