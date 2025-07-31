@@ -7,7 +7,7 @@
 # Third parameter is the number of rows
 # Fourth parameter is the number of columns
 
-echo "Generating data for ${1} ${2} ${3} ${4}"
+echo "Generating data for Missingness: ${1} Generator: ${2} Rows: ${3} Columns: ${4}"
 
 # Set the save directory as an environment variable
 BASE_DIR="/mnt/volume_nyc2_1750872154987/data"
@@ -22,8 +22,8 @@ python3 /root/tabular/mcpfn/src/mcpfn/prior/genload.py \
     --torch_seed 42 \
     --num_batches 10 \
     --resume_from 0 \
-    --batch_size 5 \
-    --batch_size_per_gp 5 \
+    --batch_size 10000 \
+    --batch_size_per_gp 10000 \
     --prior_type missing \
     --min_features $4 \
     --max_features $4 \
@@ -40,8 +40,8 @@ python3 /root/tabular/mcpfn/src/mcpfn/prior/genload.py \
     --missingness_generator_type $2
 
 # Create the val and train directories
-mkdir $SAVE_DIR/val
-mkdir $SAVE_DIR/train
+mkdir -p $SAVE_DIR/val
+mkdir -p $SAVE_DIR/train
 
 # Copy the metadata file to the val and train directories
 cp $SAVE_DIR/metadata.json $SAVE_DIR/val/

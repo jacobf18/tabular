@@ -23,6 +23,7 @@ from torch.utils.data import IterableDataset
 from typing import Optional, Union
 from tqdm import tqdm
 from mcpfn.model.encoders import normalize_data
+from .scm_prior import SCMPrior
 
 # Helpers
 def sample_log_uniform(low, high, size=1, base=np.e):
@@ -78,171 +79,170 @@ class RandomFourierFeatureFunction:
 
 # Data Generation Classes
 
+# class SCMPrior:
+#     """Generates a complete data matrix from a Structural Causal Model."""
 
-class SCMPrior:
-    """Generates a complete data matrix from a Structural Causal Model."""
+#     def __init__(self, config: dict):
+#         self.config = config
 
-    def __init__(self, config: dict):
-        self.config = config
+#     def _generate_mlp_dropout_dag(
+#         self, num_nodes: int, num_layers: int, edge_dropout_prob: float = 0.2
+#     ) -> nx.DiGraph:
+#         G = nx.DiGraph()
+#         nodes_per_layer_base = np.zeros(num_layers, dtype=int) + 1
+#         nodes_remaining = num_nodes - num_layers
+#         if nodes_remaining > 0:
+#             splits = np.sort(
+#                 np.random.choice(
+#                     nodes_remaining + num_layers - 1, num_layers - 1, replace=False
+#                 )
+#             )
+#             layer_sizes = (
+#                 np.diff(
+#                     np.concatenate(([0], splits, [nodes_remaining + num_layers - 1]))
+#                 )
+#                 - 1
+#             )
+#             nodes_per_layer_base += layer_sizes
+#         node_indices = np.arange(num_nodes)
+#         nodes_per_layer = np.split(node_indices, np.cumsum(nodes_per_layer_base)[:-1])
+#         for i, layer_nodes in enumerate(nodes_per_layer):
+#             for node in layer_nodes:
+#                 G.add_node(node, layer=i)
+#         for i in range(num_layers - 1):
+#             for u in nodes_per_layer[i]:
+#                 for v in nodes_per_layer[i + 1]:
+#                     if np.random.rand() > edge_dropout_prob:
+#                         G.add_edge(u, v)
+#         return G
 
-    def _generate_mlp_dropout_dag(
-        self, num_nodes: int, num_layers: int, edge_dropout_prob: float = 0.2
-    ) -> nx.DiGraph:
-        G = nx.DiGraph()
-        nodes_per_layer_base = np.zeros(num_layers, dtype=int) + 1
-        nodes_remaining = num_nodes - num_layers
-        if nodes_remaining > 0:
-            splits = np.sort(
-                np.random.choice(
-                    nodes_remaining + num_layers - 1, num_layers - 1, replace=False
-                )
-            )
-            layer_sizes = (
-                np.diff(
-                    np.concatenate(([0], splits, [nodes_remaining + num_layers - 1]))
-                )
-                - 1
-            )
-            nodes_per_layer_base += layer_sizes
-        node_indices = np.arange(num_nodes)
-        nodes_per_layer = np.split(node_indices, np.cumsum(nodes_per_layer_base)[:-1])
-        for i, layer_nodes in enumerate(nodes_per_layer):
-            for node in layer_nodes:
-                G.add_node(node, layer=i)
-        for i in range(num_layers - 1):
-            for u in nodes_per_layer[i]:
-                for v in nodes_per_layer[i + 1]:
-                    if np.random.rand() > edge_dropout_prob:
-                        G.add_edge(u, v)
-        return G
+#     def _generate_scale_free_dag(self, num_nodes: int, m_edges: int = 2) -> nx.DiGraph:
+#         undirected_G = nx.barabasi_albert_graph(n=num_nodes, m=m_edges)
+#         G = nx.DiGraph()
+#         G.add_nodes_from(undirected_G.nodes())
+#         for u, v in undirected_G.edges():
+#             if u < v:
+#                 G.add_edge(u, v)
+#             else:
+#                 G.add_edge(v, u)
+#         return G
 
-    def _generate_scale_free_dag(self, num_nodes: int, m_edges: int = 2) -> nx.DiGraph:
-        undirected_G = nx.barabasi_albert_graph(n=num_nodes, m=m_edges)
-        G = nx.DiGraph()
-        G.add_nodes_from(undirected_G.nodes())
-        for u, v in undirected_G.edges():
-            if u < v:
-                G.add_edge(u, v)
-            else:
-                G.add_edge(v, u)
-        return G
+#     def _sample_dag_structure(self) -> nx.DiGraph:
+#         graph_type = np.random.choice(self.config["graph_generation_method"])
+#         num_nodes = int(
+#             sample_log_uniform(
+#                 self.config["num_nodes_low"], self.config["num_nodes_high"]
+#             )[0]
+#         )
+#         if graph_type == "MLP-Dropout":
+#             return self._generate_mlp_dropout_dag(
+#                 num_nodes=num_nodes, num_layers=np.random.randint(2, 8)
+#             )
+#         elif graph_type == "Scale-Free":
+#             return self._generate_scale_free_dag(
+#                 num_nodes=num_nodes, m_edges=np.random.randint(1, 5)
+#             )
 
-    def _sample_dag_structure(self) -> nx.DiGraph:
-        graph_type = np.random.choice(self.config["graph_generation_method"])
-        num_nodes = int(
-            sample_log_uniform(
-                self.config["num_nodes_low"], self.config["num_nodes_high"]
-            )[0]
-        )
-        if graph_type == "MLP-Dropout":
-            return self._generate_mlp_dropout_dag(
-                num_nodes=num_nodes, num_layers=np.random.randint(2, 8)
-            )
-        elif graph_type == "Scale-Free":
-            return self._generate_scale_free_dag(
-                num_nodes=num_nodes, m_edges=np.random.randint(1, 5)
-            )
+#     def _assign_functional_mechanisms(self, dag: nx.DiGraph):
+#         for node in dag.nodes():
+#             parents = list(dag.predecessors(node))
+#             if not parents:
+#                 continue
+#             choice = np.random.choice(
+#                 ["scm", "tree", "random_fourier"], p=[0.6, 0.2, 0.2]
+#             )
+#             if choice == "scm":
+#                 func_name = np.random.choice(self.config["scm_activation_functions"])
+#                 dag.nodes[node].update(
+#                     {
+#                         "type": "scm",
+#                         "function": ACTIVATION_FUNCTIONS[func_name],
+#                         "weights": np.random.randn(len(parents)),
+#                         "bias": np.random.randn(),
+#                     }
+#                 )
+#             elif choice == "random_fourier":
+#                 dag.nodes[node].update(
+#                     {
+#                         "type": "random_fourier",
+#                         "function": RandomFourierFeatureFunction(),
+#                         "parent_selector": np.random.randint(len(parents)),
+#                     }
+#                 )
+#             else:  # Tree-based
+#                 params = {
+#                     "n_estimators": sample_exponential(
+#                         self.config["xgb_n_estimators_exp_scale"], 1
+#                     )[0],
+#                     "max_depth": sample_exponential(
+#                         self.config["xgb_max_depth_exp_scale"], 2
+#                     )[0],
+#                     "n_jobs": 1,
+#                 }
+#                 dag.nodes[node].update(
+#                     {"type": "tree", "function": xgb.XGBRegressor(**params)}
+#                 )
 
-    def _assign_functional_mechanisms(self, dag: nx.DiGraph):
-        for node in dag.nodes():
-            parents = list(dag.predecessors(node))
-            if not parents:
-                continue
-            choice = np.random.choice(
-                ["scm", "tree", "random_fourier"], p=[0.6, 0.2, 0.2]
-            )
-            if choice == "scm":
-                func_name = np.random.choice(self.config["scm_activation_functions"])
-                dag.nodes[node].update(
-                    {
-                        "type": "scm",
-                        "function": ACTIVATION_FUNCTIONS[func_name],
-                        "weights": np.random.randn(len(parents)),
-                        "bias": np.random.randn(),
-                    }
-                )
-            elif choice == "random_fourier":
-                dag.nodes[node].update(
-                    {
-                        "type": "random_fourier",
-                        "function": RandomFourierFeatureFunction(),
-                        "parent_selector": np.random.randint(len(parents)),
-                    }
-                )
-            else:  # Tree-based
-                params = {
-                    "n_estimators": sample_exponential(
-                        self.config["xgb_n_estimators_exp_scale"], 1
-                    )[0],
-                    "max_depth": sample_exponential(
-                        self.config["xgb_max_depth_exp_scale"], 2
-                    )[0],
-                    "n_jobs": 1,
-                }
-                dag.nodes[node].update(
-                    {"type": "tree", "function": xgb.XGBRegressor(**params)}
-                )
-
-    def generate_complete_matrix(self) -> pd.DataFrame:
-        dag = self._sample_dag_structure()
-        self._assign_functional_mechanisms(dag)
-        n_rows = int(
-            sample_log_uniform(
-                self.config["num_rows_low"], self.config["num_rows_high"]
-            )[0]
-        )
-        node_data = {node: np.zeros(n_rows) for node in nx.topological_sort(dag)}
-        for node in nx.topological_sort(dag):
-            parents = list(dag.predecessors(node))
-            node_info = dag.nodes[node]
-            if not parents:
-                node_data[node] = (
-                    np.random.randn(n_rows)
-                    if np.random.choice(self.config["root_node_noise_dist"]) == "Normal"
-                    else np.random.uniform(-1, 1, n_rows)
-                )
-            else:
-                parent_values = np.vstack([node_data[p] for p in parents]).T
-                if node_info.get("type") == "scm":
-                    node_data[node] = node_info["function"](
-                        np.dot(parent_values, node_info["weights"]) + node_info["bias"]
-                    )
-                elif node_info.get("type") == "random_fourier":
-                    node_data[node] = node_info["function"](
-                        parent_values[:, node_info["parent_selector"]]
-                    )
-                elif node_info.get("type") == "tree":
-                    node_info["function"].fit(parent_values, np.random.randn(n_rows))
-                    node_data[node] = node_info["function"].predict(parent_values)
-        num_scm_nodes = dag.number_of_nodes()
-        m_cols = np.random.randint(
-            self.config["num_cols_low"],
-            min(num_scm_nodes + 1, self.config["num_cols_high"]),
-        )
-        final_cols = np.random.choice(list(node_data.keys()), m_cols, replace=False)
-        matrix = pd.DataFrame(
-            {f"feature_{i}": node_data[col] for i, col in enumerate(final_cols)}
-        )
-        if np.random.rand() < self.config["apply_feature_warping_prob"]:
-            scaler = MinMaxScaler()
-            for col in matrix.columns:
-                col_data = scaler.fit_transform(matrix[[col]])
-                a, b = np.random.rand() * 5 + 0.5, np.random.rand() * 5 + 0.5
-                matrix[col] = scaler.inverse_transform(
-                    beta.ppf(np.clip(col_data, 1e-10, 1 - 1e-10), a, b).reshape(-1, 1)
-                ).flatten()
-        if np.random.rand() < self.config["apply_quantization_prob"]:
-            col_to_quantize = np.random.choice(matrix.columns)
-            try:
-                matrix[col_to_quantize] = pd.qcut(
-                    matrix[col_to_quantize],
-                    q=np.random.randint(2, 20),
-                    labels=False,
-                    duplicates="drop",
-                )
-            except (ValueError, IndexError):
-                pass
-        return matrix
+#     def generate_complete_matrix(self) -> pd.DataFrame:
+#         dag = self._sample_dag_structure()
+#         self._assign_functional_mechanisms(dag)
+#         n_rows = int(
+#             sample_log_uniform(
+#                 self.config["num_rows_low"], self.config["num_rows_high"]
+#             )[0]
+#         )
+#         node_data = {node: np.zeros(n_rows) for node in nx.topological_sort(dag)}
+#         for node in nx.topological_sort(dag):
+#             parents = list(dag.predecessors(node))
+#             node_info = dag.nodes[node]
+#             if not parents:
+#                 node_data[node] = (
+#                     np.random.randn(n_rows)
+#                     if np.random.choice(self.config["root_node_noise_dist"]) == "Normal"
+#                     else np.random.uniform(-1, 1, n_rows)
+#                 )
+#             else:
+#                 parent_values = np.vstack([node_data[p] for p in parents]).T
+#                 if node_info.get("type") == "scm":
+#                     node_data[node] = node_info["function"](
+#                         np.dot(parent_values, node_info["weights"]) + node_info["bias"]
+#                     )
+#                 elif node_info.get("type") == "random_fourier":
+#                     node_data[node] = node_info["function"](
+#                         parent_values[:, node_info["parent_selector"]]
+#                     )
+#                 elif node_info.get("type") == "tree":
+#                     node_info["function"].fit(parent_values, np.random.randn(n_rows))
+#                     node_data[node] = node_info["function"].predict(parent_values)
+#         num_scm_nodes = dag.number_of_nodes()
+#         m_cols = np.random.randint(
+#             self.config["num_cols_low"],
+#             min(num_scm_nodes + 1, self.config["num_cols_high"]),
+#         )
+#         final_cols = np.random.choice(list(node_data.keys()), m_cols, replace=False)
+#         matrix = pd.DataFrame(
+#             {f"feature_{i}": node_data[col] for i, col in enumerate(final_cols)}
+#         )
+#         if np.random.rand() < self.config["apply_feature_warping_prob"]:
+#             scaler = MinMaxScaler()
+#             for col in matrix.columns:
+#                 col_data = scaler.fit_transform(matrix[[col]])
+#                 a, b = np.random.rand() * 5 + 0.5, np.random.rand() * 5 + 0.5
+#                 matrix[col] = scaler.inverse_transform(
+#                     beta.ppf(np.clip(col_data, 1e-10, 1 - 1e-10), a, b).reshape(-1, 1)
+#                 ).flatten()
+#         if np.random.rand() < self.config["apply_quantization_prob"]:
+#             col_to_quantize = np.random.choice(matrix.columns)
+#             try:
+#                 matrix[col_to_quantize] = pd.qcut(
+#                     matrix[col_to_quantize],
+#                     q=np.random.randint(2, 20),
+#                     labels=False,
+#                     duplicates="drop",
+#                 )
+#             except (ValueError, IndexError):
+#                 pass
+#         return matrix
 
 
 class LatentFactorPrior:
@@ -892,6 +892,17 @@ def create_train_test_sets(
     test_y = torch.stack(test_y_list) if test_y_list else torch.empty(0)
     return train_X, train_y, test_X, test_y
 
+class SCMPriorTabICL:
+    def __init__(self, config: dict):
+        # Map the config to the SCMPrior config
+        
+        self.scm = SCMPrior(
+            min_features = config['num_cols_low'],
+            max_features = int(config['num_cols_high']),
+            min_seq_len = config['num_rows_low'],
+            max_seq_len = config['num_rows_high'],
+            prior_type = "mlp_scm"
+        )
 
 # Main class
 class MissingnessPrior:
@@ -899,7 +910,7 @@ class MissingnessPrior:
     Main dataset class that provides an infinite iterator over synthetic tabular datasets.
     """
     generator_map = {
-            "scm": SCMPrior,
+            "scm": SCMPriorTabICL,
             "latent_factor": LatentFactorPrior,
             "nonlinear_factor": NonLinearFactorPrior,
             "robust_pca": RobustPCAPrior,
@@ -965,31 +976,40 @@ class MissingnessPrior:
         step = 0
         if self.verbose:
             pbar = tqdm(total=self.batch_size, desc="Generating batches")
+        
+        if isinstance(self.generator, SCMPriorTabICL):
+            # X_list, y_list, train_sizes = self.generator.generate_batch(batch_size)
+            scm_X, scm_y, _, _, _ = self.generator.scm.get_batch(batch_size)
+        
         while step < self.batch_size:
         # for i in tqdm(range(self.batch_size), desc="Generating batches"):
-            try:
+            # try:
+            if isinstance(self.generator, SCMPriorTabICL):
+                X = torch.cat((scm_X[step, :, :], scm_y[step, :].unsqueeze(dim=-1)), dim=1)
+            else:
                 complete_df = self.generator.generate_complete_matrix()
                 X = torch.tensor(complete_df.values, dtype=torch.float32)
-                
-                # Normalize the data
-                X = torch.squeeze(normalize_data(torch.unsqueeze(X, 1)), 1)
-                
-                if X.numel() == 0: # if the matrix is empty, skip
-                    continue
-                X_missing = self.missingness_inducer._induce_missingness(X.clone())
-                train_X, train_y, test_X, test_y = create_train_test_sets(
-                    X_missing, X_full=X
-                )
-                # if train_X.shape[0] != train_X.shape[0] + test_X.shape[0] - self.num_missing:
-                #     raise ValueError('train_sizes[i] != train_X.shape[0] + test_X.shape[0] - self.num_missing')
-                X_list.append(torch.cat((train_X, test_X)))
-                y_list.append(torch.cat((train_y, test_y)))
-                train_sizes[step] = train_X.shape[0]
-                step += 1
-                if self.verbose:
-                    pbar.update(1)
-            except Exception as _: # Skip if any error occurs
+            
+            # Normalize the data
+            X = torch.squeeze(normalize_data(torch.unsqueeze(X, 1)), 1)
+            
+            if X.numel() == 0: # if the matrix is empty, skip
                 continue
+            X_missing = self.missingness_inducer._induce_missingness(X.clone())
+            train_X, train_y, test_X, test_y = create_train_test_sets(
+                X_missing, X_full=X
+            )
+            # if train_X.shape[0] != train_X.shape[0] + test_X.shape[0] - self.num_missing:
+            #     raise ValueError('train_sizes[i] != train_X.shape[0] + test_X.shape[0] - self.num_missing')
+            X_list.append(torch.cat((train_X, test_X)))
+            y_list.append(torch.cat((train_y, test_y)))
+            train_sizes[step] = train_X.shape[0]
+            step += 1
+            if self.verbose:
+                pbar.update(1)
+            # except Exception as e: # Skip if any error occurs
+            #     print(e)
+            #     continue
         if not X_list:
             return self.get_batch()  # Retry if all generations failed
         

@@ -56,6 +56,7 @@ results = {}
 
 # --- Run benchmark ---
 for X, name, did in datasets:
+    
     for pattern_name, pattern in patterns.items():
         X_missing = pattern._induce_missingness(X.clone())
         imputer_errors = {}
