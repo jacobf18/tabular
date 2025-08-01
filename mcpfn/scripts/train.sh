@@ -1,9 +1,22 @@
 # Loading from disk and training
 # torchrun --standalone --nproc_per_node=1 /Users/jfeit/tabular/mcpfn/src/mcpfn/train/run.py \
+
+echo "Training model for Missingness: ${1} Generator: ${2} Rows: ${3} Columns: ${4}"
+
+# Set the save directory as an environment variable
+BASE_DIR="/mnt/volume_nyc2_1750872154987/"
+PRIOR_DIR="${BASE_DIR}/data/${1}_${2}_${3}_${4}"
+CHECKPOINT_DIR="${BASE_DIR}/checkpoints/${1}_${2}_${3}_${4}"
+
+mkdir -p ${CHECKPOINT_DIR}
+# Create a unique id for the checkpoint in a wand_id.txt file
+WAND_ID=wand$(date +%s)
+echo ${WAND_ID} > ${CHECKPOINT_DIR}/wand_id.txt
+
 python3 /root/tabular/mcpfn/src/mcpfn/train/run.py \
             --wandb_log True \
             --wandb_project MCPFN \
-            --wandb_name nonlinear_factor_mar_10_8_missing_grad \
+            --wandb_name ${1}_${2}_${3}_${4} \
             --wandb_dir /root/tabular/mcpfn/wandb \
             --wandb_mode online \
             --device cuda \
@@ -17,7 +30,7 @@ python3 /root/tabular/mcpfn/src/mcpfn/train/run.py \
             --scheduler cosine_warmup \
             --warmup_proportion 0.02 \
             --gradient_clipping 1.0 \
-            --prior_dir /mnt/volume_nyc2_1750872154987/data/small_10_8_nonlinear_factor_mar \
+            --prior_dir ${PRIOR_DIR} \
             --load_prior_start 0 \
             --delete_after_load False \
             --prior_device cpu \
@@ -33,11 +46,11 @@ python3 /root/tabular/mcpfn/src/mcpfn/train/run.py \
             --icl_nhead 4 \
             --ff_factor 2 \
             --norm_first True \
-            --checkpoint_dir /mnt/volume_nyc2_1750872154987/checkpoints/nonlinear_factor_mar_missing_grad \
+            --checkpoint_dir ${CHECKPOINT_DIR} \
             --save_temp_every 50 \
             --save_perm_every 5000 \
             --epochs 100 \
             --encoder_path /root/tabular/mcpfn/src/mcpfn/model/encoder.pth \
             --borders_path /root/tabular/mcpfn/borders.pt \
-            --model_name nonlinear_factor_mar_10_8.ckpt \
+            --model_name ${1}_${2}_${3}_${4}.ckpt \
             --save_every 15
