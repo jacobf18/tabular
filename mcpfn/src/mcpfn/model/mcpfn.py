@@ -6,6 +6,7 @@ import torch
 
 from mcpfn.model.config import ModelConfig
 from mcpfn.model.transformer import PerFeatureTransformer
+from tabpfn import TabPFNRegressor
 
 # from mcpfn.prior.training_set_generation import TabICLSCMPrior
 # from mcpfn.train.run import Trainer
@@ -98,4 +99,23 @@ class MCPFN(nn.Module):
         
         out = self.model(X, y_train, single_eval_pos = X.shape[0], only_return_standard_out=False)
 
+        return einops.rearrange(out, "t b h -> b t h")
+    
+class TabPFNModel(nn.Module):
+    def __init__(self, device: str = "cuda"):
+        self.model = None
+        self.device = device
+        
+    def forward(self, X: Tensor, y_train: Tensor, d: Optional[Tensor] = None) -> Tensor:
+        if self.model is None:
+            reg = TabPFNRegressor(device=self.device)
+            X_npy = X[0,:,:].cpu().numpy()
+            y_train_npy = y_train[0,:].cpu().numpy()
+            reg.fit(X_npy, y_train_npy)
+            self.model = reg.model_
+        
+        X = einops.rearrange(X, "b t h -> t b h")
+        y_train = einops.rearrange(y_train, "b t -> t b")
+        out = self.model(X, y_train, single_eval_pos = X.shape[0], only_return_standard_out=False)
+        
         return einops.rearrange(out, "t b h -> b t h")

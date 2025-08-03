@@ -650,7 +650,7 @@ class Trainer:
         return micro_X, micro_y
 
     def run_micro_batch(
-        self, micro_batch, micro_batch_idx, num_micro_batches, is_train=True
+        self, micro_batch, micro_batch_idx, num_micro_batches, is_train=True, is_tabpfn = False
     ):
         """Process a micro batch for gradient accumulation.
 
