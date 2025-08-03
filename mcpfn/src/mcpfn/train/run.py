@@ -702,6 +702,9 @@ class Trainer:
         # Set values after train_size to nan for each row
         y_train[~mask] = torch.nan
         
+        # Add a new column of mask to X at the first position
+        micro_X = torch.cat([mask.unsqueeze(2), micro_X], dim=2)
+
         mask_reshaped = einops.rearrange(mask, "b t -> t b")
 
         # y_train = micro_y[:, :train_size]
