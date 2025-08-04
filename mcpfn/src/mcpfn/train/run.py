@@ -733,9 +733,9 @@ class Trainer:
 
             # Scale loss for gradient accumulation and backpropagate
             scaled_loss = loss.mean() / num_micro_batches
-            self.scaler.scale(scaled_loss).backward()
+            # self.scaler.scale(scaled_loss).backward()
             missing_loss = loss[~mask_reshaped].mean() / num_micro_batches
-            # self.scaler.scale(missing_loss).backward()
+            self.scaler.scale(missing_loss).backward()
 
         else:  # val
             with torch.no_grad():
