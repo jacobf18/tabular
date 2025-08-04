@@ -11,7 +11,7 @@ import math
 import numpy as np
 import pickle
 import einops
-
+import json
 import torch
 from torch import nn
 from torch import optim
@@ -24,6 +24,7 @@ from torch.distributed import init_process_group, destroy_process_group
 from tqdm import tqdm
 import wandb
 
+
 # from mcpfn import TabICL
 from mcpfn.model.mcpfn import MCPFN
 from mcpfn.prior.dataset import PriorDataset
@@ -32,6 +33,7 @@ from mcpfn.train.optim import get_scheduler
 from mcpfn.train.train_config import build_parser
 from mcpfn.model.bar_distribution import FullSupportBarDistribution
 from mcpfn.model.encoders import torch_nanmean
+from mcpfn.model.mcpfn import TabPFNModel
 
 warnings.filterwarnings(
     "ignore",
@@ -101,6 +103,9 @@ class Trainer:
         self.bar_distribution = FullSupportBarDistribution(borders=borders)
 
         self.step_progress = step_progress
+        
+        self.len_train = 8
+        self.len_val = 2
 
     def configure_ddp(self):
         """Set up distributed training and system configuration.
@@ -203,6 +208,8 @@ class Trainer:
 
         model = MCPFN(encoder_path=self.config.encoder_path)
         model.to(device=self.config.device)
+        
+        self.tabpfn_model = TabPFNModel(device=self.config.device)
 
         if self.master_process:
             num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -476,9 +483,6 @@ class Trainer:
         train_dataloader = iter(self.train_dataloader)
         val_dataloader = iter(self.val_dataloader)
 
-        len_train = 8
-        len_val = 2
-
         for step in step_progress:
             # Get the next batch
             with Timer() as prior_timer:
@@ -522,7 +526,7 @@ class Trainer:
 
         # Validate the model on the validation set
         # step_progress = tqdm(range(len_val), desc="Validation")
-        step_progress = range(len_val)
+        step_progress = range(self.len_val)
         for batch in step_progress:
             batch = next(val_dataloader)
             results_batch = self.run_batch(batch, is_train=False)
@@ -535,16 +539,16 @@ class Trainer:
             torch.cuda.empty_cache()
 
         # Average results
-        results["ce"] /= len_train
-        results["mae"] /= len_train
-        results["missing_ce"] /= len_train
-        results["missing_mae"] /= len_train
-        results["val_ce"] /= len_val
-        results["val_mae"] /= len_val
-        results["val_missing_ce"] /= len_val
-        results["val_missing_mae"] /= len_val
-        results["prior_time"] /= len_train
-        results["train_time"] /= len_train
+        results["ce"] /= self.len_train
+        results["mae"] /= self.len_train
+        results["missing_ce"] /= self.len_train
+        results["missing_mae"] /= self.len_train
+        results["val_ce"] /= self.len_val
+        results["val_mae"] /= self.len_val
+        results["val_missing_ce"] /= self.len_val
+        results["val_missing_mae"] /= self.len_val
+        results["prior_time"] /= self.len_train
+        results["train_time"] /= self.len_train
 
         print_vals = {
             'ce': round(results["ce"], 3),
@@ -679,6 +683,7 @@ class Trainer:
         micro_X = micro_X.to(self.config.device)
         micro_y = micro_y.to(self.config.device)
         micro_d = micro_d.to(self.config.device)
+        micro_train_size = micro_train_size.to(self.config.device)
 
         # Compute mean along dim=2 (last dimension), ignoring NaNs
         mean_vals = torch.nanmean(micro_X, dim=2, keepdim=True)  # shape: [1, 2000, 1]
@@ -728,15 +733,21 @@ class Trainer:
 
             # Scale loss for gradient accumulation and backpropagate
             scaled_loss = loss.mean() / num_micro_batches
-            # self.scaler.scale(scaled_loss).backward()
+            self.scaler.scale(scaled_loss).backward()
             missing_loss = loss[~mask_reshaped].mean() / num_micro_batches
-            self.scaler.scale(missing_loss).backward()
+            # self.scaler.scale(missing_loss).backward()
 
         else:  # val
             with torch.no_grad():
-                pred = self.model(
-                    micro_X, y_train, micro_d
-                )  # (B, test_size, max_classes)
+                if not is_tabpfn:
+                    pred = self.model(
+                        micro_X, y_train, micro_d
+                    )  # (B, test_size, max_classes)
+                else:
+                    pred = self.tabpfn_model.forward(
+                        micro_X, y_train, micro_train_size
+                    )  # (B, test_size, max_classes)
+                
                 pred = einops.rearrange(pred, "b t h -> t b h")
                 loss = self.bar_distribution(
                     logits=pred, y=einops.rearrange(micro_y, "b t -> t b")
@@ -757,7 +768,7 @@ class Trainer:
 
         return micro_results
 
-    def run_batch(self, batch, is_train=True):
+    def run_batch(self, batch, is_train=True, is_tabpfn=False):
         """
         Trains the model on a batch of datasets. Handles gradient accumulation by
         splitting the batch into micro-batches. Supports variable-sized datasets
@@ -804,7 +815,7 @@ class Trainer:
         for idx, micro_batch in enumerate(micro_batches):
             try:
                 micro_results = self.run_micro_batch(
-                    micro_batch, idx, num_micro_batches, is_train
+                    micro_batch, idx, num_micro_batches, is_train, is_tabpfn
                 )
                 for k, v in micro_results.items():
                     results[k] += v
@@ -859,6 +870,18 @@ if __name__ == "__main__":
     # Create trainer and start training
     step_progress = tqdm(range(config.epochs), desc="Epoch")
     trainer = Trainer(config, step_progress)
+    
+    val_dataloader = iter(trainer.val_dataloader)
+    
+    for i in tqdm(range(trainer.len_val), desc="TabPFN Validation"):
+        batch = next(val_dataloader)
+        tabpfn_results_dict = trainer.run_batch(batch, is_train=False, is_tabpfn=True)
+        
+        # output results to JSON file in the same directory as the prior data
+        with open(f"{trainer.config.prior_dir}/tabpfn_results_{i}.json", "w") as f:
+            json.dump(tabpfn_results_dict, f)
+        
+    exit()
     for epoch in step_progress:
         trainer.train()
         # trainer.configure_prior()

@@ -7,6 +7,7 @@ import torch
 from mcpfn.model.config import ModelConfig
 from mcpfn.model.transformer import PerFeatureTransformer
 from tabpfn import TabPFNRegressor
+from .encoders import torch_nanmean
 
 # from mcpfn.prior.training_set_generation import TabICLSCMPrior
 # from mcpfn.train.run import Trainer
@@ -103,19 +104,35 @@ class MCPFN(nn.Module):
     
 class TabPFNModel(nn.Module):
     def __init__(self, device: str = "cuda"):
+        super().__init__()
         self.model = None
         self.device = device
         
-    def forward(self, X: Tensor, y_train: Tensor, d: Optional[Tensor] = None) -> Tensor:
+    def forward(self, X: Tensor, y: Tensor, train_sizes: Tensor) -> Tensor:
         if self.model is None:
             reg = TabPFNRegressor(device=self.device)
             X_npy = X[0,:,:].cpu().numpy()
-            y_train_npy = y_train[0,:].cpu().numpy()
-            reg.fit(X_npy, y_train_npy)
+            y_npy = y[0,:].cpu().numpy()
+            # fill nan values with mean of the y values
+            y_npy[np.isnan(y_npy)] = np.nanmean(y_npy)
+            reg.fit(X_npy, y_npy)
             self.model = reg.model_
+            
+        # Get the mask of test values
+        mask = torch.zeros_like(y, dtype=torch.bool, device=self.device)
+        for i in range(len(train_sizes)):
+            mask[i, :train_sizes[i]] = True
+        # Set values after train_size to nan for each row
+        y[~mask] = torch.nan
+        
+        # Set the nan y values to mean of the y values
+        batch_means = torch_nanmean(y, axis=1)
+        y[~mask] = torch.repeat_interleave(batch_means, X.shape[1] - train_sizes, dim=0)
         
         X = einops.rearrange(X, "b t h -> t b h")
-        y_train = einops.rearrange(y_train, "b t -> t b")
-        out = self.model(X, y_train, single_eval_pos = X.shape[0], only_return_standard_out=False)
+        y = einops.rearrange(y, "b t -> t b")
+        out = self.model(X, y, single_eval_pos = X.shape[0], only_return_standard_out=False)["train_embeddings"]
+        
+        out = self.model.decoder_dict["standard"](out)
         
         return einops.rearrange(out, "t b h -> b t h")
