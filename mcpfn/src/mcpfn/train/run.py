@@ -382,7 +382,7 @@ class Trainer:
         if "state_dict" not in checkpoint:
             raise ValueError("Checkpoint does not contain model state")
 
-        self.raw_model.load_state_dict(checkpoint["state_dict"])
+        self.model.load_state_dict(checkpoint["state_dict"])
 
         # Optionally load optimizer and scheduler state
         if self.config.only_load_model:
@@ -868,20 +868,19 @@ if __name__ == "__main__":
     #     pass  # Ignore the error if the context has already been set
 
     # Create trainer and start training
-    step_progress = tqdm(range(config.epochs), desc="Epoch")
+    step_progress = tqdm(range(100,100+config.epochs), desc="Epoch")
     trainer = Trainer(config, step_progress)
     
-    val_dataloader = iter(trainer.val_dataloader)
+    # val_dataloader = iter(trainer.val_dataloader)
     
-    for i in tqdm(range(trainer.len_val), desc="TabPFN Validation"):
-        batch = next(val_dataloader)
-        tabpfn_results_dict = trainer.run_batch(batch, is_train=False, is_tabpfn=True)
+    # for i in tqdm(range(trainer.len_val), desc="TabPFN Validation"):
+    #     batch = next(val_dataloader)
+    #     tabpfn_results_dict = trainer.run_batch(batch, is_train=False, is_tabpfn=True)
         
-        # output results to JSON file in the same directory as the prior data
-        with open(f"{trainer.config.prior_dir}/tabpfn_results_{i}.json", "w") as f:
-            json.dump(tabpfn_results_dict, f)
-        
-    exit()
+    #     # output results to JSON file in the same directory as the prior data
+    #     with open(f"{trainer.config.prior_dir}/tabpfn_results_{i}.json", "w") as f:
+    #         json.dump(tabpfn_results_dict, f)
+    
     for epoch in step_progress:
         trainer.train()
         # trainer.configure_prior()

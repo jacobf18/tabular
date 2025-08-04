@@ -6,17 +6,17 @@ echo "Training model for Missingness: ${1} Generator: ${2} Rows: ${3} Columns: $
 # Set the save directory as an environment variable
 BASE_DIR="/mnt/volume_nyc2_1750872154987/"
 PRIOR_DIR="${BASE_DIR}/data/${1}_${2}_${3}_${4}"
-CHECKPOINT_DIR="${BASE_DIR}/checkpoints/${1}_${2}_${3}_${4}_${5}_full_grad"
+CHECKPOINT_DIR="${BASE_DIR}/checkpoints/${1}_${2}_${3}_${4}_${5}"
 
-mkdir -p ${CHECKPOINT_DIR}
+# mkdir -p ${CHECKPOINT_DIR}
 # Create a unique id for the checkpoint in a wand_id.txt file
-WAND_ID=wand$(date +%s)${5}_full_grad
-echo ${WAND_ID} > ${CHECKPOINT_DIR}/wand_id.txt
+# WAND_ID=wand$(date +%s)_2
+# echo ${WAND_ID} > ${CHECKPOINT_DIR}/wand_id.txt
 
 python3 /root/tabular/mcpfn/src/mcpfn/train/run.py \
-            --wandb_log False \
+            --wandb_log True \
             --wandb_project MCPFN \
-            --wandb_name ${1}_${2}_${3}_${4}_${5}_full_grad \
+            --wandb_name ${1}_${2}_${3}_${4}_${5} \
             --wandb_dir /root/tabular/mcpfn/wandb \
             --wandb_mode online \
             --device cuda \
@@ -53,4 +53,5 @@ python3 /root/tabular/mcpfn/src/mcpfn/train/run.py \
             --encoder_path /root/tabular/mcpfn/src/mcpfn/model/encoder.pth \
             --borders_path /root/tabular/mcpfn/borders.pt \
             --model_name ${1}_${2}_${3}_${4}_${5}.ckpt \
-            --save_every 15
+            --save_every 15 \
+            --checkpoint_path ${CHECKPOINT_DIR}/epoch_100_${1}_${2}_${3}_${4}_${5}.ckpt

@@ -52,7 +52,7 @@ mcpfn = ImputePFN(
     device='cuda',
     encoder_path='/root/tabular/mcpfn/src/mcpfn/model/encoder.pth',
     borders_path='/root/tabular/mcpfn/borders.pt',
-    checkpoint_path='/mnt/volume_nyc2_1750872154988/zero_noise_small.ckpt'
+    checkpoint_path='/mnt/volume_nyc2_1750872154987/checkpoints/mcar_scm_10_5_1e-4/epoch_45_mcar_scm_10_5_1e-4.ckpt'
 )
 tabpfn = TabPFNImputer(device='cuda')
 
@@ -62,7 +62,8 @@ results = {}
 # --- Run benchmark ---
 for X, name, did in datasets:
     # Normalize the data
-    X_normalized = (X - X.mean(dim=0)) / (X.std(dim=0) + 1e-8)
+    X_normalized = (X - X.mean(dim=0)) / (X.std(dim=0) + 1e-16)
+    X_normalized = X_normalized[:10,:5]
     
     for pattern_name, pattern in patterns.items():
         X_missing = pattern._induce_missingness(X_normalized.clone())
@@ -76,18 +77,18 @@ for X, name, did in datasets:
         X_tabpfn = tabpfn.impute(X_missing.numpy().copy())
         imputer_errors["TabPFN"] = compute_abs_errors(X_normalized, X_missing, X_tabpfn)
 
-        # SoftImpute with safe scaling
-        X_np = X_missing.numpy()
-        X_scaled = scale_columns_ignoring_nans(X_np)
-        X_soft = SoftImpute().fit_transform(X_scaled)
-        imputer_errors["SoftImpute"] = compute_abs_errors(X_normalized, X_missing, X_soft)
+        # # SoftImpute with safe scaling
+        # X_np = X_missing.numpy()
+        # X_scaled = scale_columns_ignoring_nans(X_np)
+        # X_soft = SoftImpute().fit_transform(X_scaled)
+        # imputer_errors["SoftImpute"] = compute_abs_errors(X_normalized, X_missing, X_soft)
         
         # Mean imputation
         plugin = Imputers().get("mean")
         out = plugin.fit_transform(X_missing.numpy().copy()).to_numpy()
         imputer_errors["Column Mean"] = compute_abs_errors(X_normalized, X_missing, out)
         
-        # Mean imputation
+        # HyperImpute imputation
         plugin = Imputers().get("hyperimpute")
         out = plugin.fit_transform(X_missing.numpy().copy()).to_numpy()
         imputer_errors["HyperImpute"] = compute_abs_errors(X_normalized, X_missing, out)
