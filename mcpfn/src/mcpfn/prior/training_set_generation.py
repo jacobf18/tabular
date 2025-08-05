@@ -901,7 +901,7 @@ class SCMPriorTabICL:
             max_features = int(config['num_cols_high']),
             min_seq_len = config['num_rows_low'],
             max_seq_len = config['num_rows_high'],
-            prior_type = "mlp_scm"
+            prior_type = "mix_scm"
         )
 
 # Main class

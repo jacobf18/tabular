@@ -23,7 +23,7 @@ python3 /root/tabular/mcpfn/src/mcpfn/prior/genload.py \
     --num_batches 10 \
     --resume_from 0 \
     --batch_size 10000 \
-    --batch_size_per_gp 10000 \
+    --batch_size_per_gp 100 \
     --prior_type missing \
     --min_features $4 \
     --max_features $4 \

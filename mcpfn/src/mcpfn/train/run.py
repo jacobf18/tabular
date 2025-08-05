@@ -274,17 +274,16 @@ class Trainer:
         )
 
         # Create dataloader for efficient loading and prefetching
-        # print(self.config.device)
         self.train_dataloader = DataLoader(
             train_dataset,
             batch_size=None,  # No additional batching since PriorDataset handles batching internally
             shuffle=False,
             num_workers=1,
             prefetch_factor=4,
-            # pin_memory=True if self.config.prior_device == "cpu" else False,
-            # pin_memory_device=(
-            #     self.config.device if self.config.prior_device == "cpu" else ""
-            # ),
+            pin_memory=True if self.config.prior_device == "cpu" else False,
+            pin_memory_device=(
+                self.config.device if self.config.prior_device == "cpu" else ""
+            ),
         )
         self.val_dataloader = DataLoader(
             val_dataset,
@@ -292,10 +291,10 @@ class Trainer:
             shuffle=False,
             num_workers=1,
             prefetch_factor=4,
-            # pin_memory=True if self.config.prior_device == "cpu" else False,
-            # pin_memory_device=(
-            #     self.config.device if self.config.prior_device == "cpu" else ""
-            # ),
+            pin_memory=True if self.config.prior_device == "cpu" else False,
+            pin_memory_device=(
+                self.config.device if self.config.prior_device == "cpu" else ""
+            ),
         )
 
     def configure_optimizer(self):
