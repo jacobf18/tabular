@@ -1,22 +1,22 @@
 # Loading from disk and training
 # torchrun --standalone --nproc_per_node=1 /Users/jfeit/tabular/mcpfn/src/mcpfn/train/run.py \
 
-echo "Training model for Missingness: ${1} Generator: ${2} Rows: ${3} Columns: ${4} Learning Rate: ${5}"
+echo "Training model"
 
 # Set the save directory as an environment variable
-BASE_DIR="/mnt/volume_nyc2_1750872154987/"
-PRIOR_DIR="${BASE_DIR}/data/${1}_${2}_${3}_${4}"
-CHECKPOINT_DIR="${BASE_DIR}/checkpoints/${1}_${2}_${3}_${4}_${5}"
+BASE_DIR="/mnt/mcpfn_data"
+PRIOR_DIR="${BASE_DIR}/data/"
+CHECKPOINT_DIR="${BASE_DIR}/checkpoints/all_data/"
 
 # mkdir -p ${CHECKPOINT_DIR}
-# Create a unique id for the checkpoint in a wand_id.txt file
-# WAND_ID=wand$(date +%s)_2
+# # Create a unique id for the checkpoint in a wand_id.txt file
+# WAND_ID=wand$(date +%s)
 # echo ${WAND_ID} > ${CHECKPOINT_DIR}/wand_id.txt
 
 python3 /root/tabular/mcpfn/src/mcpfn/train/run.py \
-            --wandb_log True \
+            --wandb_log False \
             --wandb_project MCPFN \
-            --wandb_name ${1}_${2}_${3}_${4}_${5} \
+            --wandb_name ${1} \
             --wandb_dir /root/tabular/mcpfn/wandb \
             --wandb_mode online \
             --device cuda \
@@ -26,7 +26,7 @@ python3 /root/tabular/mcpfn/src/mcpfn/train/run.py \
             --max_steps 8 \
             --batch_size 10000 \
             --micro_batch_size 100 \
-            --lr ${5} \
+            --lr ${1} \
             --scheduler cosine_warmup \
             --warmup_proportion 0.02 \
             --gradient_clipping 1.0 \
@@ -52,6 +52,6 @@ python3 /root/tabular/mcpfn/src/mcpfn/train/run.py \
             --epochs 100 \
             --encoder_path /root/tabular/mcpfn/src/mcpfn/model/encoder.pth \
             --borders_path /root/tabular/mcpfn/borders.pt \
-            --model_name ${1}_${2}_${3}_${4}_${5}.ckpt \
-            --save_every 15 \
-            --checkpoint_path ${CHECKPOINT_DIR}/epoch_100_${1}_${2}_${3}_${4}_${5}.ckpt
+            --model_name ${1}.ckpt \
+            --save_every 15
+            # --checkpoint_path ${CHECKPOINT_DIR}/epoch_100_${1}.ckpt

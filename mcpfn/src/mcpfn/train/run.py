@@ -94,7 +94,7 @@ class Trainer:
         self.configure_ddp()
         self.configure_wandb()
         self.build_model()
-        self.configure_prior()
+        # self.configure_prior(self.config.prior_dir)
         self.configure_optimizer()
         self.configure_amp()
         self.load_checkpoint()
@@ -117,6 +117,7 @@ class Trainer:
         4. Sets random seeds for reproducibility
         """
         # Setup distributed training
+        print("Configuring DDP")
         self.ddp = int(os.environ.get("RANK", -1)) != -1
         self.ddp = False
 
@@ -150,7 +151,6 @@ class Trainer:
             self.ddp_rank = 0
             self.ddp_world_size = 1
             self.ddp_local_rank = 0
-            print("No DDP training")
 
         self.curr_step = 0  # Initialize current step for training
 
@@ -164,6 +164,7 @@ class Trainer:
     def configure_wandb(self):
         """Set up Weights & Biases logging."""
         if self.config.wandb_log and self.master_process:
+            print("Configuring wandb")
             id_path = os.path.join(self.config.checkpoint_dir, "wand_id.txt")
             if self.config.wandb_id is None:
                 if os.path.exists(id_path):
@@ -187,7 +188,7 @@ class Trainer:
 
     def build_model(self):
         """Build and initialize the TabICL model."""
-
+        print("Building model")
         self.model_config = {
             "max_classes": self.config.max_classes,
             "embed_dim": self.config.embed_dim,
@@ -247,14 +248,14 @@ class Trainer:
             self.model = model
             self.raw_model = model
 
-    def configure_prior(self):
+    def configure_prior(self, prior_dir):
         """
         Sets up a tabular dataset generator that creates synthetic datasets
         during training with controllable properties and data distributions.
         """
         # Load pre-generated prior data from disk
         train_dataset = LoadPriorDataset(
-            data_dir=self.config.prior_dir + "/train",
+            data_dir=prior_dir + "/train",
             batch_size=self.config.batch_size,
             ddp_world_size=self.ddp_world_size,
             ddp_rank=self.ddp_rank,
@@ -264,7 +265,7 @@ class Trainer:
         )
 
         val_dataset = LoadPriorDataset(
-            data_dir=self.config.prior_dir + "/val",
+            data_dir=prior_dir + "/val",
             batch_size=self.config.batch_size,
             ddp_world_size=self.ddp_world_size,
             ddp_rank=self.ddp_rank,
@@ -299,7 +300,7 @@ class Trainer:
 
     def configure_optimizer(self):
         """Configure optimizer and scheduler."""
-
+        print("Configuring optimizer")
         self.optimizer = optim.AdamW(
             params=self.raw_model.parameters(),
             lr=self.config.lr,
@@ -309,7 +310,7 @@ class Trainer:
 
     def configure_amp(self):
         """Configure automatic mixed precision (AMP) for training."""
-
+        print("Configuring AMP")
         self.amp = self.config.amp and "cuda" in self.config.device
         self.scaler = torch.GradScaler("cuda", enabled=self.amp)
         if self.amp:
@@ -867,8 +868,8 @@ if __name__ == "__main__":
     #     pass  # Ignore the error if the context has already been set
 
     # Create trainer and start training
-    step_progress = tqdm(range(100,100+config.epochs), desc="Epoch")
-    trainer = Trainer(config, step_progress)
+    # step_progress = tqdm(range(0,config.epochs), desc="Epoch")
+    trainer = Trainer(config)
     
     # val_dataloader = iter(trainer.val_dataloader)
     
@@ -880,13 +881,25 @@ if __name__ == "__main__":
     #     with open(f"{trainer.config.prior_dir}/tabpfn_results_{i}.json", "w") as f:
     #         json.dump(tabpfn_results_dict, f)
     
-    for epoch in step_progress:
-        trainer.train()
-        # trainer.configure_prior()
-        trainer.curr_step = 0
-        
-        if epoch % config.save_every == 0 and epoch != 0:
-            trainer.save_checkpoint(name=f"epoch_{epoch}_{config.model_name}")
+    missingness_types=("mcar", "mar", "mnar")
+    columns=("5", "10", "20")
+    rows=("5", "10", "20")
 
-    # Save the trained model
-    trainer.save_checkpoint(name=f"epoch_{config.epochs}_{config.model_name}")
+    for missingness_type in missingness_types:
+        for column in columns:
+            for row in rows:
+                prior_dir = f"{config.prior_dir}/{missingness_type}_scm_{column}_{row}"
+                trainer.configure_prior(prior_dir)
+                print(prior_dir)
+                # trainer.train()
+    
+    # for epoch in step_progress:
+    #     trainer.train()
+    #     # trainer.configure_prior()
+    #     trainer.curr_step = 0
+        
+    #     if epoch % config.save_every == 0 and epoch != 0:
+    #         trainer.save_checkpoint(name=f"epoch_{epoch}_{config.model_name}")
+
+    # # Save the trained model
+    # trainer.save_checkpoint(name=f"epoch_{config.epochs}_{config.model_name}")
