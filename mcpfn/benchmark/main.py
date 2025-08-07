@@ -70,7 +70,7 @@ results = {}
 for X, name, did in datasets:
     # Normalize the data
     X_normalized = (X - X.mean(dim=0)) / (X.std(dim=0) + 1e-16)
-    # X_normalized = X_normalized[:10,:5]
+    X_normalized = X_normalized[:10,:5]
     
     for pattern_name, pattern in patterns.items():
         X_missing = pattern._induce_missingness(X_normalized.clone())

@@ -11,7 +11,8 @@ CHECKPOINT_DIR="${BASE_DIR}/checkpoints/all_data/"
 mkdir -p ${CHECKPOINT_DIR}
 # Create a unique id for the checkpoint in a wand_id.txt file
 RANDOM_ID=$(cat /dev/random | tr -dc '[:alnum:]' | head -c 10)
-WAND_ID=wand$(date +%s)${RANDOM_ID}
+# WAND_ID=wand$(date +%s)${RANDOM_ID}
+WAND_ID="wand1754581157hshlmRqeta"
 echo ${WAND_ID} > ${CHECKPOINT_DIR}/wand_id.txt
 
 python3 /root/tabular/mcpfn/src/mcpfn/train/run.py \
@@ -33,6 +34,7 @@ python3 /root/tabular/mcpfn/src/mcpfn/train/run.py \
             --gradient_clipping 1.0 \
             --prior_dir ${PRIOR_DIR} \
             --load_prior_start 0 \
+            --start_step 11 \
             --delete_after_load False \
             --prior_device cpu \
             --embed_dim 128 \
@@ -54,5 +56,5 @@ python3 /root/tabular/mcpfn/src/mcpfn/train/run.py \
             --encoder_path /root/tabular/mcpfn/src/mcpfn/model/encoder.pth \
             --borders_path /root/tabular/mcpfn/borders.pt \
             --model_name ${1}.ckpt \
-            --save_every 15
-            # --checkpoint_path ${CHECKPOINT_DIR}/epoch_100_${1}.ckpt
+            --save_every 15 \
+            --checkpoint_path ${CHECKPOINT_DIR}/config_10_1e-4.ckpt

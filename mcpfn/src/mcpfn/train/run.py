@@ -890,6 +890,10 @@ if __name__ == "__main__":
     for missingness_type in missingness_types:
         for column in columns:
             for row in rows:
+                if steps < config.start_step:
+                    pbar.update(1)
+                    steps += 1
+                    continue
                 prior_dir = f"{config.prior_dir}{missingness_type}_scm_{column}_{row}"
                 trainer.configure_prior(prior_dir)
                 trainer.train()
