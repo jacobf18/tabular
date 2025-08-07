@@ -4,19 +4,20 @@
 echo "Training model"
 
 # Set the save directory as an environment variable
-BASE_DIR="/mnt/mcpfn_data"
+BASE_DIR="/mnt/mcpfn_data_tor"
 PRIOR_DIR="${BASE_DIR}/data/"
 CHECKPOINT_DIR="${BASE_DIR}/checkpoints/all_data/"
 
-# mkdir -p ${CHECKPOINT_DIR}
-# # Create a unique id for the checkpoint in a wand_id.txt file
-# WAND_ID=wand$(date +%s)
-# echo ${WAND_ID} > ${CHECKPOINT_DIR}/wand_id.txt
+mkdir -p ${CHECKPOINT_DIR}
+# Create a unique id for the checkpoint in a wand_id.txt file
+RANDOM_ID=$(cat /dev/random | tr -dc '[:alnum:]' | head -c 10)
+WAND_ID=wand$(date +%s)${RANDOM_ID}
+echo ${WAND_ID} > ${CHECKPOINT_DIR}/wand_id.txt
 
 python3 /root/tabular/mcpfn/src/mcpfn/train/run.py \
-            --wandb_log False \
+            --wandb_log True \
             --wandb_project MCPFN \
-            --wandb_name ${1} \
+            --wandb_name medium_${1} \
             --wandb_dir /root/tabular/mcpfn/wandb \
             --wandb_mode online \
             --device cuda \

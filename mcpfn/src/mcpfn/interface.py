@@ -63,7 +63,7 @@ class ImputePFN:
         stds = np.nanstd(X, axis=0)
 
         # Normalize the input matrix
-        X_normalized = (X - means) / (stds + 1e-8) 
+        X_normalized = (X - means) / (stds + 1e-16) 
         # Add a small epsilon to avoid division by zero
 
         X_normalized_tensor = torch.from_numpy(X_normalized).to(self.device)

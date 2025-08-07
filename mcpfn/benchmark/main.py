@@ -37,7 +37,14 @@ def scale_columns_ignoring_nans(X: np.ndarray) -> np.ndarray:
     return X_scaled
 
 # --- Fetch datasets ---
-datasets = fetch_clean_openml_datasets(num_datasets=4)
+# datasets = fetch_clean_openml_datasets(num_datasets=4)
+
+# Load diabetes dataset
+from sklearn.datasets import load_diabetes
+X, y = load_diabetes(return_X_y=True)
+X = torch.tensor(X, dtype=torch.float32)
+
+datasets = [(X, "diabetes", 61)]
 
 # --- Define missingness patterns ---
 # add the one I said there was a bug in: MCARFixedPattern
@@ -52,7 +59,7 @@ mcpfn = ImputePFN(
     device='cuda',
     encoder_path='/root/tabular/mcpfn/src/mcpfn/model/encoder.pth',
     borders_path='/root/tabular/mcpfn/borders.pt',
-    checkpoint_path='/mnt/volume_nyc2_1750872154987/checkpoints/mcar_scm_10_5_1e-4/epoch_45_mcar_scm_10_5_1e-4.ckpt'
+    checkpoint_path='/mnt/mcpfn_data_tor/checkpoints/all_data/config_27_2e-4.ckpt'
 )
 tabpfn = TabPFNImputer(device='cuda')
 
@@ -63,7 +70,7 @@ results = {}
 for X, name, did in datasets:
     # Normalize the data
     X_normalized = (X - X.mean(dim=0)) / (X.std(dim=0) + 1e-16)
-    X_normalized = X_normalized[:10,:5]
+    # X_normalized = X_normalized[:10,:5]
     
     for pattern_name, pattern in patterns.items():
         X_missing = pattern._induce_missingness(X_normalized.clone())

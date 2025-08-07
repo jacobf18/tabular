@@ -25,6 +25,8 @@ def fetch_clean_openml_datasets(
     np.random.seed(seed)
     dataset_ids = datasets_df.sample(frac=1).index.tolist()  # shuffle
     collected = []
+    
+    openml.config.timeout = 5 # 5 seconds
 
     for did in dataset_ids:
         if len(collected) >= num_datasets:

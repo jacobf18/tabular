@@ -459,10 +459,10 @@ class Trainer:
         """
 
         if self.master_process:
-            step_progress = tqdm(
-                range(self.curr_step, self.config.max_steps), desc="Step", leave=True
-            )
-            # step_progress = range(self.curr_step, self.config.max_steps)
+            # step_progress = tqdm(
+            #     range(self.curr_step, self.config.max_steps), desc="Step", leave=True
+            # )
+            step_progress = range(self.curr_step, self.config.max_steps)
         else:
             step_progress = range(self.curr_step, self.config.max_steps)
 
@@ -881,25 +881,31 @@ if __name__ == "__main__":
     #     with open(f"{trainer.config.prior_dir}/tabpfn_results_{i}.json", "w") as f:
     #         json.dump(tabpfn_results_dict, f)
     
-    missingness_types=("mcar", "mar", "mnar")
-    columns=("5", "10", "20")
-    rows=("5", "10", "20")
+    missingness_types=["mcar", "mar", "mnar"]
+    columns=["5", "10", "20"]
+    rows=["5", "10", "20"]
 
+    steps = 0
+    pbar = tqdm(total=len(missingness_types) * len(columns) * len(rows), desc="Training")
     for missingness_type in missingness_types:
         for column in columns:
             for row in rows:
-                prior_dir = f"{config.prior_dir}/{missingness_type}_scm_{column}_{row}"
+                prior_dir = f"{config.prior_dir}{missingness_type}_scm_{column}_{row}"
                 trainer.configure_prior(prior_dir)
-                print(prior_dir)
-                # trainer.train()
+                trainer.train()
+                trainer.curr_step = 0
+                pbar.update(1)
+                steps += 1
+                pbar.set_description(f"Training {missingness_type} {column} {row}")
+                if steps % 5 == 0:
+                    trainer.save_checkpoint(name=f"config_{steps}_{config.model_name}")
+    pbar.close()
+    trainer.save_checkpoint(name=f"config_{steps}_{config.model_name}")
     
     # for epoch in step_progress:
     #     trainer.train()
     #     # trainer.configure_prior()
     #     trainer.curr_step = 0
-        
-    #     if epoch % config.save_every == 0 and epoch != 0:
-    #         trainer.save_checkpoint(name=f"epoch_{epoch}_{config.model_name}")
 
     # # Save the trained model
     # trainer.save_checkpoint(name=f"epoch_{config.epochs}_{config.model_name}")
