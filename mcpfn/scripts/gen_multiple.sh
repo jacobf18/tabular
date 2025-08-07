@@ -8,7 +8,7 @@ for missingness_type in "${missingness_types[@]}"; do
     for column in "${columns[@]}"; do
         for row in "${rows[@]}"; do
             echo "Generating data for Missingness: ${missingness_type} Columns: ${column} Rows: ${row}"
-            bash generate_data.sh ${missingness_type} scm ${column} ${row} > ${missingness_type}_${column}_${row}.log 2>&1 &
+            bash generate_data.sh ${missingness_type} scm ${column} ${row} > ${missingness_type}_${column}_${row}.log
         done
     done
 done
