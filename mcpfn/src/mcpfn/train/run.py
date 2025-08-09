@@ -253,50 +253,56 @@ class Trainer:
         Sets up a tabular dataset generator that creates synthetic datasets
         during training with controllable properties and data distributions.
         """
-        # Load pre-generated prior data from disk
-        train_dataset = LoadPriorDataset(
-            data_dir=prior_dir + "/train",
-            batch_size=self.config.batch_size,
-            ddp_world_size=self.ddp_world_size,
-            ddp_rank=self.ddp_rank,
-            start_from=self.config.load_prior_start,
-            delete_after_load=self.config.delete_after_load,
-            device=self.config.prior_device,
-        )
+        if self.config.prior_dir is not None:
+            # Load pre-generated prior data from disk
+            train_dataset = LoadPriorDataset(
+                data_dir=prior_dir + "/train",
+                batch_size=self.config.batch_size,
+                ddp_world_size=self.ddp_world_size,
+                ddp_rank=self.ddp_rank,
+                start_from=self.config.load_prior_start,
+                delete_after_load=self.config.delete_after_load,
+                device=self.config.prior_device,
+            )
 
-        val_dataset = LoadPriorDataset(
-            data_dir=prior_dir + "/val",
-            batch_size=self.config.batch_size,
-            ddp_world_size=self.ddp_world_size,
-            ddp_rank=self.ddp_rank,
-            start_from=self.config.load_prior_start,
-            delete_after_load=self.config.delete_after_load,
-            device=self.config.prior_device,
-        )
+            val_dataset = LoadPriorDataset(
+                data_dir=prior_dir + "/val",
+                batch_size=self.config.batch_size,
+                ddp_world_size=self.ddp_world_size,
+                ddp_rank=self.ddp_rank,
+                start_from=self.config.load_prior_start,
+                delete_after_load=self.config.delete_after_load,
+                device=self.config.prior_device,
+            )
 
-        # Create dataloader for efficient loading and prefetching
-        self.train_dataloader = DataLoader(
-            train_dataset,
-            batch_size=None,  # No additional batching since PriorDataset handles batching internally
-            shuffle=False,
-            num_workers=1,
-            prefetch_factor=4,
-            pin_memory=True if self.config.prior_device == "cpu" else False,
-            pin_memory_device=(
-                self.config.device if self.config.prior_device == "cpu" else ""
-            ),
-        )
-        self.val_dataloader = DataLoader(
-            val_dataset,
-            batch_size=None,  # No additional batching since PriorDataset handles batching internally
-            shuffle=False,
-            num_workers=1,
-            prefetch_factor=4,
-            pin_memory=True if self.config.prior_device == "cpu" else False,
-            pin_memory_device=(
-                self.config.device if self.config.prior_device == "cpu" else ""
-            ),
-        )
+            # Create dataloader for efficient loading and prefetching
+            self.train_dataloader = DataLoader(
+                train_dataset,
+                batch_size=None,  # No additional batching since PriorDataset handles batching internally
+                shuffle=False,
+                num_workers=1,
+                prefetch_factor=4,
+                pin_memory=True if self.config.prior_device == "cpu" else False,
+                pin_memory_device=(
+                    self.config.device if self.config.prior_device == "cpu" else ""
+                ),
+            )
+            self.val_dataloader = DataLoader(
+                val_dataset,
+                batch_size=None,  # No additional batching since PriorDataset handles batching internally
+                shuffle=False,
+                num_workers=1,
+                prefetch_factor=4,
+                pin_memory=True if self.config.prior_device == "cpu" else False,
+                pin_memory_device=(
+                    self.config.device if self.config.prior_device == "cpu" else ""
+                ),
+            )
+        else:
+            # Create data on the fly
+            train_dataset = PriorDataset(
+                
+            )
 
     def configure_optimizer(self):
         """Configure optimizer and scheduler."""
@@ -466,109 +472,87 @@ class Trainer:
         else:
             step_progress = range(self.curr_step, self.config.max_steps)
 
-        results = {
-            "ce": 0.0,
-            "mae": 0.0,
-            "missing_ce": 0.0,
-            "missing_mae": 0.0,
-            "val_ce": 0.0,
-            "val_mae": 0.0,
-            "val_missing_ce": 0.0,
-            "val_missing_mae": 0.0,
-            "prior_time": 0.0,
-            "train_time": 0.0,
-            "lr": 0.0,
-        }
 
         train_dataloader = iter(self.train_dataloader)
-        val_dataloader = iter(self.val_dataloader)
+        
+        if self.config.val_dataloader is not None:
+            val_dataloader = iter(self.val_dataloader)
+        else:
+            val_dataloader = None
 
         for step in step_progress:
+            results = {
+                "ce": 0.0,
+                "mae": 0.0,
+                "missing_ce": 0.0,
+                "missing_mae": 0.0,
+                "val_ce": 0.0,
+                "val_mae": 0.0,
+                "val_missing_ce": 0.0,
+                "val_missing_mae": 0.0,
+                # "prior_time": 0.0,
+                # "train_time": 0.0,
+                # "lr": 0.0,
+            }
+            
             # Get the next batch
             with Timer() as prior_timer:
                 batch = next(train_dataloader)
-            prior_time = prior_timer.elapsed
+            # prior_time = prior_timer.elapsed
+            
+            print(batch)
 
             # Train the model on the batch
-            with Timer() as train_timer:
-                results_batch = self.run_batch(batch, is_train=True)
-                results["ce"] += results_batch["ce"]
-                results["mae"] += results_batch["mae"]
-                results["missing_ce"] += results_batch["missing_ce"]
-                results["missing_mae"] += results_batch["missing_mae"]
-            train_time = train_timer.elapsed
+            # with Timer() as train_timer:
+            #     results_batch = self.run_batch(batch, is_train=True)
+            #     results["ce"] += results_batch["ce"]
+            #     results["mae"] += results_batch["mae"]
+            #     results["missing_ce"] += results_batch["missing_ce"]
+            #     results["missing_mae"] += results_batch["missing_mae"]
+            # # train_time = train_timer.elapsed
 
-            # Clear CUDA cache to free memory
-            torch.cuda.empty_cache()
+            # # Clear CUDA cache to free memory
+            # torch.cuda.empty_cache()
 
-            self.curr_step = step + 1
-            if self.master_process:
-                # Add timing information to results
-                results["prior_time"] += prior_time
-                results["train_time"] += train_time
-                results["lr"] = self.scheduler.get_last_lr()[0]
+            # self.curr_step = step
+            # if self.master_process:
+            #     # Add timing information to results
+            #     # results["prior_time"] += prior_time
+            #     # results["train_time"] += train_time
+            #     # results["lr"] = self.scheduler.get_last_lr()[0]
+                
+            #     print_vals = {
+            #         'ce': round(results["ce"], 3),
+            #         'mae': round(results["mae"], 3),
+            #         'missing_ce': round(results["missing_ce"], 3),
+            #         'missing_mae': round(results["missing_mae"], 3),
+            #         'val_ce': round(results["val_ce"], 3),
+            #         'val_mae': round(results["val_mae"], 3),
+            #         'val_missing_ce': round(results["val_missing_ce"], 3),
+            #     }
+            #     # Update progress bar with rounded values for cleaner display
+            #     if self.step_progress is not None:
+            #         self.step_progress.set_postfix(**print_vals)
 
-                # Save checkpoints
-                is_temp_save = self.curr_step % self.config.save_temp_every == 0
-                is_perm_save = self.curr_step % self.config.save_perm_every == 0
+            #     # Logging to Weights & Biases
+            #     if self.wandb_run is not None:
+            #         wandb.log(results, step=self.curr_step)
 
-                if is_temp_save or is_perm_save:
-                    ckpt_name = f"step-{self.curr_step}.ckpt"
-                    self.save_checkpoint(name=ckpt_name)
+            #     # Save checkpoints
+            #     is_temp_save = self.curr_step % self.config.save_temp_every == 0
+            #     is_perm_save = self.curr_step % self.config.save_perm_every == 0
 
-                    # Manage checkpoint limit only for temporary checkpoints
-                    if (
-                        is_temp_save
-                        and not is_perm_save
-                        and self.config.max_checkpoints > 0
-                    ):
-                        self.manage_checkpoint()
+            #     if is_temp_save or is_perm_save:
+            #         ckpt_name = f"step-{self.curr_step}.ckpt"
+            #         self.save_checkpoint(name=ckpt_name)
 
-        # Validate the model on the validation set
-        # step_progress = tqdm(range(len_val), desc="Validation")
-        step_progress = range(self.len_val)
-        for batch in step_progress:
-            batch = next(val_dataloader)
-            results_batch = self.run_batch(batch, is_train=False)
-            results["val_ce"] += results_batch["ce"]
-            results["val_mae"] += results_batch["mae"]
-            results["val_missing_ce"] += results_batch["missing_ce"]
-            results["val_missing_mae"] += results_batch["missing_mae"]
-
-            # Clear CUDA cache to free memory
-            torch.cuda.empty_cache()
-
-        # Average results
-        results["ce"] /= self.len_train
-        results["mae"] /= self.len_train
-        results["missing_ce"] /= self.len_train
-        results["missing_mae"] /= self.len_train
-        results["val_ce"] /= self.len_val
-        results["val_mae"] /= self.len_val
-        results["val_missing_ce"] /= self.len_val
-        results["val_missing_mae"] /= self.len_val
-        results["prior_time"] /= self.len_train
-        results["train_time"] /= self.len_train
-
-        print_vals = {
-            'ce': round(results["ce"], 3),
-            'mae': round(results["mae"], 3),
-            'missing_ce': round(results["missing_ce"], 3),
-            'missing_mae': round(results["missing_mae"], 3),
-            'val_ce': round(results["val_ce"], 3),
-            'val_mae': round(results["val_mae"], 3),
-            'val_missing_ce': round(results["val_missing_ce"], 3),
-        }
-        # Update progress bar with rounded values for cleaner display
-        if self.step_progress is not None:
-            self.step_progress.set_postfix(**print_vals)
-
-        # Logging to Weights & Biases
-        if self.wandb_run is not None:
-            # wandb.log(results, step=self.curr_step)
-            wandb.log(results)
-
-        return results
+            #         # Manage checkpoint limit only for temporary checkpoints
+            #         if (
+            #             is_temp_save
+            #             and not is_perm_save
+            #             and self.config.max_checkpoints > 0
+            #         ):
+            #             self.manage_checkpoint()
 
     def validate_micro_batch(self, micro_seq_len, micro_train_size):
         """
@@ -881,35 +865,4 @@ if __name__ == "__main__":
     #     with open(f"{trainer.config.prior_dir}/tabpfn_results_{i}.json", "w") as f:
     #         json.dump(tabpfn_results_dict, f)
     
-    missingness_types=["mcar", "mar", "mnar"]
-    columns=["5", "10", "20"]
-    rows=["5", "10", "20"]
-
-    steps = 0
-    pbar = tqdm(total=len(missingness_types) * len(columns) * len(rows), desc="Training")
-    for missingness_type in missingness_types:
-        for column in columns:
-            for row in rows:
-                if steps < config.start_step:
-                    pbar.update(1)
-                    steps += 1
-                    continue
-                prior_dir = f"{config.prior_dir}{missingness_type}_scm_{column}_{row}"
-                trainer.configure_prior(prior_dir)
-                trainer.train()
-                trainer.curr_step = 0
-                pbar.update(1)
-                steps += 1
-                pbar.set_description(f"Training {missingness_type} {column} {row}")
-                if steps % 5 == 0:
-                    trainer.save_checkpoint(name=f"config_{steps}_{config.model_name}")
-    pbar.close()
-    trainer.save_checkpoint(name=f"config_{steps}_{config.model_name}")
-    
-    # for epoch in step_progress:
-    #     trainer.train()
-    #     # trainer.configure_prior()
-    #     trainer.curr_step = 0
-
-    # # Save the trained model
-    # trainer.save_checkpoint(name=f"epoch_{config.epochs}_{config.model_name}")
+    trainer.train()
