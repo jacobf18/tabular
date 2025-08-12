@@ -34,6 +34,7 @@ from mcpfn.train.train_config import build_parser
 from mcpfn.model.bar_distribution import FullSupportBarDistribution
 from mcpfn.model.encoders import torch_nanmean
 from mcpfn.model.mcpfn import TabPFNModel
+from mcpfn.prior.training_set_generation import ACTIVATION_FUNCTIONS, MissingnessPrior
 
 warnings.filterwarnings(
     "ignore",
@@ -94,7 +95,7 @@ class Trainer:
         self.configure_ddp()
         self.configure_wandb()
         self.build_model()
-        # self.configure_prior(self.config.prior_dir)
+        self.configure_prior(self.config.prior_dir)
         self.configure_optimizer()
         self.configure_amp()
         self.load_checkpoint()
@@ -248,12 +249,12 @@ class Trainer:
             self.model = model
             self.raw_model = model
 
-    def configure_prior(self, prior_dir):
+    def configure_prior(self, prior_dir: Optional[str] = None):
         """
         Sets up a tabular dataset generator that creates synthetic datasets
         during training with controllable properties and data distributions.
         """
-        if self.config.prior_dir is not None:
+        if prior_dir is not None:
             # Load pre-generated prior data from disk
             train_dataset = LoadPriorDataset(
                 data_dir=prior_dir + "/train",
@@ -274,19 +275,6 @@ class Trainer:
                 delete_after_load=self.config.delete_after_load,
                 device=self.config.prior_device,
             )
-
-            # Create dataloader for efficient loading and prefetching
-            self.train_dataloader = DataLoader(
-                train_dataset,
-                batch_size=None,  # No additional batching since PriorDataset handles batching internally
-                shuffle=False,
-                num_workers=1,
-                prefetch_factor=4,
-                pin_memory=True if self.config.prior_device == "cpu" else False,
-                pin_memory_device=(
-                    self.config.device if self.config.prior_device == "cpu" else ""
-                ),
-            )
             self.val_dataloader = DataLoader(
                 val_dataset,
                 batch_size=None,  # No additional batching since PriorDataset handles batching internally
@@ -299,10 +287,52 @@ class Trainer:
                 ),
             )
         else:
+            config = {
+                'num_rows_low': self.config.min_seq_len, 'num_rows_high': self.config.max_seq_len, 
+                'num_cols_low': self.config.min_features, 'num_cols_high': self.config.max_features,
+                'p_missing': 0.4,
+                # MNAR configs
+                'threshold_quantile': 0.25, 'n_core_items': 5, 'n_genres': 3, 'n_policies': 4,
+                # Latent Factor configs
+                'latent_rank_low': 1, 'latent_rank_high': 11, 'latent_spike_p': 0.3, 'latent_slab_sigma': 2.0,
+                # Non-linear Factor configs
+                'spline_knot_k': [3, 5, 7], 'gp_length_scale_low': 0.3, 'gp_length_scale_high': 2.0,
+                'fourier_dim_low': 100, 'fourier_dim_high': 501,
+                # Robust-PCA configs
+                'rpca_beta_a': 2, 'rpca_beta_b': 30,
+                # Soft Polarization configs
+                'soft_polarization_alpha': 2.5, 'soft_polarization_epsilon': 0.05,
+                # User Cascade configs
+                'cascade_n_genres': 5, 'cascade_delta': 1.5,
+                # Cluster Level configs
+                'cluster_level_n_row_clusters': 8, 'cluster_level_n_col_clusters': 8, 'cluster_level_tau_r_std': 1.0,
+                # Spatial Block configs
+                'spatial_block_n_blocks': 5, 'spatial_block_p_geom': 0.2,
+                # Last few ones
+                'censor_quantile': 0.1, 'two_phase_cheap_fraction': 0.4, 'two_phase_beta': 2.5,
+                'skip_logic_p_noise': 0.9, 'cold_start_fraction': 0.3, 'cold_start_gamma': 0.15,
+            }
             # Create data on the fly
-            train_dataset = PriorDataset(
-                
+            train_dataset = MissingnessPrior(
+                generator_type="scm",
+                missingness_type="mcar",
+                config=config,
+                batch_size=self.config.batch_size,
+                verbose=False
             )
+            self.val_dataloader = None
+        # Create dataloader for efficient loading and prefetching
+        self.train_dataloader = DataLoader(
+            train_dataset,
+            batch_size=None,  # No additional batching since PriorDataset handles batching internally
+            shuffle=False,
+            num_workers=1,
+            prefetch_factor=4,
+            # pin_memory=True if self.config.prior_device == "cpu" else False,
+            # pin_memory_device=(
+            #     self.config.device if self.config.prior_device == "cpu" else ""
+            # ),
+        )
 
     def configure_optimizer(self):
         """Configure optimizer and scheduler."""
@@ -472,10 +502,9 @@ class Trainer:
         else:
             step_progress = range(self.curr_step, self.config.max_steps)
 
-
         train_dataloader = iter(self.train_dataloader)
         
-        if self.config.val_dataloader is not None:
+        if self.val_dataloader is not None:
             val_dataloader = iter(self.val_dataloader)
         else:
             val_dataloader = None
@@ -496,63 +525,59 @@ class Trainer:
             }
             
             # Get the next batch
-            with Timer() as prior_timer:
-                batch = next(train_dataloader)
-            # prior_time = prior_timer.elapsed
-            
-            print(batch)
+            batch = next(train_dataloader)
 
             # Train the model on the batch
-            # with Timer() as train_timer:
-            #     results_batch = self.run_batch(batch, is_train=True)
-            #     results["ce"] += results_batch["ce"]
-            #     results["mae"] += results_batch["mae"]
-            #     results["missing_ce"] += results_batch["missing_ce"]
-            #     results["missing_mae"] += results_batch["missing_mae"]
-            # # train_time = train_timer.elapsed
+            with Timer() as train_timer:
+                results_batch = self.run_batch(batch, is_train=True)
+                results["ce"] += results_batch["ce"]
+                results["mae"] += results_batch["mae"]
+                results["missing_ce"] += results_batch["missing_ce"]
+                results["missing_mae"] += results_batch["missing_mae"]
+            # train_time = train_timer.elapsed
 
-            # # Clear CUDA cache to free memory
-            # torch.cuda.empty_cache()
+            # Clear CUDA cache to free memory
+            torch.cuda.empty_cache()
 
-            # self.curr_step = step
-            # if self.master_process:
-            #     # Add timing information to results
-            #     # results["prior_time"] += prior_time
-            #     # results["train_time"] += train_time
-            #     # results["lr"] = self.scheduler.get_last_lr()[0]
+            self.curr_step = step
+            if self.master_process:
+                # Add timing information to results
+                # results["prior_time"] += prior_time
+                # results["train_time"] += train_time
+                # results["lr"] = self.scheduler.get_last_lr()[0]
                 
-            #     print_vals = {
-            #         'ce': round(results["ce"], 3),
-            #         'mae': round(results["mae"], 3),
-            #         'missing_ce': round(results["missing_ce"], 3),
-            #         'missing_mae': round(results["missing_mae"], 3),
-            #         'val_ce': round(results["val_ce"], 3),
-            #         'val_mae': round(results["val_mae"], 3),
-            #         'val_missing_ce': round(results["val_missing_ce"], 3),
-            #     }
-            #     # Update progress bar with rounded values for cleaner display
-            #     if self.step_progress is not None:
-            #         self.step_progress.set_postfix(**print_vals)
+                print_vals = {
+                    'ce': round(results["ce"], 3),
+                    'mae': round(results["mae"], 3),
+                    'missing_ce': round(results["missing_ce"], 3),
+                    'missing_mae': round(results["missing_mae"], 3),
+                    'val_ce': round(results["val_ce"], 3),
+                    'val_mae': round(results["val_mae"], 3),
+                    'val_missing_ce': round(results["val_missing_ce"], 3),
+                }
+                # Update progress bar with rounded values for cleaner display
+                if self.step_progress is not None:
+                    self.step_progress.set_postfix(**print_vals)
 
-            #     # Logging to Weights & Biases
-            #     if self.wandb_run is not None:
-            #         wandb.log(results, step=self.curr_step)
+                # Logging to Weights & Biases
+                if self.wandb_run is not None:
+                    wandb.log(results, step=self.curr_step)
 
-            #     # Save checkpoints
-            #     is_temp_save = self.curr_step % self.config.save_temp_every == 0
-            #     is_perm_save = self.curr_step % self.config.save_perm_every == 0
+                # Save checkpoints
+                is_temp_save = self.curr_step % self.config.save_temp_every == 0
+                is_perm_save = self.curr_step % self.config.save_perm_every == 0
 
-            #     if is_temp_save or is_perm_save:
-            #         ckpt_name = f"step-{self.curr_step}.ckpt"
-            #         self.save_checkpoint(name=ckpt_name)
+                if is_temp_save or is_perm_save:
+                    ckpt_name = f"step-{self.curr_step}.ckpt"
+                    self.save_checkpoint(name=ckpt_name)
 
-            #         # Manage checkpoint limit only for temporary checkpoints
-            #         if (
-            #             is_temp_save
-            #             and not is_perm_save
-            #             and self.config.max_checkpoints > 0
-            #         ):
-            #             self.manage_checkpoint()
+                    # Manage checkpoint limit only for temporary checkpoints
+                    if (
+                        is_temp_save
+                        and not is_perm_save
+                        and self.config.max_checkpoints > 0
+                    ):
+                        self.manage_checkpoint()
 
     def validate_micro_batch(self, micro_seq_len, micro_train_size):
         """

@@ -16,14 +16,14 @@ from scipy.interpolate import CubicSpline
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF
-import warnings
-import random
 import torch
+from torch import Tensor
 from torch.utils.data import IterableDataset
-from typing import Optional, Union
+from typing import Optional, Tuple
 from tqdm import tqdm
 from mcpfn.model.encoders import normalize_data
 from .scm_prior import SCMPrior
+from .utils import DisablePrinting
 
 # Helpers
 def sample_log_uniform(low, high, size=1, base=np.e):
@@ -898,14 +898,16 @@ class SCMPriorTabICL:
         
         self.scm = SCMPrior(
             min_features = config['num_cols_low'],
-            max_features = int(config['num_cols_high']),
+            max_features = config['num_cols_high'],
             min_seq_len = config['num_rows_low'],
             max_seq_len = config['num_rows_high'],
-            prior_type = "mix_scm"
+            seq_len_per_gp = False,
+            prior_type = "mix_scm",
+            n_jobs=-1
         )
 
 # Main class
-class MissingnessPrior:
+class MissingnessPrior(IterableDataset):
     """
     Main dataset class that provides an infinite iterator over synthetic tabular datasets.
     """
@@ -934,7 +936,7 @@ class MissingnessPrior:
         "mnar_censoring": MNARCensoringPattern,
         "mnar_two_phase_subset": MNARTwoPhaseSubsetPattern,
         "mnar_skip_logic": MNARSkipLogicPattern,
-        "mnar_cold_start": MNARColdStartPattern,
+        "mnar_cold_start": MNARColdStartPattern
     }
 
     def __init__(
@@ -1023,6 +1025,26 @@ class MissingnessPrior:
         )
         # train sizes is the part that is different
         return X_full, y_full, d, seq_lens, train_sizes
+    
+    def __iter__(self) -> "MissingnessPrior":
+        """
+        Returns an iterator that yields batches indefinitely.
+
+        Returns
+        -------
+        self
+            Returns self as an iterator
+        """
+        return self
+
+    def __next__(self) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+        """
+        Returns the next batch from the iterator. Since this is an infinite
+        iterator, it never raises StopIteration and instead continuously generates
+        new synthetic data batches.
+        """
+        # with DisablePrinting():
+        return self.get_batch()
 
 # Execution Block
 if __name__ == '__main__':
@@ -1096,17 +1118,6 @@ if __name__ == '__main__':
         train_X, train_y, test_X, test_y = create_train_test_sets(
                         X_missing, X_full=X
                     )
-        
-        import tabpfn_client
-
-        tabpfn_client.set_access_token('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjoiYjFlMzMxOTktNDEyZC00NDAwLWI0YzEtZTY0NmRlMGRlMWU5IiwiZXhwIjoxNzg0NjUzNzQzfQ.k1y3hdiFMivdsVc1EvQAHTxN1jF1wEjfJP3vM7fdEvo')
-        
-        reg = tabpfn_client.TabPFNRegressor()
-        
-        reg.fit(train_X.numpy(), train_y.numpy())
-        preds = reg.predict(test_X.numpy())
-        # print(np.mean(np.abs(preds - test_y.numpy())))
-        tabpfn_errors.append(np.mean(np.abs(preds - test_y.numpy())))
     
     import pickle 
     # save errors to pickle

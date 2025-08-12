@@ -269,7 +269,6 @@ class SCMPrior(Prior):
 
             # Calculate number of subgroups for this group
             num_subgps_in_gp = math.ceil(actual_gp_size / size_per_subgp)
-
             # Generate parameters for each subgroup
             for subgp_idx in range(num_subgps_in_gp):
                 # Determine actual size for this subgroup
@@ -281,9 +280,10 @@ class SCMPrior(Prior):
 
                 # Subgroups share prior type, number of features, and sampled HPs
                 subgp_prior_type = self.get_prior()
-                subgp_num_features = round(
-                    np.random.uniform(self.min_features, gp_max_features)
-                )
+                # subgp_num_features = round(
+                #     np.random.uniform(self.min_features, gp_max_features)
+                # )
+                subgp_num_features = gp_max_features
                 subgp_sampled_hp = {
                     k: v() if callable(v) else v for k, v in group_sampled_hp.items()
                 }

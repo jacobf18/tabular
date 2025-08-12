@@ -38,6 +38,8 @@ from .training_set_generation import ACTIVATION_FUNCTIONS
 from .base_prior import Prior
 from .scm_prior import SCMPrior
 
+from .utils import DisablePrinting
+
 
 warnings.filterwarnings(
     "ignore",
@@ -604,7 +606,7 @@ class PriorDataset(IterableDataset):
             )
         elif prior_type == "missing":
             config = {
-                'num_rows_low': min_seq_len, 'num_rows_high': min_seq_len, 'num_cols_low': min_features, 'num_cols_high': min_features + 0.5,
+                'num_rows_low': min_seq_len, 'num_rows_high': max_seq_len, 'num_cols_low': min_features, 'num_cols_high': max_features,
                 'p_missing': 0.4,
                 # SCM configs
                 'num_nodes_low': 60, 'num_nodes_high': 80, 'graph_generation_method': ['MLP-Dropout', 'Scale-Free'],
@@ -743,15 +745,3 @@ class PriorDataset(IterableDataset):
             f"  device: {self.device}\n"
             f")"
         )
-
-
-class DisablePrinting:
-    """Context manager to temporarily suppress printed output."""
-
-    def __enter__(self):
-        self.original_stdout = sys.stdout
-        sys.stdout = open(os.devnull, "w")
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        sys.stdout.close()
-        sys.stdout = self.original_stdout

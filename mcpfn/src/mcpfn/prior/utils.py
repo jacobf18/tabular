@@ -5,6 +5,20 @@ import numpy as np
 
 import torch
 from torch import nn
+import os
+import sys
+
+class DisablePrinting:
+    """Context manager to temporarily suppress printed output."""
+
+    def __enter__(self):
+        self.original_stdout = sys.stdout
+        sys.stdout = open(os.devnull, "w")
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        sys.stdout.close()
+        sys.stdout = self.original_stdout
+
 
 
 class GaussianNoise(nn.Module):

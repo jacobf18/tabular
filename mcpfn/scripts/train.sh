@@ -8,15 +8,21 @@ BASE_DIR="/mnt/mcpfn_data_tor"
 PRIOR_DIR="/mnt/volume_tor1_1754506427528/data"
 CHECKPOINT_DIR="${BASE_DIR}/checkpoints/all_data"
 
-mkdir -p ${CHECKPOINT_DIR}
-# Create a unique id for the checkpoint in a wand_id.txt file
-# RANDOM_ID=$(cat /dev/random | tr -dc '[:alnum:]' | head -c 10)
-# WAND_ID=wand$(date +%s)${RANDOM_ID}
-WAND_ID="wand1754624525GcmjFFpHmU"
-echo ${WAND_ID} > ${CHECKPOINT_DIR}/wand_id.txt
+IF_SAVE=False
+if [ "$IF_SAVE" = True ]; then
+    mkdir -p ${CHECKPOINT_DIR}
+    # Create a unique id for the checkpoint in a wand_id.txt file
+    # RANDOM_ID=$(cat /dev/random | tr -dc '[:alnum:]' | head -c 10)
+    # WAND_ID=wand$(date +%s)${RANDOM_ID}
+    WAND_ID="wand1754624525GcmjFFpHmU"
+    echo ${WAND_ID} > ${CHECKPOINT_DIR}/wand_id.txt
+fi
+
+export CUDA_LAUNCH_BLOCKING=1
+export TORCH_USE_CUDA_DSA=1
 
 python3 /root/tabular/mcpfn/src/mcpfn/train/run.py \
-            --wandb_log True \
+            --wandb_log ${IF_SAVE} \
             --wandb_project MCPFN \
             --wandb_name medium_${1} \
             --wandb_dir /root/tabular/mcpfn/wandb \
@@ -56,5 +62,9 @@ python3 /root/tabular/mcpfn/src/mcpfn/train/run.py \
             --borders_path /root/tabular/mcpfn/borders.pt \
             --model_name ${1}.ckpt \
             --save_every 15 \
-            --checkpoint_path ${CHECKPOINT_DIR}/config_27_2e-4.ckpt
+            --checkpoint_path ${CHECKPOINT_DIR}/config_27_2e-4.ckpt \
+            --min_seq_len 5 \
+            --max_seq_len 10 \
+            --min_features 5 \
+            --max_features 10
             # --prior_dir ${PRIOR_DIR} \
