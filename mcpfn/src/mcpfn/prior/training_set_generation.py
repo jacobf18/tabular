@@ -860,6 +860,19 @@ class MNARColdStartPattern(BaseMissingness):
 def create_train_test_sets(
     X: torch.Tensor, X_full: torch.Tensor
 ) -> tuple[torch.Tensor, ...]:
+    """
+    Create train and test sets from a matrix with missing values.
+
+    Args:
+        X: Tensor of shape (n_rows, n_cols) with missing values.
+        X_full: Tensor of shape (n_rows, n_cols) with complete values.
+
+    Returns:
+        train_X: Tensor of shape (n_rows, n_cols) with observed values.
+        train_y: Tensor of shape (n_rows, n_cols) with observed values.
+        test_X: Tensor of shape (n_rows, n_cols) with missing values.
+        test_y: Tensor of shape (n_rows, n_cols) with missing values.
+    """
     missing_indices, non_missing_indices = torch.where(torch.isnan(X)), torch.where(
         ~torch.isnan(X)
     )
@@ -869,25 +882,25 @@ def create_train_test_sets(
         # col = torch.cat((X[:i, j], X[i + 1 :, j]))
         row = X[i,:]
         col = X[:,j]
-        train_X_list.append(torch.cat((row, col)))
+        train_X_list.append(torch.cat((torch.tensor([i, j]), row, col)))
         train_y_list.append(X_full[i, j])
     for i, j in zip(missing_indices[0], missing_indices[1]):
         # row = torch.cat((X[i, :j], X[i, j + 1 :]))
         # col = torch.cat((X[:i, j], X[i + 1 :, j]))
         row = X[i,:]
         col = X[:,j]
-        test_X_list.append(torch.cat((row, col)))
+        test_X_list.append(torch.cat((torch.tensor([i, j]), row, col)))
         test_y_list.append(X_full[i, j])
     train_X = (
         torch.stack(train_X_list)
         if train_X_list
-        else torch.empty(0, X.shape[0] + X.shape[1])
+        else torch.empty(0, X.shape[0] + X.shape[1] + 2) # +2 for the row and column indices
     )
     train_y = torch.stack(train_y_list) if train_y_list else torch.empty(0)
     test_X = (
         torch.stack(test_X_list)
         if test_X_list
-        else torch.empty(0, X.shape[0] + X.shape[1])
+        else torch.empty(0, X.shape[0] + X.shape[1] + 2) # +2 for the row and column indices
     )
     test_y = torch.stack(test_y_list) if test_y_list else torch.empty(0)
     return train_X, train_y, test_X, test_y

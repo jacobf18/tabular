@@ -3,6 +3,10 @@ from __future__ import annotations
 import os
 import timeit
 import warnings
+
+# Set CUDA environment variables for debugging
+os.environ['TORCH_USE_CUDA_DSA'] = '1'
+os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 import functools
 from contextlib import nullcontext
 from typing import Optional
@@ -256,7 +260,7 @@ class Trainer:
         """
         if prior_dir is not None:
             # Load pre-generated prior data from disk
-            train_dataset = LoadPriorDataset(
+            self.train_dataset = LoadPriorDataset(
                 data_dir=prior_dir + "/train",
                 batch_size=self.config.batch_size,
                 ddp_world_size=self.ddp_world_size,
@@ -313,7 +317,7 @@ class Trainer:
                 'skip_logic_p_noise': 0.9, 'cold_start_fraction': 0.3, 'cold_start_gamma': 0.15,
             }
             # Create data on the fly
-            train_dataset = MissingnessPrior(
+            self.train_dataset = MissingnessPrior(
                 generator_type="scm",
                 missingness_type="mcar",
                 config=config,
@@ -323,15 +327,15 @@ class Trainer:
             self.val_dataloader = None
         # Create dataloader for efficient loading and prefetching
         self.train_dataloader = DataLoader(
-            train_dataset,
+            self.train_dataset,
             batch_size=None,  # No additional batching since PriorDataset handles batching internally
             shuffle=False,
             num_workers=1,
             prefetch_factor=4,
-            # pin_memory=True if self.config.prior_device == "cpu" else False,
-            # pin_memory_device=(
-            #     self.config.device if self.config.prior_device == "cpu" else ""
-            # ),
+            pin_memory=True,
+            pin_memory_device=(
+                self.config.device if self.config.prior_device == "cpu" else ""
+            )
         )
 
     def configure_optimizer(self):
@@ -495,14 +499,14 @@ class Trainer:
         """
 
         if self.master_process:
-            # step_progress = tqdm(
-            #     range(self.curr_step, self.config.max_steps), desc="Step", leave=True
-            # )
-            step_progress = range(self.curr_step, self.config.max_steps)
+            step_progress = tqdm(
+                range(self.curr_step, self.config.max_steps), desc="Step", leave=True
+            )
+            # step_progress = range(self.curr_step, self.config.max_steps)
         else:
             step_progress = range(self.curr_step, self.config.max_steps)
 
-        train_dataloader = iter(self.train_dataloader)
+        # train_dataloader = iter(self.train_dataloader)
         
         if self.val_dataloader is not None:
             val_dataloader = iter(self.val_dataloader)
@@ -525,7 +529,8 @@ class Trainer:
             }
             
             # Get the next batch
-            batch = next(train_dataloader)
+            # batch = next(train_dataloader)
+            batch = self.train_dataset.get_batch(self.config.batch_size)
 
             # Train the model on the batch
             with Timer() as train_timer:
@@ -551,13 +556,13 @@ class Trainer:
                     'mae': round(results["mae"], 3),
                     'missing_ce': round(results["missing_ce"], 3),
                     'missing_mae': round(results["missing_mae"], 3),
-                    'val_ce': round(results["val_ce"], 3),
-                    'val_mae': round(results["val_mae"], 3),
-                    'val_missing_ce': round(results["val_missing_ce"], 3),
+                    # 'val_ce': round(results["val_ce"], 3),
+                    # 'val_mae': round(results["val_mae"], 3),
+                    # 'val_missing_ce': round(results["val_missing_ce"], 3),
                 }
                 # Update progress bar with rounded values for cleaner display
-                if self.step_progress is not None:
-                    self.step_progress.set_postfix(**print_vals)
+                if step_progress is not None:
+                    step_progress.set_postfix(**print_vals)
 
                 # Logging to Weights & Biases
                 if self.wandb_run is not None:

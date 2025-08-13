@@ -160,7 +160,10 @@ class Prior:
         if log:
             seq_len = int(loguniform.rvs(min_seq_len, max_seq_len))
         else:
-            seq_len = np.random.randint(min_seq_len, max_seq_len)
+            if min_seq_len == max_seq_len:
+                seq_len = min_seq_len
+            else:
+                seq_len = np.random.randint(min_seq_len, max_seq_len)
             # seq_len = min_seq_len
 
         if replay_small:
