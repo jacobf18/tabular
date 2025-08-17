@@ -4,9 +4,9 @@
 echo "Training model"
 
 # Set the save directory as an environment variable
-BASE_DIR="/mnt/mcpfn_data_tor"
+BASE_DIR="/mnt/mcpfn_data"
 PRIOR_DIR="/mnt/volume_tor1_1754506427528/data"
-CHECKPOINT_DIR="${BASE_DIR}/checkpoints/new_data/"
+CHECKPOINT_DIR="${BASE_DIR}/checkpoints/mse_loss"
 
 IF_SAVE=True
 if [ "$IF_SAVE" = True ]; then
@@ -14,29 +14,29 @@ if [ "$IF_SAVE" = True ]; then
     # Create a unique id for the checkpoint in a wand_id.txt file
     RANDOM_ID=$(cat /dev/random | tr -dc '[:alnum:]' | head -c 10)
     WAND_ID=wand$(date +%s)${RANDOM_ID}
-    # WAND_ID="wand1754624525GcmjFFpHmU"
+    # WAND_ID="wand1755268743a8vlbMc7ep"
     echo ${WAND_ID} > ${CHECKPOINT_DIR}/wand_id.txt
 fi
 
 python3 /root/tabular/mcpfn/src/mcpfn/train/run.py \
             --wandb_log ${IF_SAVE} \
             --wandb_project MCPFN \
-            --wandb_name ${1}_with_pos_indices \
+            --wandb_name mse_loss \
             --wandb_dir /root/tabular/mcpfn/wandb \
             --wandb_mode online \
             --device cuda \
             --dtype float32 \
             --np_seed 42 \
             --torch_seed 42 \
-            --max_steps 1000 \
-            --batch_size 10000 \
-            --micro_batch_size 100 \
+            --max_steps 10000 \
+            --batch_size 512 \
+            --micro_batch_size 256 \
             --lr ${1} \
             --scheduler cosine_warmup \
             --warmup_proportion 0.02 \
             --gradient_clipping 1.0 \
             --load_prior_start 0 \
-            --start_step 9 \
+            --start_step 0 \
             --delete_after_load False \
             --prior_device cpu \
             --embed_dim 128 \
@@ -53,14 +53,15 @@ python3 /root/tabular/mcpfn/src/mcpfn/train/run.py \
             --norm_first True \
             --checkpoint_dir ${CHECKPOINT_DIR} \
             --save_temp_every 50 \
-            --save_perm_every 5000 \
+            --save_perm_every 150 \
             --encoder_path /root/tabular/mcpfn/src/mcpfn/model/encoder.pth \
             --borders_path /root/tabular/mcpfn/borders.pt \
             --model_name ${1}.ckpt \
             --save_every 15 \
-            --checkpoint_path ${CHECKPOINT_DIR}/config_27_2e-4.ckpt \
             --min_seq_len 5 \
             --max_seq_len 20 \
             --min_features 5 \
             --max_features 20
+            # --checkpoint_path ${CHECKPOINT_DIR}/step-950.ckpt
             # --prior_dir ${PRIOR_DIR} \
+            

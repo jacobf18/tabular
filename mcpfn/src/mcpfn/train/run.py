@@ -157,7 +157,7 @@ class Trainer:
             self.ddp_world_size = 1
             self.ddp_local_rank = 0
 
-        self.curr_step = 0  # Initialize current step for training
+        # self.curr_step = 0  # Initialize current step for training
 
         # Set random seeds
         seed_offset = self.ddp_rank if self.ddp else 0
@@ -299,6 +299,7 @@ class Trainer:
                 'threshold_quantile': 0.25, 'n_core_items': 5, 'n_genres': 3, 'n_policies': 4,
                 # Latent Factor configs
                 'latent_rank_low': 1, 'latent_rank_high': 11, 'latent_spike_p': 0.3, 'latent_slab_sigma': 2.0,
+                'apply_feature_warping_prob': 0.0, 'apply_quantization_prob': 0.0,
                 # Non-linear Factor configs
                 'spline_knot_k': [3, 5, 7], 'gp_length_scale_low': 0.3, 'gp_length_scale_high': 2.0,
                 'fourier_dim_low': 100, 'fourier_dim_high': 501,
@@ -318,7 +319,7 @@ class Trainer:
             }
             # Create data on the fly
             self.train_dataset = MissingnessPrior(
-                generator_type="scm",
+                generator_type="latent_factor",
                 missingness_type="mcar",
                 config=config,
                 batch_size=self.config.batch_size,
@@ -406,8 +407,8 @@ class Trainer:
         checkpoint_path = None
         if hasattr(self.config, "checkpoint_path") and self.config.checkpoint_path:
             checkpoint_path = self.config.checkpoint_path
-        elif hasattr(self.config, "checkpoint_dir") and self.config.checkpoint_dir:
-            checkpoint_path = self.get_latest_checkpoint()
+        # elif hasattr(self.config, "checkpoint_dir") and self.config.checkpoint_dir:
+        #     checkpoint_path = self.get_latest_checkpoint()
 
         if checkpoint_path is None or not os.path.exists(checkpoint_path):
             print("No checkpoint found, starting from scratch.")
@@ -497,10 +498,9 @@ class Trainer:
         Iterates through batches, processes them, updates model parameters,
         and handles checkpoint saving and metric logging.
         """
-
         if self.master_process:
             step_progress = tqdm(
-                range(self.curr_step, self.config.max_steps), desc="Step", leave=True
+                range(self.config.start_step, self.config.max_steps), desc="Step", leave=True
             )
             # step_progress = range(self.curr_step, self.config.max_steps)
         else:
@@ -700,16 +700,16 @@ class Trainer:
         micro_train_size = micro_train_size.to(self.config.device)
 
         # Compute mean along dim=2 (last dimension), ignoring NaNs
-        mean_vals = torch.nanmean(micro_X, dim=2, keepdim=True)  # shape: [1, 2000, 1]
+        # mean_vals = torch.nanmean(micro_X, dim=2, keepdim=True)  # shape: [1, 2000, 1]
 
         # Find the NaNs
-        nan_mask = torch.isnan(micro_X)  # shape: [1, 2000, 20]
+        # nan_mask = torch.isnan(micro_X)  # shape: [1, 2000, 20]
 
         # Expand mean_vals to match x's shape for indexing
-        mean_vals_expanded = mean_vals.expand_as(micro_X)
+        # mean_vals_expanded = mean_vals.expand_as(micro_X)
 
         # Replace NaNs with corresponding mean values
-        micro_X[nan_mask] = mean_vals_expanded[nan_mask]
+        # micro_X[nan_mask] = mean_vals_expanded[nan_mask]
         
         y_train = micro_y.clone()
 
@@ -741,14 +741,19 @@ class Trainer:
                     micro_X, y_train, micro_d
                 )  # (B, test_size, max_classes)
                 pred = einops.rearrange(pred, "b t h -> t b h")
-                loss = self.bar_distribution(
-                    logits=pred, y=einops.rearrange(micro_y, "b t -> t b")
-                )
+                # loss = self.bar_distribution(
+                #     logits=pred, y=einops.rearrange(micro_y, "b t -> t b")
+                # )
+                mean = self.bar_distribution.mean(pred)
+                
+                # Get MSE loss
+                loss = (mean - einops.rearrange(micro_y, "b t -> t b")).pow(2)
 
             # Scale loss for gradient accumulation and backpropagate
             scaled_loss = loss.mean() / num_micro_batches
             # self.scaler.scale(scaled_loss).backward()
             missing_loss = loss[~mask_reshaped].mean() / num_micro_batches
+            
             self.scaler.scale(missing_loss).backward()
 
         else:  # val
@@ -895,4 +900,5 @@ if __name__ == "__main__":
     #     with open(f"{trainer.config.prior_dir}/tabpfn_results_{i}.json", "w") as f:
     #         json.dump(tabpfn_results_dict, f)
     
+    trainer.curr_step = config.start_step
     trainer.train()

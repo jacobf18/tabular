@@ -24,6 +24,7 @@ from tqdm import tqdm
 from mcpfn.model.encoders import normalize_data
 from .scm_prior import SCMPrior
 from .utils import DisablePrinting
+import copy
 
 # Helpers
 def sample_log_uniform(low, high, size=1, base=np.e):
@@ -300,27 +301,27 @@ class LatentFactorPrior:
         U = self._sample_latent_vectors(n_rows, rank)
         V = self._sample_latent_vectors(n_cols, rank)
         Y = U @ V.T
-        matrix = pd.DataFrame(Y, columns=[f"feature_{i}" for i in range(n_cols)])
-        if np.random.rand() < self.config.get("apply_feature_warping_prob", 0.1):
-            scaler = MinMaxScaler()
-            for col in matrix.columns:
-                col_data = scaler.fit_transform(matrix[[col]])
-                a, b = np.random.rand() * 5 + 0.5, np.random.rand() * 5 + 0.5
-                matrix[col] = scaler.inverse_transform(
-                    beta.ppf(np.clip(col_data, 1e-10, 1 - 1e-10), a, b).reshape(-1, 1)
-                ).flatten()
-        if np.random.rand() < self.config["apply_quantization_prob"]:
-            col_to_quantize = np.random.choice(matrix.columns)
-            try:
-                matrix[col_to_quantize] = pd.qcut(
-                    matrix[col_to_quantize],
-                    q=np.random.randint(2, 20),
-                    labels=False,
-                    duplicates="drop",
-                )
-            except (ValueError, IndexError):
-                pass
-        return matrix
+        # matrix = pd.DataFrame(Y, columns=[f"feature_{i}" for i in range(n_cols)])
+        # if np.random.rand() < self.config.get("apply_feature_warping_prob", 0.1):
+        #     scaler = MinMaxScaler()
+        #     for col in matrix.columns:
+        #         col_data = scaler.fit_transform(matrix[[col]])
+        #         a, b = np.random.rand() * 5 + 0.5, np.random.rand() * 5 + 0.5
+        #         matrix[col] = scaler.inverse_transform(
+        #             beta.ppf(np.clip(col_data, 1e-10, 1 - 1e-10), a, b).reshape(-1, 1)
+        #         ).flatten()
+        # if np.random.rand() < self.config["apply_quantization_prob"]:
+        #     col_to_quantize = np.random.choice(matrix.columns)
+        #     try:
+        #         matrix[col_to_quantize] = pd.qcut(
+        #             matrix[col_to_quantize],
+        #             q=np.random.randint(2, 20),
+        #             labels=False,
+        #             duplicates="drop",
+        #         )
+        #     except (ValueError, IndexError):
+        #         pass
+        return Y
 
 
 class NonLinearFactorPrior(LatentFactorPrior):
@@ -882,14 +883,14 @@ def create_train_test_sets(
         # col = torch.cat((X[:i, j], X[i + 1 :, j]))
         row = X[i,:]
         col = X[:,j]
-        train_X_list.append(torch.cat((torch.tensor([i, j]), row, col)))
+        train_X_list.append(torch.cat((torch.tensor([i, j], device=X.device), row, col)))
         train_y_list.append(X_full[i, j])
     for i, j in zip(missing_indices[0], missing_indices[1]):
         # row = torch.cat((X[i, :j], X[i, j + 1 :]))
         # col = torch.cat((X[:i, j], X[i + 1 :, j]))
         row = X[i,:]
         col = X[:,j]
-        test_X_list.append(torch.cat((torch.tensor([i, j]), row, col)))
+        test_X_list.append(torch.cat((torch.tensor([i, j], device=X.device), row, col)))
         test_y_list.append(X_full[i, j])
     train_X = (
         torch.stack(train_X_list)
@@ -995,6 +996,24 @@ class MissingnessPrior(IterableDataset):
         if isinstance(self.generator, SCMPriorTabICL):
             # X_list, y_list, train_sizes = self.generator.generate_batch(batch_size)
             scm_X, scm_y, _, _, _ = self.generator.scm.get_batch(batch_size)
+        else:
+            n_rows = int(
+                sample_log_uniform(
+                    self.config["num_rows_low"], self.config["num_rows_high"]
+                )[0]
+            )
+            n_cols = int(
+                sample_log_uniform(
+                    self.config["num_cols_low"], self.config["num_cols_high"]
+                )[0]
+            )
+            new_config = copy.deepcopy(self.config)
+            new_config['num_rows_low'] = n_rows
+            new_config['num_rows_high'] = n_rows
+            new_config['num_cols_low'] = n_cols
+            new_config['num_cols_high'] = n_cols
+            
+            self.generator = self.generator_map[self.generator_type](new_config)
         
         while step < self.batch_size:
         # for i in tqdm(range(self.batch_size), desc="Generating batches"):
@@ -1003,7 +1022,7 @@ class MissingnessPrior(IterableDataset):
                 X = torch.cat((scm_X[step, :, :], scm_y[step, :].unsqueeze(dim=-1)), dim=1)
             else:
                 complete_df = self.generator.generate_complete_matrix()
-                X = torch.tensor(complete_df.values, dtype=torch.float32)
+                X = torch.tensor(complete_df, dtype=torch.float32)
             
             # Normalize the data
             X = torch.squeeze(normalize_data(torch.unsqueeze(X, 1)), 1)
