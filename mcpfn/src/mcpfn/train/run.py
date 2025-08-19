@@ -741,13 +741,13 @@ class Trainer:
                     micro_X, y_train, micro_d
                 )  # (B, test_size, max_classes)
                 pred = einops.rearrange(pred, "b t h -> t b h")
-                # loss = self.bar_distribution(
-                #     logits=pred, y=einops.rearrange(micro_y, "b t -> t b")
-                # )
-                mean = self.bar_distribution.mean(pred)
+                loss = self.bar_distribution(
+                    logits=pred, y=einops.rearrange(micro_y, "b t -> t b")
+                )
+                # mean = self.bar_distribution.mean(pred)
                 
                 # Get MSE loss
-                loss = (mean - einops.rearrange(micro_y, "b t -> t b")).pow(2)
+                # loss = (mean - einops.rearrange(micro_y, "b t -> t b")).pow(2)
 
             # Scale loss for gradient accumulation and backpropagate
             scaled_loss = loss.mean() / num_micro_batches

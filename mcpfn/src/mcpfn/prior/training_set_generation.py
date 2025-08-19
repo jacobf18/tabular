@@ -301,27 +301,27 @@ class LatentFactorPrior:
         U = self._sample_latent_vectors(n_rows, rank)
         V = self._sample_latent_vectors(n_cols, rank)
         Y = U @ V.T
-        # matrix = pd.DataFrame(Y, columns=[f"feature_{i}" for i in range(n_cols)])
-        # if np.random.rand() < self.config.get("apply_feature_warping_prob", 0.1):
-        #     scaler = MinMaxScaler()
-        #     for col in matrix.columns:
-        #         col_data = scaler.fit_transform(matrix[[col]])
-        #         a, b = np.random.rand() * 5 + 0.5, np.random.rand() * 5 + 0.5
-        #         matrix[col] = scaler.inverse_transform(
-        #             beta.ppf(np.clip(col_data, 1e-10, 1 - 1e-10), a, b).reshape(-1, 1)
-        #         ).flatten()
-        # if np.random.rand() < self.config["apply_quantization_prob"]:
-        #     col_to_quantize = np.random.choice(matrix.columns)
-        #     try:
-        #         matrix[col_to_quantize] = pd.qcut(
-        #             matrix[col_to_quantize],
-        #             q=np.random.randint(2, 20),
-        #             labels=False,
-        #             duplicates="drop",
-        #         )
-        #     except (ValueError, IndexError):
-        #         pass
-        return Y
+        matrix = pd.DataFrame(Y, columns=[f"feature_{i}" for i in range(n_cols)])
+        if np.random.rand() < self.config.get("apply_feature_warping_prob", 0.1):
+            scaler = MinMaxScaler()
+            for col in matrix.columns:
+                col_data = scaler.fit_transform(matrix[[col]])
+                a, b = np.random.rand() * 5 + 0.5, np.random.rand() * 5 + 0.5
+                matrix[col] = scaler.inverse_transform(
+                    beta.ppf(np.clip(col_data, 1e-10, 1 - 1e-10), a, b).reshape(-1, 1)
+                ).flatten()
+        if np.random.rand() < self.config["apply_quantization_prob"]:
+            col_to_quantize = np.random.choice(matrix.columns)
+            try:
+                matrix[col_to_quantize] = pd.qcut(
+                    matrix[col_to_quantize],
+                    q=np.random.randint(2, 20),
+                    labels=False,
+                    duplicates="drop",
+                )
+            except (ValueError, IndexError):
+                pass
+        return matrix
 
 
 class NonLinearFactorPrior(LatentFactorPrior):
@@ -1022,7 +1022,7 @@ class MissingnessPrior(IterableDataset):
                 X = torch.cat((scm_X[step, :, :], scm_y[step, :].unsqueeze(dim=-1)), dim=1)
             else:
                 complete_df = self.generator.generate_complete_matrix()
-                X = torch.tensor(complete_df, dtype=torch.float32)
+                X = torch.tensor(complete_df.values, dtype=torch.float32)
             
             # Normalize the data
             X = torch.squeeze(normalize_data(torch.unsqueeze(X, 1)), 1)
