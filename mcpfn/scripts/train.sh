@@ -30,7 +30,7 @@ python3 /root/tabular/mcpfn/src/mcpfn/train/run.py \
             --torch_seed 42 \
             --max_steps 200000 \
             --batch_size 64 \
-            --micro_batch_size 64 \
+            --micro_batch_size 4 \
             --lr ${1} \
             --scheduler cosine_warmup \
             --warmup_proportion 0.02 \

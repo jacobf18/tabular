@@ -838,7 +838,7 @@ class Trainer:
                 )
                 for k, v in micro_results.items():
                     results[k] += v
-            except torch.cuda.OutOfMemoryError:
+            except Exception as e:
                 print(
                     f"Warning: OOM error in micro-batch {idx+1}/{num_micro_batches} at step {self.curr_step}. Skipping."
                 )
