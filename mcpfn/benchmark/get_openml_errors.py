@@ -11,6 +11,7 @@ from fancyimpute import SoftImpute
 from hyperimpute.plugins.imputers import Imputers
 import warnings
 from mcpfn.model.encoders import normalize_data
+import pandas as pd
 
 # --- Suppress warnings ---
 warnings.filterwarnings("ignore")
@@ -21,6 +22,10 @@ def compute_abs_errors(X_true: torch.Tensor, X_missing: torch.Tensor, X_imputed:
     true_vals = X_true[mask]
     imputed_vals = torch.tensor(X_imputed)[mask]
     return torch.abs(true_vals - imputed_vals).numpy()
+
+def add_rows(rows_list, dataset_name, pattern_name, imputer_name, true_vals, imputed_vals):
+    for true_val, imputed_val in zip(true_vals, imputed_vals):
+        rows_list.append([dataset_name, pattern_name, imputer_name, true_val, imputed_val])
 
 # --- Column-wise scaling while ignoring NaNs for softimpute ---
 def scale_columns_ignoring_nans(X: np.ndarray) -> np.ndarray:
@@ -67,9 +72,12 @@ tabpfn = TabPFNImputer(device='cuda')
 # --- Store all results ---
 results = {}
 
+rows = []
+
 # --- Run benchmark ---
 for X, name, did in datasets:
     for pattern_name, pattern in patterns.items():
+        print(f"Running {name} | {pattern_name}")
         torch.cuda.empty_cache()
         X_missing = pattern._induce_missingness(X.clone())
         
@@ -78,62 +86,82 @@ for X, name, did in datasets:
         # std is set to 1 if all values are the same
         X_normalized = (X - mean) / std
         imputer_errors = {}
+        
+        mask = torch.isnan(X_missing)
 
         # MCPFN
         X_mcpfn = mcpfn.impute(X_missing.numpy().copy())
         imputer_errors["MCPFN"] = compute_abs_errors(X_normalized, X_missing, X_mcpfn)
+        add_rows(rows, name, pattern_name, "MCPFN", X_normalized[mask], X_mcpfn[mask])
+        
+        # TabPFN
+        # X_tabpfn = tabpfn.impute(X_missing.numpy().copy())
+        # imputer_errors["TabPFN"] = compute_abs_errors(X_normalized, X_missing, X_tabpfn)
+        # add_rows(rows, name, pattern_name, "TabPFN", X_normalized[mask], X_tabpfn[mask])
 
-        # TabPFN; right now this is not working unsure why
-        X_tabpfn = tabpfn.impute(X_missing.numpy().copy())
-        imputer_errors["TabPFN"] = compute_abs_errors(X_normalized, X_missing, X_tabpfn)
-
-        # # SoftImpute with safe scaling
+        # SoftImpute
         plugin = Imputers().get("softimpute")
         out = plugin.fit_transform(X_missing.numpy().copy()).to_numpy()
         imputer_errors["SoftImpute"] = compute_abs_errors(X_normalized, X_missing, out)
+        add_rows(rows, name, pattern_name, "SoftImpute", X_normalized[mask], out[mask])
         
-        # Mean imputation
+        # Column Mean
         plugin = Imputers().get("mean")
         out = plugin.fit_transform(X_missing.numpy().copy()).to_numpy()
         imputer_errors["Column Mean"] = compute_abs_errors(X_normalized, X_missing, out)
+        add_rows(rows, name, pattern_name, "Column Mean", X_normalized[mask], out[mask])
         
-        # HyperImpute imputation
+        # HyperImpute
         plugin = Imputers().get("hyperimpute")
         out = plugin.fit_transform(X_missing.numpy().copy()).to_numpy()
         imputer_errors["HyperImpute"] = compute_abs_errors(X_normalized, X_missing, out)
-
-        # Store results
+        add_rows(rows, name, pattern_name, "HyperImpute", X_normalized[mask], out[mask])
+        
+        # Store results in dictionary
         results[(name, pattern_name)] = imputer_errors
         print(f"✅ {name} | {pattern_name} done.")
+        
+        torch.cuda.empty_cache()
+        
+# Output results to a csv file
+columns = ["dataset_name", "pattern_name", "imputer_name", "true_value", "imputed_value"]
+df = pd.DataFrame(rows, columns=columns)
+
+# If the file already exists, append to it
+import os
+if os.path.exists("results.csv"):
+    df.to_csv("out/errors/results.csv", mode='a', header=False, index=False)
+else:
+    df.to_csv("out/errors/results.csv", index=False)
+
 
 # --- Plotting ---
-sns.set(style="whitegrid")
+# sns.set(style="whitegrid")
 
-for (dataset_name, pattern_name), imputer_errors in results.items():
-    imputer_names = list(imputer_errors.keys())
-    error_data = [imputer_errors[imp] for imp in imputer_names]
+# for (dataset_name, pattern_name), imputer_errors in results.items():
+#     imputer_names = list(imputer_errors.keys())
+#     error_data = [imputer_errors[imp] for imp in imputer_names]
 
-    plt.figure(figsize=(8, 5))
-    ax = sns.boxplot(data=error_data)
-    ax.set_xticks(range(len(imputer_names)))
-    ax.set_xticklabels(imputer_names)
-    ax.set_ylabel("Absolute Error")
-    ax.set_title(f"Dataset: {dataset_name} | Pattern: {pattern_name}")
-    ax.set_ylim(bottom=0.0)
-    plt.xticks(rotation=20)
-    plt.tight_layout()
-    plt.savefig(f"boxplot_{dataset_name}_{pattern_name}.png")
-    plt.close()
+#     plt.figure(figsize=(8, 5))
+#     ax = sns.boxplot(data=error_data)
+#     ax.set_xticks(range(len(imputer_names)))
+#     ax.set_xticklabels(imputer_names)
+#     ax.set_ylabel("Absolute Error")
+#     ax.set_title(f"Dataset: {dataset_name} | Pattern: {pattern_name}")
+#     ax.set_ylim(bottom=0.0)
+#     plt.xticks(rotation=20)
+#     plt.tight_layout()
+#     plt.savefig(f"boxplot_{dataset_name}_{pattern_name}.png")
+#     plt.close()
     
-    
-    plt.figure(figsize=(8, 5))
-    ax = sns.violinplot(data=error_data, cut=0)
-    ax.set_xticks(range(len(imputer_names)))
-    ax.set_xticklabels(imputer_names)
-    ax.set_ylabel("Absolute Error")
-    ax.set_title(f"Dataset: {dataset_name} | Pattern: {pattern_name}")
-    ax.set_ylim(bottom=0.0)
-    plt.xticks(rotation=20)
-    plt.tight_layout()
-    plt.savefig(f"violinplot_{dataset_name}_{pattern_name}.png")
-    plt.close()
+#     plt.figure(figsize=(8, 5))
+#     ax = sns.violinplot(data=error_data, cut=0)
+#     ax.set_xticks(range(len(imputer_names)))
+#     ax.set_xticklabels(imputer_names)
+#     ax.set_ylabel("Absolute Error")
+#     ax.set_title(f"Dataset: {dataset_name} | Pattern: {pattern_name}")
+#     ax.set_ylim(bottom=0.0)
+#     plt.xticks(rotation=20)
+#     plt.tight_layout()
+#     plt.savefig(f"violinplot_{dataset_name}_{pattern_name}.png")
+#     plt.close()
