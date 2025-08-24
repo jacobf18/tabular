@@ -36,12 +36,12 @@ for X, name, did in datasets:
         p = p_mcar if pattern_name == "MCAR" else p_mar if pattern_name == "MAR" else p_mnar
         
         # Create the directory if it doesn't exist
-        os.makedirs(f"{base_path}/{name}", exist_ok=True)
+        os.makedirs(f"{base_path}/{name}/{pattern_name}_{p}", exist_ok=True)
         
         # Save the missingness dataset
-        np.save(f"{base_path}/{name}/{pattern_name}_{p}_missing.npy", X_missing.numpy())
-        np.save(f"{base_path}/{name}/{pattern_name}_{p}_true.npy", X_normalized.numpy())
+        np.save(f"{base_path}/{name}/{pattern_name}_{p}/missing.npy", X_missing.numpy())
+        np.save(f"{base_path}/{name}/{pattern_name}_{p}/true.npy", X_normalized.numpy())
         
         # Save the mean and std
-        np.save(f"{base_path}/{name}/{pattern_name}_{p}_mean.npy", mean)
-        np.save(f"{base_path}/{name}/{pattern_name}_{p}_std.npy", std)
+        np.save(f"{base_path}/{name}/{pattern_name}_{p}/mean.npy", mean)
+        np.save(f"{base_path}/{name}/{pattern_name}_{p}/std.npy", std)
