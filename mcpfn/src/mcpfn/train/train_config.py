@@ -228,6 +228,12 @@ def build_parser():
         default=15,
         help="Save the model every n epochs",
     )
+    parser.add_argument(
+        "--missingness_type",
+        type=str,
+        default="mcar",
+        help="Missingness type: mcar, mar, mnar, mnar_rec_sys, mnar_panel, mnar_sequential, mnar_polarization, mnar_soft_polarization, mnar_latent_factor, mnar_positivity_violation, mnar_user_cascade, mnar_cluster_level, mnar_spatial_block, mnar_censoring, mnar_two_phase_subset, mnar_skip_logic, mnar_cold_start",
+    )
 
     ###########################################################################
     ##### Model Architecture Config ###########################################

@@ -320,7 +320,7 @@ class Trainer:
             # Create data on the fly
             self.train_dataset = MissingnessPrior(
                 generator_type="latent_factor",
-                missingness_type="mcar",
+                missingness_type=self.config.missingness_type,
                 config=config,
                 batch_size=self.config.batch_size,
                 verbose=False
@@ -584,6 +584,10 @@ class Trainer:
                     ):
                         self.manage_checkpoint()
 
+            # Save last checkpoint
+            ckpt_name = f"step-{self.curr_step}.ckpt"
+            self.save_checkpoint(name=ckpt_name)
+            
     def validate_micro_batch(self, micro_seq_len, micro_train_size):
         """
         Validate consistent sequence length and train size within a micro batch.

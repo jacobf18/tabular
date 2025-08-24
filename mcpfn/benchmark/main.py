@@ -10,6 +10,7 @@ from download_openml import fetch_clean_openml_datasets
 from fancyimpute import SoftImpute
 from hyperimpute.plugins.imputers import Imputers
 import warnings
+from mcpfn.model.encoders import normalize_data
 
 # --- Suppress warnings ---
 warnings.filterwarnings("ignore")
@@ -37,14 +38,14 @@ def scale_columns_ignoring_nans(X: np.ndarray) -> np.ndarray:
     return X_scaled
 
 # --- Fetch datasets ---
-# datasets = fetch_clean_openml_datasets(num_datasets=4)
+datasets = fetch_clean_openml_datasets(num_datasets=4)
 
 # Load diabetes dataset
-from sklearn.datasets import load_diabetes
-X, y = load_diabetes(return_X_y=True)
-X = torch.tensor(X, dtype=torch.float32)
+# from sklearn.datasets import load_diabetes
+# X, y = load_diabetes(return_X_y=True)
+# X = torch.tensor(X, dtype=torch.float32)
 
-datasets = [(X, "diabetes", 61)]
+# datasets = [(X, "diabetes", 61)]
 
 # --- Define missingness patterns ---
 # add the one I said there was a bug in: MCARFixedPattern
@@ -59,7 +60,7 @@ mcpfn = ImputePFN(
     device='cuda',
     encoder_path='/root/tabular/mcpfn/src/mcpfn/model/encoder.pth',
     borders_path='/root/tabular/mcpfn/borders.pt',
-    checkpoint_path='/mnt/mcpfn_data_tor/checkpoints/all_data/config_27_2e-4.ckpt'
+    checkpoint_path='/mnt/mcpfn_data/checkpoints/full_batch_size_64/step-170000.ckpt'
 )
 tabpfn = TabPFNImputer(device='cuda')
 
@@ -68,12 +69,14 @@ results = {}
 
 # --- Run benchmark ---
 for X, name, did in datasets:
-    # Normalize the data
-    X_normalized = (X - X.mean(dim=0)) / (X.std(dim=0) + 1e-16)
-    X_normalized = X_normalized[:10,:5]
-    
     for pattern_name, pattern in patterns.items():
-        X_missing = pattern._induce_missingness(X_normalized.clone())
+        torch.cuda.empty_cache()
+        X_missing = pattern._induce_missingness(X.clone())
+        
+        # Normalize the data (after inducing missingness)
+        X_missing, (mean, std) = normalize_data(X_missing, return_scaling=True)
+        # std is set to 1 if all values are the same
+        X_normalized = (X - mean) / std
         imputer_errors = {}
 
         # MCPFN
@@ -85,10 +88,9 @@ for X, name, did in datasets:
         imputer_errors["TabPFN"] = compute_abs_errors(X_normalized, X_missing, X_tabpfn)
 
         # # SoftImpute with safe scaling
-        # X_np = X_missing.numpy()
-        # X_scaled = scale_columns_ignoring_nans(X_np)
-        # X_soft = SoftImpute().fit_transform(X_scaled)
-        # imputer_errors["SoftImpute"] = compute_abs_errors(X_normalized, X_missing, X_soft)
+        plugin = Imputers().get("softimpute")
+        out = plugin.fit_transform(X_missing.numpy().copy()).to_numpy()
+        imputer_errors["SoftImpute"] = compute_abs_errors(X_normalized, X_missing, out)
         
         # Mean imputation
         plugin = Imputers().get("mean")
@@ -117,7 +119,21 @@ for (dataset_name, pattern_name), imputer_errors in results.items():
     ax.set_xticklabels(imputer_names)
     ax.set_ylabel("Absolute Error")
     ax.set_title(f"Dataset: {dataset_name} | Pattern: {pattern_name}")
+    ax.set_ylim(bottom=0.0)
     plt.xticks(rotation=20)
     plt.tight_layout()
     plt.savefig(f"boxplot_{dataset_name}_{pattern_name}.png")
+    plt.close()
+    
+    
+    plt.figure(figsize=(8, 5))
+    ax = sns.violinplot(data=error_data, cut=0)
+    ax.set_xticks(range(len(imputer_names)))
+    ax.set_xticklabels(imputer_names)
+    ax.set_ylabel("Absolute Error")
+    ax.set_title(f"Dataset: {dataset_name} | Pattern: {pattern_name}")
+    ax.set_ylim(bottom=0.0)
+    plt.xticks(rotation=20)
+    plt.tight_layout()
+    plt.savefig(f"violinplot_{dataset_name}_{pattern_name}.png")
     plt.close()

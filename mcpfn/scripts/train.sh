@@ -5,38 +5,38 @@ echo "Training model"
 
 # Set the save directory as an environment variable
 BASE_DIR="/mnt/mcpfn_data"
-PRIOR_DIR="/mnt/volume_tor1_1754506427528/data"
-CHECKPOINT_DIR="${BASE_DIR}/checkpoints/full_batch_size_64"
+# PRIOR_DIR="/mnt/volume_tor1_1754506427528/data"
+CHECKPOINT_DIR="${BASE_DIR}/checkpoints/mnar_from_mcar_batch_size_64"
 
 IF_SAVE=True
 if [ "$IF_SAVE" = True ]; then
     mkdir -p ${CHECKPOINT_DIR}
     # Create a unique id for the checkpoint in a wand_id.txt file
     RANDOM_ID=$(cat /dev/random | tr -dc '[:alnum:]' | head -c 10)
-    # WAND_ID=wand$(date +%s)${RANDOM_ID}
-    WAND_ID="wand1755528461y4BDrzWsOK"
+    WAND_ID=wand$(date +%s)${RANDOM_ID}
+    # WAND_ID="wand1755528461y4BDrzWsOK"
     echo ${WAND_ID} > ${CHECKPOINT_DIR}/wand_id.txt
 fi
 
 python3 /root/tabular/mcpfn/src/mcpfn/train/run.py \
             --wandb_log ${IF_SAVE} \
             --wandb_project MCPFN \
-            --wandb_name full_batch_size_64 \
+            --wandb_name mnar_from_mcar_batch_size_64 \
             --wandb_dir /root/tabular/mcpfn/wandb \
             --wandb_mode online \
             --device cuda \
             --dtype float32 \
             --np_seed 42 \
             --torch_seed 42 \
-            --max_steps 200000 \
+            --max_steps 100000 \
             --batch_size 64 \
-            --micro_batch_size 4 \
+            --micro_batch_size 16 \
             --lr ${1} \
             --scheduler cosine_warmup \
             --warmup_proportion 0.02 \
             --gradient_clipping 1.0 \
             --load_prior_start 0 \
-            --start_step 99950 \
+            --start_step 0 \
             --delete_after_load False \
             --prior_device cpu \
             --embed_dim 128 \
@@ -62,6 +62,7 @@ python3 /root/tabular/mcpfn/src/mcpfn/train/run.py \
             --max_seq_len 40 \
             --min_features 5 \
             --max_features 40 \
-            --checkpoint_path ${CHECKPOINT_DIR}/step-99950.ckpt
+            --missingness_type mnar \
+            --checkpoint_path /mnt/mcpfn_data/checkpoints/full_batch_size_64/step-199900.ckpt
             # --prior_dir ${PRIOR_DIR} \
             
