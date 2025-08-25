@@ -33,6 +33,9 @@ def fetch_clean_openml_datasets(
             break
         try:
             dataset = openml.datasets.get_dataset(did)
+            if dataset.name[:3] == "fri":
+                print(f"Skipping {dataset.name} because it's a synthetic dataset")
+                continue
             df, _, _, _ = dataset.get_data(dataset_format="dataframe")
 
             if not all(np.issubdtype(dtype, np.number) for dtype in df.dtypes):

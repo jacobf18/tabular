@@ -13,10 +13,10 @@ datasets = os.listdir(base_path)
 
 methods = ["softimpute", "column_mean", "hyperimpute", "mcpfn"]
 
-negative_rmse = {}
+negative_mae = {}
 
-def compute_negative_rmse(X_true, X_imputed, mask):
-    return -np.sqrt(np.mean((X_true[mask] - X_imputed[mask]) ** 2))
+def compute_negative_mae(X_true, X_imputed, mask):
+    return -np.mean(np.abs(X_true[mask] - X_imputed[mask]))
 
 for dataset in datasets:
     configs = os.listdir(f"{base_path}/{dataset}")
@@ -30,9 +30,9 @@ for dataset in datasets:
         
         for method in methods:
             X_imputed = np.load(f"{base_path}/{dataset}/{pattern_name}_{p}/{method}.npy")
-            negative_rmse[(dataset, pattern_name, method)] = compute_negative_rmse(X_true, X_imputed, mask)
+            negative_mae[(dataset, pattern_name, method)] = compute_negative_mae(X_true, X_imputed, mask)
             
-df = pd.Series(negative_rmse).unstack()
+df = pd.Series(negative_mae).unstack()
 
 for pattern_name in ["MCAR", "MAR", "MNAR"]:
     # Get dataframe for 1 pattern
@@ -44,9 +44,9 @@ for pattern_name in ["MCAR", "MAR", "MNAR"]:
     plt.figure(figsize=(7,5))
     sns.barplot(data=df_norm)
 
-    plt.ylabel("Normalized Negative RMSE (0–1)")
+    plt.ylabel("Normalized Negative MAE (0–1)")
     plt.xlabel("Algorithm")
     plt.title("Comparison of Imputation Algorithms")
     plt.ylim(0, 1.05)
-    plt.savefig(f"figures/negative_rmse_{pattern_name}.png")
+    plt.savefig(f"figures/negative_mae_{pattern_name}.png")
     plt.close()
