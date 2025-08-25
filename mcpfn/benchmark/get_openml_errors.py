@@ -13,13 +13,6 @@ import os
 # --- Suppress warnings ---
 warnings.filterwarnings("ignore")
 
-# --- compute absolute errors on missing entries ---
-def compute_abs_errors(X_true: torch.Tensor, X_missing: torch.Tensor, X_imputed: np.ndarray) -> np.ndarray:
-    mask = torch.isnan(X_missing)
-    true_vals = X_true[mask]
-    imputed_vals = torch.tensor(X_imputed)[mask]
-    return torch.abs(true_vals - imputed_vals).numpy()
-
 # --- Load imputer classes ---
 mcpfn = ImputePFN(
     device='cuda',
