@@ -56,7 +56,7 @@ for key in negative_rmse.keys():
     
 # Plot negative RMSE per method across datasets and patterns as a bar plot
 plt.figure(figsize=(10, 6))
-ax = sns.barplot(data=negative_rmse_per_method, palette="viridis", capsize=.4,
+ax = sns.barplot(data=negative_rmse_per_method, capsize=.4,
     err_kws={"color": ".5", "linewidth": 2.5})
 ax.set_xticks(range(len(negative_rmse_per_method)))
 ax.set_xticklabels(negative_rmse_per_method.keys())
