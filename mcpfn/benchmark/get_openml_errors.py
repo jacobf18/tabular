@@ -18,17 +18,19 @@ mcpfn = ImputePFN(
     device='cuda',
     encoder_path='/root/tabular/mcpfn/src/mcpfn/model/encoder.pth',
     borders_path='/root/tabular/mcpfn/borders.pt',
-    checkpoint_path='/mnt/mcpfn_data/checkpoints/full_batch_size_64/step-170000.ckpt'
+    checkpoint_path='/mnt/mcpfn_data/checkpoints/mnar_from_mcar_batch_size_64/step-70000.ckpt'
 )
-tabpfn = TabPFNImputer(device='cuda')
+# tabpfn = TabPFNImputer(device='cuda')
 
 # --- Store all results ---
-rows = []
-
 base_path = "datasets/openml"
 
 # Get dataset names from base path
 datasets = os.listdir(base_path)
+
+print(datasets)
+
+imputers = set(["mcpfn"])
 
 # --- Run benchmark ---
 for name in datasets:
@@ -44,37 +46,31 @@ for name in datasets:
         mask = np.isnan(X_missing)
 
         # MCPFN
-        X_mcpfn = mcpfn.impute(X_missing.copy())
-        np.save(f"{base_path}/{name}/{config}/mcpfn.npy", X_mcpfn)
+        if "mcpfn" in imputers:
+            X_mcpfn = mcpfn.impute(X_missing.copy())
+            np.save(f"{base_path}/{name}/{config}/mcpfn.npy", X_mcpfn)
         
         # # TabPFN
         # X_tabpfn = tabpfn.impute(X_missing.copy())
         # np.save(f"{base_path}/{name}/{config}/tabpfn.npy", X_tabpfn)
         
         # SoftImpute
-        plugin = Imputers().get("softimpute")
-        out = plugin.fit_transform(X_missing.copy()).to_numpy()
-        np.save(f"{base_path}/{name}/{config}/softimpute.npy", out)
+        if "softimpute" in imputers:
+            plugin = Imputers().get("softimpute")
+            out = plugin.fit_transform(X_missing.copy()).to_numpy()
+            np.save(f"{base_path}/{name}/{config}/softimpute.npy", out)
         
         # Column Mean
-        plugin = Imputers().get("mean")
-        out = plugin.fit_transform(X_missing.copy()).to_numpy()
-        np.save(f"{base_path}/{name}/{config}/column_mean.npy", out)
+        if "column_mean" in imputers:
+            plugin = Imputers().get("mean")
+            out = plugin.fit_transform(X_missing.copy()).to_numpy()
+            np.save(f"{base_path}/{name}/{config}/column_mean.npy", out)
         
         # HyperImpute
-        # plugin = Imputers().get("hyperimpute")
-        # out = plugin.fit_transform(X_missing.copy()).to_numpy()
-        # add_rows(rows, name, pattern_name, "HyperImpute", X_normalized[mask], out[mask])
+        if "hyperimpute" in imputers:
+            plugin = Imputers().get("hyperimpute")
+            out = plugin.fit_transform(X_missing.copy()).to_numpy()
+            np.save(f"{base_path}/{name}/{config}/hyperimpute.npy", out)
         
-        # torch.cuda.empty_cache()
-        
-# Output results to a csv file
-columns = ["dataset_name", "pattern_name", "imputer_name", "true_value", "imputed_value"]
-df = pd.DataFrame(rows, columns=columns)
-
-# If the file already exists, append to it
-import os
-if os.path.exists("results.csv"):
-    df.to_csv("out/errors/results.csv", mode='a', header=False, index=False)
-else:
-    df.to_csv("out/errors/results.csv", index=False)
+        # Empty cache        
+        torch.cuda.empty_cache()

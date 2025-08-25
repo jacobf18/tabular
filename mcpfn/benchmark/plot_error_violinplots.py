@@ -24,13 +24,15 @@ for dataset in datasets:
         # X_tabpfn = np.load(f"{base_path}/{dataset}/{pattern_name}_{p}/tabpfn.npy")
         X_softimpute = np.load(f"{base_path}/{dataset}/{pattern_name}_{p}/softimpute.npy")
         X_column_mean = np.load(f"{base_path}/{dataset}/{pattern_name}_{p}/column_mean.npy")
+        X_hyperimpute = np.load(f"{base_path}/{dataset}/{pattern_name}_{p}/hyperimpute.npy")
         
         # Compute errors
         errors = {
             "MCPFN": np.abs(X_mcpfn[mask] - X_true[mask]),
             # "TabPFN": np.abs(X_tabpfn[mask] - X_true[mask]),
             "SoftImpute": np.abs(X_softimpute[mask] - X_true[mask]),
-            "Column Mean": np.abs(X_column_mean[mask] - X_true[mask])
+            "Column Mean": np.abs(X_column_mean[mask] - X_true[mask]),
+            "HyperImpute": np.abs(X_hyperimpute[mask] - X_true[mask])
         }
         
         # Plot boxplot
