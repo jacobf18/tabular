@@ -6,7 +6,7 @@ from mcpfn.model.encoders import normalize_data
 import os
 
 # --- Fetch datasets ---
-datasets = fetch_clean_openml_datasets(num_datasets=20)
+datasets = fetch_clean_openml_datasets(num_datasets=50)
 
 # --- Define missingness patterns ---
 p_mcar = 0.4

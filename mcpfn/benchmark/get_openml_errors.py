@@ -18,7 +18,7 @@ mcpfn = ImputePFN(
     device='cuda',
     encoder_path='/root/tabular/mcpfn/src/mcpfn/model/encoder.pth',
     borders_path='/root/tabular/mcpfn/borders.pt',
-    checkpoint_path='/mnt/mcpfn_data/checkpoints/mnar_from_mcar_batch_size_64/step-70000.ckpt'
+    checkpoint_path='/mnt/mcpfn_data/checkpoints/full_batch_size_64/step-199900.ckpt'
 )
 # tabpfn = TabPFNImputer(device='cuda')
 
