@@ -466,7 +466,6 @@ class MARPattern(BaseMissingness):
             X[torch.rand(len(X)) < probs, col_idx] = torch.nan
         return X
 
-
 class MNARPattern(BaseMissingness):
     def _induce_missingness(self, X):
         p, (_, n_cols) = self.config.get("p_missing", 0.6), X.shape
@@ -481,7 +480,6 @@ class MNARPattern(BaseMissingness):
                 probs = torch.sigmoid(log_odds + beta_0)
                 X[torch.rand(len(X)) < probs, col_idx] = torch.nan
         return X
-
 
 class MNARRecSysPattern(BaseMissingness):
     def _induce_missingness(self, X):
@@ -501,7 +499,6 @@ class MNARRecSysPattern(BaseMissingness):
                 mask[i, matching_items] = True
         X[~mask] = torch.nan
         return X
-
 
 class MNARPanelPattern(BaseMissingness):
     def _induce_missingness(self, X):
@@ -926,6 +923,30 @@ class SCMPriorTabICL:
             prior_type = "mix_scm",
             n_jobs=-1
         )
+        
+class MixedPattern(BaseMissingness):
+    """
+    Induces missingness by randomly selcting a type of missingness pattern and then inducing missingness based on that pattern.
+    This randomness is controlled by the config parameters 'mcar_prob', 'mar_prob', and 'mnar_prob'.
+    """
+    def __init__(self, config: dict):
+        self.patterns = [
+            MCARPattern(config),
+            MARPattern(config),
+            MNARPattern(config)
+        ]
+        self.mcar_prob = config.get('mcar_prob', 0.5)
+        self.mar_prob = config.get('mar_prob', 0.25)
+        self.mnar_prob = config.get('mnar_prob', 0.25)
+        
+        # check that the probabilities sum to 1
+        if self.mcar_prob + self.mar_prob + self.mnar_prob != 1:
+            raise ValueError('The sum of the probabilities must be 1')
+        
+    def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
+        pattern = np.random.choice(self.patterns, p=np.array([self.mcar_prob, self.mar_prob, self.mnar_prob]))
+        return pattern._induce_missingness(X)
+        
 
 # Main class
 class MissingnessPrior(IterableDataset):
@@ -943,6 +964,7 @@ class MissingnessPrior(IterableDataset):
         "mcar": MCARPattern,
         "mar": MARPattern,
         "mnar": MNARPattern,
+        "mixed": MixedPattern,
         # Specific MNAR Patterns
         "mnar_rec_sys": MNARRecSysPattern,
         "mnar_panel": MNARPanelPattern,

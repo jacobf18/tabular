@@ -4,9 +4,9 @@
 echo "Training model"
 
 # Set the save directory as an environment variable
-BASE_DIR="/mnt/mcpfn_data"
+BASE_DIR="/root"
 # PRIOR_DIR="/mnt/volume_tor1_1754506427528/data"
-CHECKPOINT_DIR="${BASE_DIR}/checkpoints/mnar_from_mcar_batch_size_64"
+CHECKPOINT_DIR="${BASE_DIR}/checkpoints/mixed"
 
 IF_SAVE=True
 if [ "$IF_SAVE" = True ]; then
@@ -21,16 +21,16 @@ fi
 python3 /root/tabular/mcpfn/src/mcpfn/train/run.py \
             --wandb_log ${IF_SAVE} \
             --wandb_project MCPFN \
-            --wandb_name mnar_from_mcar_batch_size_64 \
+            --wandb_name mixed \
             --wandb_dir /root/tabular/mcpfn/wandb \
             --wandb_mode online \
             --device cuda \
             --dtype float32 \
             --np_seed 42 \
             --torch_seed 42 \
-            --max_steps 100000 \
+            --max_steps 1562500 \
             --batch_size 64 \
-            --micro_batch_size 16 \
+            --micro_batch_size 8 \
             --lr ${1} \
             --scheduler cosine_warmup \
             --warmup_proportion 0.02 \
@@ -52,17 +52,17 @@ python3 /root/tabular/mcpfn/src/mcpfn/train/run.py \
             --ff_factor 2 \
             --norm_first True \
             --checkpoint_dir ${CHECKPOINT_DIR} \
-            --save_temp_every 100 \
+            --save_temp_every 1000 \
             --save_perm_every 10000 \
             --encoder_path /root/tabular/mcpfn/src/mcpfn/model/encoder.pth \
             --borders_path /root/tabular/mcpfn/borders.pt \
             --model_name ${1}.ckpt \
             --save_every 15 \
             --min_seq_len 5 \
-            --max_seq_len 40 \
+            --max_seq_len 100 \
             --min_features 5 \
             --max_features 40 \
-            --missingness_type mnar \
-            --checkpoint_path /mnt/mcpfn_data/checkpoints/full_batch_size_64/step-199900.ckpt
+            --missingness_type mixed
+            # --checkpoint_path /mnt/mcpfn_data/checkpoints/full_batch_size_64/step-199900.ckpt
             # --prior_dir ${PRIOR_DIR} \
             
