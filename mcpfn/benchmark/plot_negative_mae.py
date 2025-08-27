@@ -11,7 +11,7 @@ base_path = "datasets/openml"
 
 datasets = os.listdir(base_path)
 
-methods = ["softimpute", "column_mean", "hyperimpute", "mcpfn"]
+methods = ["softimpute", "column_mean", "hyperimpute", "mcpfn", "tabpfn"]
 
 negative_mae = {}
 

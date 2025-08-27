@@ -111,6 +111,10 @@ class ImputePFN:
         # Denormalize the imputed matrix
         X_imputed = X_normalized * (stds + 1e-8) + means
 
+        # Clean up memory
+        del train_X, train_y, test_X, X_normalized_tensor, X_normalized, X_input, input_y, preds, borders, medians
+        torch.cuda.empty_cache()
+
         return X_imputed  # Return the imputed matrix
     
 class TabPFNImputer:
@@ -139,6 +143,10 @@ class TabPFNImputer:
         preds = self.reg.predict(test_X_npy)
         
         X[np.where(np.isnan(X))] = preds
+        
+        # Clean up memory
+        del train_X, train_y, test_X, X_tensor
+        torch.cuda.empty_cache()
         
         return X
 

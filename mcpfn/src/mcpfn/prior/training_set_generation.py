@@ -904,6 +904,13 @@ def create_train_test_sets(
         else torch.empty(0, X.shape[0] + X.shape[1] + 2) # +2 for the row and column indices
     )
     test_y = torch.stack(test_y_list) if test_y_list else torch.empty(0)
+    
+    # Clean up memory
+    del train_X_list, train_y_list, test_X_list, test_y_list
+    
+    # Clear cache
+    torch.cuda.empty_cache()
+    
     return train_X, train_y, test_X, test_y
 
 class SCMPriorTabICL:

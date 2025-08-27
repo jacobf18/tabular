@@ -19,7 +19,8 @@ def fetch_clean_openml_datasets(
         (datasets_df['NumberOfMissingValues'] == 0) &
         (datasets_df['NumberOfFeatures'] >= min_cols) &
         (datasets_df['NumberOfInstances'] >= min_rows) &
-        (datasets_df['NumberOfInstances'] <= max_rows)
+        (datasets_df['NumberOfInstances'] <= max_rows) & 
+        (datasets_df['NumberOfFeatures'] <= max_cols)
     ]
 
     np.random.seed(seed)
