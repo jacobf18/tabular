@@ -25,6 +25,7 @@ from mcpfn.model.encoders import normalize_data
 from .scm_prior import SCMPrior
 from .utils import DisablePrinting
 import copy
+from .mar_missing import MAR_missingness
 
 # Helpers
 def sample_log_uniform(low, high, size=1, base=np.e):
@@ -924,6 +925,21 @@ class SCMPriorTabICL:
             n_jobs=-1
         )
         
+class MARNeuralNetwork(BaseMissingness):
+    """
+    Induces missingness based on a neural network with random weights.
+    This is a simple implementation of the MAR missingness pattern.
+    """
+    def __init__(self, config: dict):
+        mar_config = config['mar_config']
+        self.mar = MAR_missingness(mar_config)
+        
+    def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
+        propensities = self.mar(X)
+        mask = torch.bernoulli(propensities)
+        X[mask] = torch.nan
+        return X
+
 class MixedPattern(BaseMissingness):
     """
     Induces missingness by randomly selcting a type of missingness pattern and then inducing missingness based on that pattern.
