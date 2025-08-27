@@ -124,7 +124,6 @@ class Trainer:
         # Setup distributed training
         print("Configuring DDP")
         self.ddp = int(os.environ.get("RANK", -1)) != -1
-        self.ddp = False
 
         if self.ddp:
             init_process_group(backend="nccl")
@@ -445,16 +444,17 @@ class Trainer:
             Filename for the checkpoint
         """
 
-        os.makedirs(self.config.checkpoint_dir, exist_ok=True)
-        checkpoint_path = os.path.join(self.config.checkpoint_dir, name)
-        checkpoint = {
-            "config": self.model_config,
-            "state_dict": self.raw_model.state_dict(),
-            "optimizer_state": self.optimizer.state_dict(),
-            "scheduler_state": self.scheduler.state_dict(),
-            "curr_step": self.curr_step,
-        }
-        torch.save(checkpoint, checkpoint_path)
+        if self.ddp_local_rank == 0:
+            os.makedirs(self.config.checkpoint_dir, exist_ok=True)
+            checkpoint_path = os.path.join(self.config.checkpoint_dir, name)
+            checkpoint = {
+                "config": self.model_config,
+                "state_dict": self.raw_model.state_dict(),
+                "optimizer_state": self.optimizer.state_dict(),
+                "scheduler_state": self.scheduler.state_dict(),
+                "curr_step": self.curr_step,
+            }
+            torch.save(checkpoint, checkpoint_path)
 
     def manage_checkpoint(self):
         """
