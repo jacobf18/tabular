@@ -936,6 +936,8 @@ class MARNeuralNetwork(BaseMissingness):
     def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
         self.mar_config['N'] = X.shape[0]
         self.mar_config['T'] = X.shape[1]
+        self.mar_config['row_neighbor_upper'] = X.shape[0]//2
+        self.mar_config['col_neighbor_upper'] = X.shape[1]//2
         self.mar = MAR_missingness(self.mar_config)
         propensities = self.mar(X)
         mask = torch.bernoulli(propensities).bool()
@@ -950,7 +952,7 @@ class MixedPattern(BaseMissingness):
     def __init__(self, config: dict):
         self.patterns = [
             MCARPattern(config),
-            MARPattern(config),
+            MARNeuralNetwork(config),
             MNARPattern(config)
         ]
         self.mcar_prob = config.get('mcar_prob', 0.5)
@@ -1104,6 +1106,48 @@ class MissingnessPrior(IterableDataset):
         )
         # train sizes is the part that is different
         return X_full, y_full, d, seq_lens, train_sizes
+
+
+    @torch.no_grad()
+    def get_pair(self, batch_size: Optional[int] = None):
+        """Generates a new batch of datasets (X, MissingPattern) pairs."""
+        if batch_size is None:
+            batch_size = self.batch_size
+        X_list, masking_list = [], []
+        step = 0
+        if self.verbose:
+            pbar = tqdm(total=self.batch_size, desc="Generating batches")
+        
+        if isinstance(self.generator, SCMPriorTabICL):
+            scm_X, scm_y, _, _, _ = self.generator.scm.get_batch(batch_size)
+        
+        while step < self.batch_size:
+            if isinstance(self.generator, SCMPriorTabICL):
+                X = torch.cat((scm_X[step, :, :], scm_y[step, :].unsqueeze(dim=-1)), dim=1)
+            else:
+                complete_df = self.generator.generate_complete_matrix()
+                X = torch.tensor(complete_df.values, dtype=torch.float32)
+            
+            # Normalize the data
+            X = torch.squeeze(normalize_data(torch.unsqueeze(X, 1)), 1)
+            
+            if X.numel() == 0: # if the matrix is empty, skip
+                continue
+            X_missing = self.missingness_inducer._induce_missingness(X.clone())
+            masking = torch.logical_not(torch.isnan(X_missing)).float()
+            X_list.append(X)
+            masking_list.append(masking)
+            step += 1
+            if self.verbose:
+                pbar.update(1)
+            
+        if not X_list:
+            return self.get_pair() 
+            
+        X_full = torch.stack(X_list, dim=0)
+        masking_full = torch.stack(masking_list, dim=0)
+        
+        return X_full, masking_full
     
     def __iter__(self) -> "MissingnessPrior":
         """
