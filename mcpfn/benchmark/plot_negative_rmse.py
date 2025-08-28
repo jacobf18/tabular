@@ -11,7 +11,7 @@ base_path = "datasets/openml"
 
 datasets = os.listdir(base_path)
 
-methods = ["softimpute", "column_mean", "hyperimpute", "mcpfn", "tabpfn"]
+methods = ["softimpute", "column_mean", "hyperimpute", "mcpfn_mar_linear", "tabpfn"]
 
 negative_rmse = {}
 
@@ -42,11 +42,13 @@ for pattern_name in ["MCAR", "MAR", "MNAR"]:
     # Average across datasets
     # --- Barplot ---
     plt.figure(figsize=(7,5))
-    sns.barplot(data=df_norm)
+    ax = sns.barplot(data=df_norm)
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=20, ha="right")
 
     plt.ylabel("Normalized Negative RMSE (0–1)")
     plt.xlabel("Algorithm")
     plt.title("Comparison of Imputation Algorithms")
     plt.ylim(0, 1.05)
+    plt.tight_layout()
     plt.savefig(f"figures/negative_rmse_{pattern_name}.png")
     plt.close()

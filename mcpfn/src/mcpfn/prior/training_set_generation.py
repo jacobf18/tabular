@@ -931,12 +931,14 @@ class MARNeuralNetwork(BaseMissingness):
     This is a simple implementation of the MAR missingness pattern.
     """
     def __init__(self, config: dict):
-        mar_config = config['mar_config']
-        self.mar = MAR_missingness(mar_config)
+        self.mar_config = config['mar_config']
         
     def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
+        self.mar_config['N'] = X.shape[0]
+        self.mar_config['T'] = X.shape[1]
+        self.mar = MAR_missingness(self.mar_config)
         propensities = self.mar(X)
-        mask = torch.bernoulli(propensities)
+        mask = torch.bernoulli(propensities).bool()
         X[mask] = torch.nan
         return X
 

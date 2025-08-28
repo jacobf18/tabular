@@ -295,7 +295,7 @@ class Trainer:
                 'num_cols_low': self.config.min_features, 'num_cols_high': self.config.max_features,
                 'p_missing': 0.4,
                 # Mixed configs
-                'mcar_prob': 0.5, 'mar_prob': 0.25, 'mnar_prob': 0.25,
+                'mcar_prob': 0.5, 'mar_prob': 0.5, 'mnar_prob': 0.0,
                 # MNAR configs
                 'threshold_quantile': 0.25, 'n_core_items': 5, 'n_genres': 3, 'n_policies': 4,
                 # Latent Factor configs
@@ -317,6 +317,19 @@ class Trainer:
                 # Last few ones
                 'censor_quantile': 0.1, 'two_phase_cheap_fraction': 0.4, 'two_phase_beta': 2.5,
                 'skip_logic_p_noise': 0.9, 'cold_start_fraction': 0.3, 'cold_start_gamma': 0.15,
+                # MAR configs
+                'mar_config': {
+                    "num_layers_upper": 3,
+                    "hidden_lower": 1,
+                    "hidden_upper": 100,
+                    "activation": "relu",
+                    "N": 100, # Row size of X (reduced for testing)
+                    "T": 50, # Column size of X (reduced for testing)
+                    "row_neighbor_upper": 5, # Upper bound of row neighbor (reduced for testing)
+                    "col_neighbor_upper": 5, # Upper bound of column neighbor (reduced for testing)
+                    "seed": 42,
+                    "neighbor_type": "random"
+                }
             }
             # Create data on the fly
             self.train_dataset = MissingnessPrior(
@@ -586,9 +599,9 @@ class Trainer:
                     ):
                         self.manage_checkpoint()
 
-            # Save last checkpoint
-            ckpt_name = f"step-{self.curr_step}.ckpt"
-            self.save_checkpoint(name=ckpt_name)
+        # Save last checkpoint
+        ckpt_name = f"step-{self.curr_step}.ckpt"
+        self.save_checkpoint(name=ckpt_name)
             
     def validate_micro_batch(self, micro_seq_len, micro_train_size):
         """

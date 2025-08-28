@@ -14,21 +14,6 @@ from tqdm import tqdm
 # --- Suppress warnings ---
 warnings.filterwarnings("ignore")
 
-# --- Load imputer classes ---
-mcpfn = ImputePFN(
-    device='cuda',
-    encoder_path='/root/tabular/mcpfn/src/mcpfn/model/encoder.pth',
-    borders_path='/root/tabular/mcpfn/borders.pt',
-    checkpoint_path='/mnt/mcpfn_data/checkpoints/mnar_linear/step-99999.ckpt'
-)
-tabpfn = TabPFNImputer(device='cuda')
-
-# --- Store all results ---
-base_path = "datasets/openml"
-
-# Get dataset names from base path
-datasets = os.listdir(base_path)
-
 imputers = set([
     "mcpfn", 
     # "hyperimpute", 
@@ -36,6 +21,25 @@ imputers = set([
     # "column_mean", 
     # "tabpfn"
 ])
+
+# --- Load imputer classes ---
+if "mcpfn" in imputers:
+    mcpfn = ImputePFN(
+        device='cuda',
+        encoder_path='/root/tabular/mcpfn/src/mcpfn/model/encoder.pth',
+        borders_path='/root/tabular/mcpfn/borders.pt',
+        checkpoint_path='/root/checkpoints/mar_mixed/step-35000.ckpt'
+    )
+    mcpfn_name = "mcpfn_mar_linear"
+
+if "tabpfn" in imputers:
+    tabpfn = TabPFNImputer(device='cuda')
+
+# --- Store all results ---
+base_path = "datasets/openml"
+
+# Get dataset names from base path
+datasets = os.listdir(base_path)
 
 # --- Run benchmark ---
 pbar = tqdm(datasets)
@@ -49,14 +53,13 @@ for name in pbar:
         p = config.split("_")[1]
         X_missing = np.load(f"{base_path}/{name}/{config}/missing.npy")
         X_normalized = np.load(f"{base_path}/{name}/{config}/true.npy")
-        print(X_normalized.shape)
     
         mask = np.isnan(X_missing)
 
         # MCPFN
         if "mcpfn" in imputers:
             X_mcpfn = mcpfn.impute(X_missing.copy())
-            np.save(f"{base_path}/{name}/{config}/mcpfn.npy", X_mcpfn)
+            np.save(f"{base_path}/{name}/{config}/{mcpfn_name}.npy", X_mcpfn)
         
         # TabPFN
         if "tabpfn" in imputers:
@@ -80,8 +83,6 @@ for name in pbar:
             plugin = Imputers().get("hyperimpute")
             out = plugin.fit_transform(X_missing.copy()).to_numpy()
             np.save(f"{base_path}/{name}/{config}/hyperimpute.npy", out)
-            
-        print(f"Total allocated memory: {torch.cuda.memory_allocated(device='cuda'):.2f}")
         
         # Empty cache
         torch.cuda.empty_cache()
