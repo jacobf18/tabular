@@ -26,7 +26,7 @@ from .scm_prior import SCMPrior
 from .utils import DisablePrinting
 import copy
 from .mar_missing import MAR_missingness
-
+from .mar_block_missing import MAR_block_missingness
 # Helpers
 def sample_log_uniform(low, high, size=1, base=np.e):
     return np.power(
@@ -941,6 +941,35 @@ class MARNeuralNetwork(BaseMissingness):
         self.mar = MAR_missingness(self.mar_config)
         propensities = self.mar(X)
         mask = torch.bernoulli(propensities).bool()
+        X[mask] = torch.nan
+        return X
+
+class MARBlockNeuralNetwork(BaseMissingness):
+    """
+    Induces missingness based on a neural network with random weights.
+    This is a simple implementation of the MAR missingness pattern.
+    """
+    def __init__(self, config: dict):
+        self.mar_block_config = config['mar_block_config']
+
+    def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
+        self.mar_block_config['N'] = X.shape[0]
+        self.mar_block_config['T'] = X.shape[1]
+        self.mar_block_config['row_blocks'] = X.shape[0]//3
+        self.mar_block_config['col_blocks'] = X.shape[1]//3
+        self.mar_block = MAR_block_missingness(self.mar_block_config)
+        propensities, row_cumsum, col_cumsum = self.mar_block(X)
+
+        def recover_block_missingness(propensity_small, row_cumsum, col_cumsum):
+            N = row_cumsum[-1]
+            T = col_cumsum[-1]
+            missing_mask = torch.zeros(N, T)
+            for i in range(row_cumsum.shape[0]-1):
+                for t in range(col_cumsum.shape[0]-1):
+                    missing_mask[row_cumsum[i]:row_cumsum[i+1], col_cumsum[t]:col_cumsum[t+1]] = torch.bernoulli(propensity_small[i, t])
+            return missing_mask
+
+        mask = recover_block_missingness(propensities, row_cumsum, col_cumsum)
         X[mask] = torch.nan
         return X
 
