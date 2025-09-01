@@ -27,6 +27,7 @@ from .utils import DisablePrinting
 import copy
 from .mar_missing import MAR_missingness
 from .mar_block_missing import MAR_block_missingness
+from .mar_sequential_missing import UnifiedBandit
 # Helpers
 def sample_log_uniform(low, high, size=1, base=np.e):
     return np.power(
@@ -970,6 +971,22 @@ class MARBlockNeuralNetwork(BaseMissingness):
             return missing_mask
 
         mask = recover_block_missingness(propensities, row_cumsum, col_cumsum)
+        X[mask] = torch.nan
+        return X
+
+class MARSequentialBandit(BaseMissingness):
+    """
+    Induces missingness based on a sequential bandit algorithm.
+    This is a simple implementation of the MAR missingness pattern.
+    """
+    def __init__(self, config: dict):
+        self.mar_sequential_bandit_config = config['mar_sequential_bandit_config']
+
+    def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
+        self.mar_sequential_bandit_config['N'] = X.shape[0]
+        self.mar_sequential_bandit_config['T'] = X.shape[1]
+        self.mar_sequential_bandit = UnifiedBandit(self.mar_sequential_bandit_config)
+        mask = self.mar_sequential_bandit(X)
         X[mask] = torch.nan
         return X
 
