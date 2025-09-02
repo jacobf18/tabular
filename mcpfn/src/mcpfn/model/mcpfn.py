@@ -51,7 +51,8 @@ class MCPFN(nn.Module):
         self.encoder = torch.load(encoder_path, weights_only=False)
 
         self.model = PerFeatureTransformer(
-            config=self.config, encoder=self.encoder, n_out=5000
+            config=self.config, encoder=self.encoder, n_out=5000, 
+            feature_positional_embedding='subspace'
         )
 
     def forward(

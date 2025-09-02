@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from mcpfn.prior.training_set_generation import MCARPattern, MARPattern, MNARPattern
+from mcpfn.prior.training_set_generation import MCARPattern, MARPattern, MNARPattern, MARNeuralNetwork
 from download_openml import fetch_clean_openml_datasets
 from mcpfn.model.encoders import normalize_data
 import os
@@ -14,9 +14,19 @@ p_mar = 0.4
 p_mnar = 0.4
 
 patterns = {
-    "MCAR": MCARPattern(config={"p_missing": p_mcar}),
-    "MAR": MARPattern(config={"p_missing": p_mar}),
-    "MNAR": MNARPattern(config={"p_missing": p_mnar}),
+    # "MCAR": MCARPattern(config={"p_missing": p_mcar}),
+    # "MAR": MARPattern(config={"p_missing": p_mar}),
+    # "MNAR": MNARPattern(config={"p_missing": p_mnar}),
+    "MAR_Neural": MARNeuralNetwork(config={
+        "p_missing": p_mar, 
+        'mar_config': {
+        "num_layers_upper": 3,
+        "hidden_lower": 1,
+        "hidden_upper": 100,
+        "activation": "relu",
+        "seed": 42,
+        "neighbor_type": "random"
+    }})
 }
 
 base_path = "datasets/openml"

@@ -46,7 +46,7 @@ for pattern_name in ["MCAR", "MAR", "MNAR"]:
 
     plt.ylabel("Normalized Negative MAE (0–1)")
     plt.xlabel("Algorithm")
-    plt.title("Comparison of Imputation Algorithms")
+    plt.title(f"Comparison of Imputation Algorithms on {pattern_name} data")
     plt.ylim(0, 1.05)
     plt.savefig(f"figures/negative_mae_{pattern_name}.png")
     plt.close()

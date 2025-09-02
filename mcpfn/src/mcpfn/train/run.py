@@ -295,7 +295,7 @@ class Trainer:
                 'num_cols_low': self.config.min_features, 'num_cols_high': self.config.max_features,
                 'p_missing': 0.4,
                 # Mixed configs
-                'mcar_prob': 0.5, 'mar_prob': 0.5, 'mnar_prob': 0.0,
+                'mcar_prob': 0.5, 'mar_prob': 0.25, 'mnar_prob': 0.25,
                 # MNAR configs
                 'threshold_quantile': 0.25, 'n_core_items': 5, 'n_genres': 3, 'n_policies': 4,
                 # Latent Factor configs
