@@ -11,7 +11,7 @@ base_path = "datasets/openml"
 
 datasets = os.listdir(base_path)
 
-methods = ["softimpute", "column_mean", "hyperimpute", "mcpfn_mar_linear", "tabpfn"]
+methods = ["softimpute", "column_mean", "hyperimpute", "mcpfn_mcar_positional", "tabpfn"]
 
 negative_rmse = {}
 
@@ -47,7 +47,7 @@ for pattern_name in ["MCAR", "MAR", "MNAR"]:
 
     plt.ylabel("Normalized Negative RMSE (0–1)")
     plt.xlabel("Algorithm")
-    plt.title("Comparison of Imputation Algorithms")
+    plt.title(f"Comparison of Imputation Algorithms | Pattern: {pattern_name}")
     plt.ylim(0, 1.05)
     plt.tight_layout()
     plt.savefig(f"figures/negative_rmse_{pattern_name}.png")

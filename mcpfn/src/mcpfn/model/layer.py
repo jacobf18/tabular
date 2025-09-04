@@ -267,6 +267,8 @@ class PerFeatureEncoderLayer(Module):
         *,
         cache_trainset_representation: bool = False,
         att_src: Tensor | None = None,
+        pos_row: torch.Tensor | None = None,
+        pos_col: torch.Tensor | None = None,
     ) -> Tensor:
         """Pass the input through the encoder layer.
 
@@ -334,35 +336,58 @@ class PerFeatureEncoderLayer(Module):
             # dim -2 as the sequence dimension
             if self.multiquery_item_attention_for_test_set:
                 if single_eval_pos < x.shape[1]:
-                    new_x_test = self.self_attn_between_items(
-                        x[:, single_eval_pos:].transpose(1, 2),
-                        (
-                            x[:, :single_eval_pos].transpose(1, 2)
-                            if single_eval_pos
-                            else None
-                        ),
-                        save_peak_mem_factor=save_peak_mem_factor,
-                        cache_kv=False,
-                        add_input=True,
-                        allow_inplace=True,
-                        use_cached_kv=not single_eval_pos,
-                        reuse_first_head_kv=True,
-                        use_second_set_of_queries=self.two_sets_of_queries,
-                    ).transpose(1, 2)
+                    # Flatten pos_col to match flattened batch dim after rearrange
+                    pos_col_flat = None
+                    if pos_col is not None:
+                        # x has shape (b, f, s, e) here; pos_col expected shape (b, f)
+                        pos_col_flat = pos_col.reshape(-1)
+                    att = self.self_attn_between_items
+                    # attach pos to attention instance
+                    setattr(att, "_pos_row", pos_row)
+                    setattr(att, "_pos_col", pos_col_flat)
+                    try:
+                        new_x_test = att(
+                            x[:, single_eval_pos:].transpose(1, 2),
+                            (
+                                x[:, :single_eval_pos].transpose(1, 2)
+                                if single_eval_pos
+                                else None
+                            ),
+                            save_peak_mem_factor=save_peak_mem_factor,
+                            cache_kv=False,
+                            add_input=True,
+                            allow_inplace=True,
+                            use_cached_kv=not single_eval_pos,
+                            reuse_first_head_kv=True,
+                            use_second_set_of_queries=self.two_sets_of_queries,
+                        ).transpose(1, 2)
+                    finally:
+                        delattr(att, "_pos_row")
+                        delattr(att, "_pos_col")
                 else:
                     new_x_test = None
 
                 if single_eval_pos:
-                    new_x_train = self.self_attn_between_items(
-                        x[:, :single_eval_pos].transpose(1, 2),
-                        x[:, :single_eval_pos].transpose(1, 2),
-                        save_peak_mem_factor=save_peak_mem_factor,
-                        cache_kv=cache_trainset_representation,
-                        only_cache_first_head_kv=True,
-                        add_input=True,
-                        allow_inplace=True,
-                        use_cached_kv=False,
-                    ).transpose(1, 2)
+                    pos_col_flat = None
+                    if pos_col is not None:
+                        pos_col_flat = pos_col.reshape(-1)
+                    att = self.self_attn_between_items
+                    setattr(att, "_pos_row", pos_row)
+                    setattr(att, "_pos_col", pos_col_flat)
+                    try:
+                        new_x_train = att(
+                            x[:, :single_eval_pos].transpose(1, 2),
+                            x[:, :single_eval_pos].transpose(1, 2),
+                            save_peak_mem_factor=save_peak_mem_factor,
+                            cache_kv=cache_trainset_representation,
+                            only_cache_first_head_kv=True,
+                            add_input=True,
+                            allow_inplace=True,
+                            use_cached_kv=False,
+                        ).transpose(1, 2)
+                    finally:
+                        delattr(att, "_pos_row")
+                        delattr(att, "_pos_col")
                 else:
                     new_x_train = None
 
@@ -376,16 +401,25 @@ class PerFeatureEncoderLayer(Module):
                 attention_src_x = att_src.transpose(1, 2)
             elif single_eval_pos:
                 attention_src_x = x[:, :single_eval_pos].transpose(1, 2)
-
-            return self.self_attn_between_items(
-                x.transpose(1, 2),
-                attention_src_x,
-                save_peak_mem_factor=save_peak_mem_factor,
-                cache_kv=cache_trainset_representation and single_eval_pos,
-                add_input=True,
-                allow_inplace=True,
-                use_cached_kv=cache_trainset_representation and not single_eval_pos,
-            ).transpose(1, 2)
+            pos_col_flat = None
+            if pos_col is not None:
+                pos_col_flat = pos_col.reshape(-1)
+            att = self.self_attn_between_items
+            setattr(att, "_pos_row", pos_row)
+            setattr(att, "_pos_col", pos_col_flat)
+            try:
+                return att(
+                    x.transpose(1, 2),
+                    attention_src_x,
+                    save_peak_mem_factor=save_peak_mem_factor,
+                    cache_kv=cache_trainset_representation and single_eval_pos,
+                    add_input=True,
+                    allow_inplace=True,
+                    use_cached_kv=cache_trainset_representation and not single_eval_pos,
+                ).transpose(1, 2)
+            finally:
+                delattr(att, "_pos_row")
+                delattr(att, "_pos_col")
 
         mlp_save_peak_mem_factor = (
             save_peak_mem_factor * 8 if save_peak_mem_factor is not None else None

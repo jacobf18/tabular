@@ -213,7 +213,9 @@ class Trainer:
 
         model = MCPFN(encoder_path=self.config.encoder_path)
         model.to(device=self.config.device)
-        
+
+        # print(model.model.transformer_encoder.layers[0]._last_pos_row)
+
         self.tabpfn_model = TabPFNModel(device=self.config.device)
 
         if self.master_process:

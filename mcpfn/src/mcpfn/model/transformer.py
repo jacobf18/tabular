@@ -605,6 +605,20 @@ class PerFeatureTransformer(nn.Module):
             )
         del embedded_y, embedded_x
 
+        # Build 2D position indices for rows (sequence positions) and columns
+        # (feature / block indices) so attention can apply a 2D RoPE.
+        # pos_row: (seq_len,)  pos_col: (batch_size, n_blocks)
+        n_blocks = embedded_input.shape[2]
+        b_ = embedded_input.shape[0]
+        pos_row = torch.arange(seq_len, device=embedded_input.device)
+        pos_col = torch.arange(n_blocks, device=embedded_input.device).unsqueeze(0).expand(
+            b_, n_blocks
+        )
+
+        # expose last pos tensors on the module for runtime inspection / monitoring
+        self._last_pos_row = pos_row
+        self._last_pos_col = pos_col
+
         encoder_out = self.transformer_encoder(
             (
                 embedded_input
@@ -614,6 +628,8 @@ class PerFeatureTransformer(nn.Module):
             single_eval_pos=single_eval_pos,
             half_layers=half_layers,
             cache_trainset_representation=self.cache_trainset_representation,
+            pos_row=pos_row,
+            pos_col=pos_col,
         )  # b s f+1 e -> b s f+1 e
 
         # If we are using a decoder
@@ -656,7 +672,9 @@ class PerFeatureTransformer(nn.Module):
             train_encoder_out = encoder_out[:, :single_eval_pos_, -1].transpose(0, 1)
             output_decoded["train_out"] = self.decoder_dict["standard"](train_encoder_out)
             # output_decoded["test_out"] = self.decoder_dict["standard"](test_encoder_out)
-        return output_decoded["train_out"]
+        if isinstance(output_decoded, dict):
+            return output_decoded["train_out"]
+        return output_decoded
 
     def add_embeddings(  # noqa: C901, PLR0912
         self,

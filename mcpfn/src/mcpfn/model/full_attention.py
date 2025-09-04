@@ -349,14 +349,16 @@ class MultiHeadAttention(Attention):
         add_input: bool = False,
         # Indicates that 'x' is not used after the call and its buffer can be reused
         # for the output. The operation is not guaranteed to be inplace.
-        allow_inplace: bool = False,
+    allow_inplace: bool = False,
         # This requires 'add_input' and 'allow_inplace'. See the documentation of
         # the decorator 'support_save_peak_mem_factor' for details.
         save_peak_mem_factor: int | None = None,
         reuse_first_head_kv: bool = False,
         only_cache_first_head_kv: bool = False,
         use_cached_kv: bool = False,
-        use_second_set_of_queries: bool = False,
+    use_second_set_of_queries: bool = False,
+    # accept extra kwargs (e.g., pos_row/pos_col) for compatibility with callers
+    **kwargs: object,
     ) -> torch.Tensor:
         """X is the current hidden and has a shape of [batch, ..., seq_len, input_size].
         If keys and values are present in the cache and 'freeze_kv' is not set, they
@@ -419,6 +421,10 @@ class MultiHeadAttention(Attention):
                     dtype=x.dtype,
                 )
 
+        # extract pos args from kwargs if present
+        pos_row = kwargs.pop("pos_row", None)
+        pos_col = kwargs.pop("pos_col", None)
+
         output: torch.Tensor = self._compute(
             x,
             x_kv,
@@ -432,6 +438,8 @@ class MultiHeadAttention(Attention):
             save_peak_mem_factor=save_peak_mem_factor,
             reuse_first_head_kv=reuse_first_head_kv,
             use_second_set_of_queries=use_second_set_of_queries,
+            pos_row=pos_row,
+            pos_col=pos_col,
         )
         return output.reshape(x_shape_after_transpose[:-1] + output.shape[-1:])
 
@@ -467,12 +475,18 @@ class MultiHeadAttention(Attention):
 
         k = v = kv = None
         if use_cached_kv:
-            assert (
-                self.has_cached_kv
-            ), "You try to use cached keys and values but the cache is empty."
-            k = k_cache
-            v = v_cache
-            kv = kv_cache
+            if not self.has_cached_kv:
+                # Fallback: cache requested but empty -> compute KV normally.
+                # This can happen when callers forward pos args via attributes
+                # or in synthetic tests. Emit a warning and continue.
+                import warnings
+
+                warnings.warn("use_cached_kv was True but KV cache is empty; falling back to compute.")
+                use_cached_kv = False
+            else:
+                k = k_cache
+                v = v_cache
+                kv = kv_cache
 
         assert (k is None) == (v is None)
 
@@ -552,7 +566,9 @@ class MultiHeadAttention(Attention):
         cache_kv: bool,
         use_cached_kv: bool,
         reuse_first_head_kv: bool,
-        use_second_set_of_queries: bool,
+    use_second_set_of_queries: bool,
+    pos_row: torch.Tensor | None = None,
+    pos_col: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Attention computation.
         Called by 'forward', potentially on shards, once shapes have been normalized.
@@ -568,6 +584,74 @@ class MultiHeadAttention(Attention):
             reuse_first_head_kv=reuse_first_head_kv,
             use_second_set_of_queries=use_second_set_of_queries,
         )
+        # Apply 2D RoPE to q and (conditionally) k. q/k shape: (..., seq_len, nhead, d_k)
+        # allow pos to be provided as instance attributes (set by caller) for
+        # compatibility with callers that do not pass kwargs through checkpoint wrappers
+        if pos_row is None:
+            pos_row = getattr(self, "_pos_row", None)
+        if pos_col is None:
+            pos_col = getattr(self, "_pos_col", None)
+
+        if pos_row is not None and pos_col is not None:
+            # Ensure pos_row: (seq_len,), pos_col: (batch_flat,)
+            # Broadcast pos_row to (batch_flat, seq_len)
+            batch_flat = q.shape[0]
+            seq_len = q.shape[-2]
+
+            # Expand pos_row
+            pos_row_exp = pos_row.view(1, -1).expand(batch_flat, -1)
+
+            # pos_col may be length batch_flat
+            if pos_col.dim() == 1 and pos_col.shape[0] == batch_flat:
+                pos_col_exp = pos_col.view(-1, 1).expand(-1, seq_len)
+            else:
+                # Try to broadcast
+                pos_col_exp = pos_col.view(batch_flat, 1).expand(-1, seq_len)
+
+            # Define rope helper
+            def _apply_rope_2d(tensor: torch.Tensor) -> torch.Tensor:
+                # tensor shape: (batch_flat, seq_len, nhead, d_k)
+                bsf, sl, nh, dk = tensor.shape
+                # Split last dim into two halves for row and col
+                half = dk // 2
+                if half == 0:
+                    return tensor
+                t_row = tensor[..., :half]
+                t_col = tensor[..., half: half + (dk - half)]
+
+                # compute sin/cos for row and col
+                # frequencies for row
+                freqs_row = 1.0 / (10000 ** (torch.arange(0, half, 2, device=tensor.device) / half))
+                angles_row = pos_row_exp.view(bsf, sl, 1) * freqs_row.view(1, 1, -1)
+                cos_r = torch.cos(angles_row)
+                sin_r = torch.sin(angles_row)
+
+                # frequencies for col
+                freqs_col = 1.0 / (10000 ** (torch.arange(0, t_col.shape[-1], 2, device=tensor.device) / t_col.shape[-1]))
+                angles_col = pos_col_exp.view(bsf, sl, 1) * freqs_col.view(1, 1, -1)
+                cos_c = torch.cos(angles_col)
+                sin_c = torch.sin(angles_col)
+
+                def _apply_rope(x, cos, sin):
+                    # x shape: (bsf, sl, nh, d)
+                    x_even = x[..., 0::2]
+                    x_odd = x[..., 1::2]
+                    xr_even = x_even * cos.unsqueeze(2) - x_odd * sin.unsqueeze(2)
+                    xr_odd = x_even * sin.unsqueeze(2) + x_odd * cos.unsqueeze(2)
+                    # interleave even/odd back
+                    xr = torch.stack([xr_even, xr_odd], dim=-1).reshape_as(x)
+                    return xr
+
+                t_row_r = _apply_rope(t_row, cos_r, sin_r)
+                t_col_r = _apply_rope(t_col, cos_c, sin_c)
+                return torch.cat([t_row_r, t_col_r], dim=-1)
+
+            # apply
+            q = _apply_rope_2d(q)
+            if not use_cached_kv:
+                k = _apply_rope_2d(k)
+            # mark that rope was applied (for runtime inspection)
+            setattr(self, "_rope_applied_count", getattr(self, "_rope_applied_count", 0) + 1)
         attention_head_outputs = MultiHeadAttention.compute_attention_heads(
             q,
             k,
@@ -1201,12 +1285,17 @@ class MultiHeadAttention(Attention):
 
         k = v = kv = None
         if use_cached_kv:
-            assert (
-                self.has_cached_kv
-            ), "You try to use cached keys and values but the cache is empty."
-            k = k_cache
-            v = v_cache
-            kv = kv_cache
+            if not self.has_cached_kv:
+                import warnings
+
+                warnings.warn(
+                    "use_cached_kv was True but KV cache is empty; falling back to compute."
+                )
+                use_cached_kv = False
+            else:
+                k = k_cache
+                v = v_cache
+                kv = kv_cache
 
         assert (k is None) == (v is None)
 

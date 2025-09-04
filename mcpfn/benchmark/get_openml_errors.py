@@ -28,9 +28,10 @@ if "mcpfn" in imputers:
         device='cuda',
         encoder_path='/root/tabular/mcpfn/src/mcpfn/model/encoder.pth',
         borders_path='/root/tabular/mcpfn/borders.pt',
-        checkpoint_path='/root/checkpoints/mar_mixed/step-35000.ckpt'
+        # checkpoint_path='/root/checkpoints/mar_mixed/step-35000.ckpt'
+        checkpoint_path='/root/checkpoints/mcar_linear/step-99999.ckpt'
     )
-    mcpfn_name = "mcpfn_mar_linear"
+    mcpfn_name = "mcpfn_mcar_positional"
 
 if "tabpfn" in imputers:
     tabpfn = TabPFNImputer(device='cuda')
