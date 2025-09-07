@@ -8,7 +8,7 @@ from tqdm import tqdm
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from mar_missing import MAR_missingness
+from .mar_missing import MAR_missingness
 
 mar_block_config = {
     "N": 100,

@@ -156,7 +156,7 @@ class Trainer:
             self.ddp_world_size = 1
             self.ddp_local_rank = 0
 
-        # self.curr_step = 0  # Initialize current step for training
+        self.curr_step = 0  # Initialize current step for training
 
         # Set random seeds
         seed_offset = self.ddp_rank if self.ddp else 0
@@ -295,11 +295,11 @@ class Trainer:
                 'num_cols_low': self.config.min_features, 'num_cols_high': self.config.max_features,
                 'p_missing': 0.4,
                 # Mixed configs
-                'mcar_prob': 0.5, 'mar_prob': 0.25, 'mnar_prob': 0.25,
+                'mcar_prob': self.config.mcar_prob, 'mar_prob': self.config.mar_prob, 'mnar_prob': self.config.mnar_prob,
                 # MNAR configs
                 'threshold_quantile': 0.25, 'n_core_items': 5, 'n_genres': 3, 'n_policies': 4,
                 # Latent Factor configs
-                'latent_rank_low': 1, 'latent_rank_high': 11, 'latent_spike_p': 0.3, 'latent_slab_sigma': 2.0,
+                'latent_rank_low': 1, 'latent_rank_high': 15, 'latent_spike_p': 0.3, 'latent_slab_sigma': 2.0,
                 'apply_feature_warping_prob': 0.0, 'apply_quantization_prob': 0.0,
                 # Non-linear Factor configs
                 'spline_knot_k': [3, 5, 7], 'gp_length_scale_low': 0.3, 'gp_length_scale_high': 2.0,
@@ -436,6 +436,11 @@ class Trainer:
         # Load model state
         if "state_dict" not in checkpoint:
             raise ValueError("Checkpoint does not contain model state")
+        
+        # If 'module.' not in prefix of keys, add it
+        if self.ddp:
+            if not any(key.startswith('module.') for key in checkpoint["state_dict"]):
+                checkpoint["state_dict"] = {f'module.{key}': val for key, val in checkpoint["state_dict"].items()}
 
         self.model.load_state_dict(checkpoint["state_dict"])
 
@@ -443,8 +448,8 @@ class Trainer:
         if self.config.only_load_model:
             print("Only loading model weights")
         else:
-            self.optimizer.load_state_dict(checkpoint["optimizer_state"])
-            self.scheduler.load_state_dict(checkpoint["scheduler_state"])
+            # self.optimizer.load_state_dict(checkpoint["optimizer_state"])
+            # self.scheduler.load_state_dict(checkpoint["scheduler_state"])
             self.curr_step = checkpoint["curr_step"]
             print(f"Resuming training at step {self.curr_step}")
 
@@ -457,7 +462,7 @@ class Trainer:
             Filename for the checkpoint
         """
 
-        if self.ddp_local_rank == 0:
+        if self.ddp and self.ddp_local_rank == 0:
             os.makedirs(self.config.checkpoint_dir, exist_ok=True)
             checkpoint_path = os.path.join(self.config.checkpoint_dir, name)
             checkpoint = {
@@ -468,6 +473,7 @@ class Trainer:
                 "curr_step": self.curr_step,
             }
             torch.save(checkpoint, checkpoint_path)
+        
 
     def manage_checkpoint(self):
         """
@@ -515,7 +521,7 @@ class Trainer:
         """
         if self.master_process:
             step_progress = tqdm(
-                range(self.config.start_step, self.config.max_steps), desc="Step", leave=True
+                range(self.curr_step, self.config.max_steps), desc="Step", leave=True
             )
             # step_progress = range(self.curr_step, self.config.max_steps)
         else:
@@ -534,10 +540,10 @@ class Trainer:
                 "mae": 0.0,
                 "missing_ce": 0.0,
                 "missing_mae": 0.0,
-                "val_ce": 0.0,
-                "val_mae": 0.0,
-                "val_missing_ce": 0.0,
-                "val_missing_mae": 0.0,
+                # "val_ce": 0.0,
+                # "val_mae": 0.0,
+                # "val_missing_ce": 0.0,
+                # "val_missing_mae": 0.0,
                 # "prior_time": 0.0,
                 # "train_time": 0.0,
                 # "lr": 0.0,
@@ -559,7 +565,7 @@ class Trainer:
             # Clear CUDA cache to free memory
             torch.cuda.empty_cache()
 
-            self.curr_step = step
+            self.curr_step = step + 1
             if self.master_process:
                 # Add timing information to results
                 # results["prior_time"] += prior_time
@@ -579,10 +585,6 @@ class Trainer:
                 if step_progress is not None:
                     step_progress.set_postfix(**print_vals)
 
-                # Logging to Weights & Biases
-                if self.wandb_run is not None:
-                    wandb.log(results, step=self.curr_step)
-
                 # Save checkpoints
                 is_temp_save = self.curr_step % self.config.save_temp_every == 0
                 is_perm_save = self.curr_step % self.config.save_perm_every == 0
@@ -598,6 +600,10 @@ class Trainer:
                         and self.config.max_checkpoints > 0
                     ):
                         self.manage_checkpoint()
+            
+            # Logging to Weights & Biases
+            if self.wandb_run is not None:
+                wandb.log(results, step=self.curr_step)
 
         # Save last checkpoint
         ckpt_name = f"step-{self.curr_step}.ckpt"
