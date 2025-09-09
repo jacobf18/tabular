@@ -986,7 +986,9 @@ class MARSequentialBandit(BaseMissingness):
         self.mar_sequential_bandit_config['N'] = X.shape[0]
         self.mar_sequential_bandit_config['T'] = X.shape[1]
         self.mar_sequential_bandit = UnifiedBandit(self.mar_sequential_bandit_config)
-        mask = self.mar_sequential_bandit(X)
+        assignments, _, _ = self.mar_sequential_bandit.fit(X.detach().cpu().numpy())
+
+        mask = torch.from_numpy(assignments.astype(bool)).to(X.device)
         X[mask] = torch.nan
         return X
 
