@@ -1008,7 +1008,7 @@ class MixedPattern(BaseMissingness):
         self.mnar_prob = config.get('mnar_prob', 0.25)
         
         # check that the probabilities sum to 1
-        if self.mcar_prob + self.mar_prob + self.mnar_prob != 1:
+        if np.abs(self.mcar_prob + self.mar_prob + self.mnar_prob - 1) > 1e-6:
             raise ValueError('The sum of the probabilities must be 1')
         
     def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
@@ -1109,6 +1109,7 @@ class MissingnessPrior(IterableDataset):
             new_config['num_rows_high'] = n_rows
             new_config['num_cols_low'] = n_cols
             new_config['num_cols_high'] = n_cols
+            new_config['latent_rank_high'] = min(new_config['latent_rank_high'], n_rows, n_cols) # Ensure rank is not too high
             
             self.generator = self.generator_map[self.generator_type](new_config)
         
