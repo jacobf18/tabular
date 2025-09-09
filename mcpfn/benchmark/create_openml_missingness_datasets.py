@@ -1,6 +1,13 @@
 import torch
 import numpy as np
-from mcpfn.prior.training_set_generation import MCARPattern, MARPattern, MNARPattern, MARNeuralNetwork
+from mcpfn.prior.training_set_generation import (
+    MCARPattern, 
+    MARPattern, 
+    MNARPattern, 
+    MARNeuralNetwork,
+    MARBlockNeuralNetwork,
+    MARSequentialBandit
+)
 from download_openml import fetch_clean_openml_datasets
 from mcpfn.model.encoders import normalize_data
 import os
@@ -17,16 +24,36 @@ patterns = {
     # "MCAR": MCARPattern(config={"p_missing": p_mcar}),
     # "MAR": MARPattern(config={"p_missing": p_mar}),
     # "MNAR": MNARPattern(config={"p_missing": p_mnar}),
-    "MAR_Neural": MARNeuralNetwork(config={
-        "p_missing": p_mar, 
-        'mar_config': {
-        "num_layers_upper": 3,
-        "hidden_lower": 1,
-        "hidden_upper": 100,
-        "activation": "relu",
-        "seed": 42,
-        "neighbor_type": "random"
-    }})
+    # "MAR_Neural": MARNeuralNetwork(config={
+    #     "p_missing": p_mar, 
+    #     'mar_config': {
+    #     "num_layers_upper": 3,
+    #     "hidden_lower": 1,
+    #     "hidden_upper": 100,
+    #     "activation": "relu",
+    #     "seed": 42,
+    #     "neighbor_type": "random"
+    # }})
+    # "MAR_BlockNeural": MARBlockNeuralNetwork(config={
+    #     'p_missing': p_mar,
+    #     'mar_block_config': {
+    #         "N": 100,
+    #         "T": 50,
+    #         "row_blocks": 10,
+    #         "col_blocks": 10,
+    #         "convolution_type": "mean"
+    #     }
+    # })
+    "MAR_Sequential": MARSequentialBandit(config={
+        'p_missing': p_mar,
+        'mar_sequential_bandit_config': {
+            'algorithm': 'epsilon_greedy',
+            'pooling': False, 
+            'epsilon': 0.4, 
+            'epsilon_decay': 0.99, 
+            'random_seed': 42
+        }
+    })
 }
 
 base_path = "datasets/openml"

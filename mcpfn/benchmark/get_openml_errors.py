@@ -30,9 +30,12 @@ if "mcpfn" in imputers:
         borders_path='/root/tabular/mcpfn/borders.pt',
         # checkpoint_path='/mnt/mcpfn_data/checkpoints/mixed/step-445000.ckpt'
         # checkpoint_path='/root/checkpoints/mar_mixed/step-57000.ckpt'
-        checkpoint_path='/mnt/mcpfn_data/checkpoints/mixed_random/step-99999.ckpt'
+        # checkpoint_path='/mnt/mcpfn_data/checkpoints/mixed_random_2/step-121000.ckpt'
+        # checkpoint_path='/mnt/mcpfn_data/checkpoints/mcar_linear/step-121000.ckpt'
+        # checkpoint_path='/mnt/mcpfn_data/checkpoints/mixed_linear_fixed/step-50000.ckpt'
+        checkpoint_path='/mnt/mcpfn_data/checkpoints/mixed_adaptive/step-49000.ckpt'
     )
-    mcpfn_name = "mcpfn_mixed_random"
+    mcpfn_name = "mcpfn_mixed_adaptive"
 
 if "tabpfn" in imputers:
     tabpfn = TabPFNImputer(device='cuda')

@@ -69,17 +69,17 @@ class MAR_block_missingness(nn.Module):
         self.convolution_type = config['convolution_type']
         mar_small_config = {
             "num_layers_upper": 3,
-            "hidden_lower": 1,
-            "hidden_upper": 100,
+            "hidden_lower": 2,
+            "hidden_upper": 3,
             "activation": "relu",
             "N": self.row_blocks,
             "T": self.col_blocks,
-            "row_neighbor_upper": self.row_blocks//2,
-            "col_neighbor_upper": self.col_blocks//2,
+            "row_neighbor_upper": max(1, self.row_blocks//2),
+            "col_neighbor_upper": max(1, self.col_blocks//2),
             "seed": 42,
             "neighbor_type": "random"
         }
-        self.mar_generator = MAR_propensity(mar_small_config)
+        self.mar_generator = MAR_missingness(mar_small_config)
     def forward(self, X):
         assert X.shape[0] == self.N and X.shape[1] == self.T
         

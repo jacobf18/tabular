@@ -970,7 +970,7 @@ class MARBlockNeuralNetwork(BaseMissingness):
                     missing_mask[row_cumsum[i]:row_cumsum[i+1], col_cumsum[t]:col_cumsum[t+1]] = torch.bernoulli(propensity_small[i, t])
             return missing_mask
 
-        mask = recover_block_missingness(propensities, row_cumsum, col_cumsum)
+        mask = recover_block_missingness(propensities, row_cumsum, col_cumsum).bool()
         X[mask] = torch.nan
         return X
 
