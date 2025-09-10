@@ -16,8 +16,15 @@ methods = [
     "softimpute", 
     "column_mean", 
     "hyperimpute", 
-    "mcpfn_mixed_random", 
-    "tabpfn"
+    # "mcpfn_mixed_linear",
+    # "mcpfn_mixed_random",
+    # "mcpfn_mixed_linear_fixed",
+    "mcpfn_mixed_adaptive",
+    "mcpfn_tabpfn",
+    # "mcpfn_mcar_linear",
+    # "mcpfn_mar_linear",
+    "tabpfn",
+    "mcpfn_tabpfn_with_preprocessing"
 ]
 
 negative_rmse = {}
@@ -45,7 +52,7 @@ for dataset in datasets:
             
 df = pd.Series(negative_rmse).unstack()
 
-for pattern_name in ["MCAR", "MAR", "MNAR", "MAR_Neural"]:
+for pattern_name in ["MCAR", "MAR", "MNAR", "MAR_Neural", "MAR_BlockNeural", "MAR_Sequential"]:
     # Get dataframe for 1 pattern
     df2 = df[df.index.get_level_values(1) == pattern_name]
     df_norm = (df2 - df2.min(axis=1).values[:, None]) / (df2.max(axis=1) - df2.min(axis=1)).values[:, None]
@@ -61,8 +68,8 @@ for pattern_name in ["MCAR", "MAR", "MNAR", "MAR_Neural"]:
 
     plt.ylabel("Normalized Negative RMSE (0–1)")
     plt.xlabel("Algorithm")
-    plt.title(f"Comparison of Imputation Algorithms on {pattern_name} data")
+    plt.title(f"Comparison of Imputation Algorithms | {pattern_name}")
     plt.ylim(0, 1.05)
     plt.tight_layout()
-    plt.savefig(f"figures/negative_rmse_{pattern_name}.png")
+    plt.savefig(f"figures/negative_rmse_{pattern_name}.png", dpi=300)
     plt.close()

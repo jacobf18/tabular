@@ -6,7 +6,11 @@ echo "Training model"
 # Set the save directory as an environment variable
 BASE_DIR="/root/checkpoints"
 # PRIOR_DIR="/mnt/volume_tor1_1754506427528/data"
+<<<<<<< HEAD
 CHECKPOINT_DIR="${BASE_DIR}/mixed_linear_fixed"
+=======
+CHECKPOINT_DIR="${BASE_DIR}/checkpoints/mixed_scm"
+>>>>>>> 3d37d92 (updated benchmarking)
 
 IF_SAVE=True
 if [ "$IF_SAVE" = True ]; then
@@ -21,7 +25,11 @@ fi
 python3 -m torch.distributed.run --nproc_per_node=8 /root/tabular/mcpfn/src/mcpfn/train/run.py \
             --wandb_log ${IF_SAVE} \
             --wandb_project MCPFN \
+<<<<<<< HEAD
             --wandb_name mixed_linear_fixed \
+=======
+            --wandb_name mixed_scm \
+>>>>>>> 3d37d92 (updated benchmarking)
             --wandb_dir /root/tabular/mcpfn/wandb \
             --wandb_mode online \
             --device cuda \
