@@ -17,12 +17,14 @@ methods = [
     "column_mean", 
     "hyperimpute", 
     # "mcpfn_mixed_linear",
-    "mcpfn_mixed_random",
-    "mcpfn_mixed_linear_fixed",
+    # "mcpfn_mixed_random",
+    # "mcpfn_mixed_linear_fixed",
     "mcpfn_mixed_adaptive",
+    "mcpfn_tabpfn",
     # "mcpfn_mcar_linear",
     # "mcpfn_mar_linear",
-    "tabpfn"
+    "tabpfn",
+    "mcpfn_tabpfn_with_preprocessing"
 ]
 
 negative_rmse = {}
@@ -50,7 +52,7 @@ for dataset in datasets:
             
 df = pd.Series(negative_rmse).unstack()
 
-for pattern_name in ["MCAR", "MAR", "MNAR", "MAR_Neural", "MAR_BlockNeural"]:
+for pattern_name in ["MCAR", "MAR", "MNAR", "MAR_Neural", "MAR_BlockNeural", "MAR_Sequential"]:
     # Get dataframe for 1 pattern
     df2 = df[df.index.get_level_values(1) == pattern_name]
     df_norm = (df2 - df2.min(axis=1).values[:, None]) / (df2.max(axis=1) - df2.min(axis=1)).values[:, None]
