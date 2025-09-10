@@ -1,0 +1,132 @@
+{
+  "architecture_parameters": {
+    "n_channel": 1,
+    "N": 2,
+    "num_classes": 3,
+    "diffusion_steps": 1000,
+    "hybrid_loss_coeff": 0.0
+  },
+  "missingness_types": [
+    "bandit",
+    "mar",
+    "block_mar"
+  ],
+  "number_of_missingness_types": 3,
+  "missingness_weights": {
+    "bandit": 0.4,
+    "mar": 0.3,
+    "block_mar": 0.3
+  },
+  "training_matrix_sizes": {
+    "rows_low": 10,
+    "rows_high": 30,
+    "cols_low": 10,
+    "cols_high": 30
+  },
+  "generation_matrix_sizes": [
+    [
+      32,
+      32
+    ],
+    [
+      16,
+      16
+    ]
+  ],
+  "bandit_params": {
+    "algorithm": [
+      "epsilon_greedy",
+      "ucb",
+      "thompson_sampling",
+      "gradient_bandit"
+    ],
+    "pooling": [
+      true,
+      false
+    ],
+    "epsilon": [
+      0.1,
+      0.5
+    ],
+    "c": [
+      0.5,
+      2.0
+    ],
+    "prior_std": [
+      1.0,
+      3.0
+    ],
+    "alpha": [
+      0.05,
+      0.2
+    ],
+    "noise_std": [
+      0.5,
+      2.0
+    ],
+    "noise_type": [
+      "gaussian",
+      "uniform",
+      "student_t"
+    ]
+  },
+  "mar_params": {
+    "num_layers_upper": [
+      2,
+      3
+    ],
+    "hidden_lower": [
+      1,
+      2
+    ],
+    "hidden_upper": [
+      3,
+      8
+    ],
+    "activation": [
+      "relu",
+      "sigmoid"
+    ],
+    "row_neighbor_upper": [
+      2,
+      4
+    ],
+    "col_neighbor_upper": [
+      2,
+      4
+    ],
+    "neighbor_type": "random"
+  },
+  "block_mar_params": {
+    "row_blocks": [
+      3,
+      8
+    ],
+    "col_blocks": [
+      3,
+      8
+    ],
+    "convolution_type": [
+      "mean",
+      "max"
+    ]
+  },
+  "training_config": {
+    "batch_size": 32,
+    "num_workers": 4,
+    "learning_rate": 0.001,
+    "num_epochs": 100,
+    "gradient_clip_norm": 0.1,
+    "total_samples_per_epoch": 30000
+  },
+  "model_config": {
+    "diffusion_steps": 1000,
+    "hybrid_loss_coeff": 0.0
+  },
+  "generation_config": {
+    "stride": 40,
+    "interval": 500
+  },
+  "model_params": 17759888,
+  "training_completed_at_step": 93700
+}

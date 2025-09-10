@@ -17,9 +17,12 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF
 import torch
+import torch.nn.functional as F
 from torch import Tensor
 from torch.utils.data import IterableDataset
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict
+import warnings
+from pathlib import Path
 from tqdm import tqdm
 from mcpfn.model.encoders import normalize_data
 from .scm_prior import SCMPrior
@@ -28,6 +31,15 @@ import copy
 from .mar_missing import MAR_missingness
 from .mar_block_missing import MAR_block_missingness
 from .mar_sequential_missing import UnifiedBandit
+from ..diffusion.mar_diffusion_row10_30_col10_30_mar0_3_marblock0_3_marbandit0_4_epoch100_bs32_samples30k_lr1e_3 import (
+    MARDiffusionModel, 
+    FlexibleConvBlock, 
+    FlexibleUpBlock, 
+    ConvolutionalSelfAttention,
+    FullyConvolutionalX0Model,
+    D3PM,
+    mar_diffusion_config
+)
 # Helpers
 def sample_log_uniform(low, high, size=1, base=np.e):
     return np.power(
@@ -992,6 +1004,114 @@ class MARSequentialBandit(BaseMissingness):
         X[mask] = torch.nan
         return X
 
+class MARDiffusion(BaseMissingness):
+    """MAR Diffusion missingness pattern generator using trained diffusion model"""
+    
+    def __init__(self, config: dict):
+        super().__init__(config)
+        self.device = torch.device(config.get('device', 'cpu'))
+        self.diffusion_config = mar_diffusion_config.copy()
+        self.diffusion_config.update(config)
+        
+        # Model configuration
+        model_config = {
+            'n_channel': 1,
+            'N': 2,
+            'num_classes': 3,  # bandit, mar, block_mar
+            'diffusion_steps': 1000,
+            'hybrid_loss_coeff': 0.0
+        }
+        
+        # Initialize model
+        self.model = MARDiffusionModel(model_config).to(self.device)
+        
+        # Load pretrained weights
+        self._load_model_weights()
+        
+        # Set to evaluation mode
+        self.model.eval()
+    
+    def _load_model_weights(self):
+        """Load pre-trained model weights"""
+        # Updated path to work from the new location
+        weights_path = Path(__file__).parent.parent / "diffusion" / "models" / "diffusion-row-10-30-col-10-30-mar0.3-marblock0.3-marbandit0.4-epoch100-bs32-samples30k-lr1e-3" / "model_final.pth"
+        
+        if weights_path.exists():
+            state_dict = torch.load(weights_path, map_location='cpu')
+            try:
+                self.model.x0_model.load_state_dict(state_dict, strict=True)
+                print("Successfully loaded pretrained weights")
+            except Exception as e:
+                print(f"Warning: Could not load all weights: {e}")
+                self.model.x0_model.load_state_dict(state_dict, strict=False)
+                print("Loaded weights with partial matching")
+        else:
+            raise FileNotFoundError(f"Model weights not found at {weights_path}")
+    
+    def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
+        """
+        Generate missingness pattern using the diffusion model.
+        
+        Args:
+            X: Input tensor of shape (height, width)
+            
+        Returns:
+            Tensor with missing values (NaN) applied
+        """
+        height, width = X.shape
+        
+        # Use target_shape if specified, otherwise use X shape
+        if self.diffusion_config['target_shape'] is not None:
+            target_height, target_width = self.diffusion_config['target_shape']
+        else:
+            target_height, target_width = height, width
+        
+        # Check if matrix size is within training range
+        if not (10 <= target_height <= 30 and 10 <= target_width <= 30):
+            warnings.warn(f"Matrix size ({target_height}, {target_width}) outside training range (10-30). "
+                         "Results may be suboptimal.")
+        
+        # Prepare X conditioning tensor
+        X_cond = X.unsqueeze(0).unsqueeze(0)  # (1, 1, height, width)
+        X_cond = X_cond.to(self.device)
+        
+        # Resize X_cond to target shape if needed
+        if (target_height, target_width) != (height, width):
+            X_cond = F.interpolate(X_cond, size=(target_height, target_width), mode='bilinear', align_corners=False)
+        
+        # Generate missingness pattern
+        with torch.no_grad():
+            missingness_mask = self.model.generate(
+                shape=(target_height, target_width),
+                x_cond=X_cond,
+                missingness_type=self.diffusion_config['missingness_type'],
+                num_samples=self.diffusion_config['num_samples']
+            )
+        
+        # Convert to boolean mask and apply missingness
+        mask = missingness_mask[0].bool()  # Remove batch dimension
+        
+        # If target shape differs from X shape, resize mask
+        if (target_height, target_width) != (height, width):
+            if self.diffusion_config['pad_mode'] == 'pad_crop':
+                # Simple crop/pad to match X shape
+                if target_height >= height and target_width >= width:
+                    mask = mask[:height, :width]
+                else:
+                    # Pad if target is smaller
+                    pad_h = max(0, height - target_height)
+                    pad_w = max(0, width - target_width)
+                    mask = F.pad(mask, (0, pad_w, 0, pad_h))
+                    mask = mask[:height, :width]
+            else:  # tile mode
+                # Tile the mask to cover X shape
+                mask = mask.repeat(height // target_height + 1, width // target_width + 1)[:height, :width]
+        
+        X_missing = X.clone()
+        X_missing[mask] = torch.nan
+        
+        return X_missing
+
 class MixedPattern(BaseMissingness):
     """
     Induces missingness by randomly selcting a type of missingness pattern and then inducing missingness based on that pattern.
@@ -1047,7 +1167,11 @@ class MissingnessPrior(IterableDataset):
         "mnar_censoring": MNARCensoringPattern,
         "mnar_two_phase_subset": MNARTwoPhaseSubsetPattern,
         "mnar_skip_logic": MNARSkipLogicPattern,
-        "mnar_cold_start": MNARColdStartPattern
+        "mnar_cold_start": MNARColdStartPattern,
+        # Diffusion-based MAR pattern (lazy import to avoid circular dependency)
+        "mar_diffusion": (lambda cfg: __import__(
+            'mcpfn.diffusion', fromlist=['MARDiffusion']
+        ).MARDiffusion(cfg))
     }
 
     def __init__(
