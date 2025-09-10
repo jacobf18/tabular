@@ -211,10 +211,13 @@ class Trainer:
             "norm_first": self.config.norm_first,
         }
 
-        model = MCPFN(encoder_path=self.config.encoder_path)
+        model = MCPFN(encoder_path=self.config.encoder_path, nhead=6)
         model.to(device=self.config.device)
         
-        self.tabpfn_model = TabPFNModel(device=self.config.device)
+        print(f"Loading tabpfn model weights from {self.config.tabpfn_path}")
+        model.model.load_state_dict(torch.load(self.config.tabpfn_path, weights_only=True))
+        
+        # self.tabpfn_model = TabPFNModel(device=self.config.device)
 
         if self.master_process:
             num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)

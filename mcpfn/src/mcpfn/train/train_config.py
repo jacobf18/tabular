@@ -252,6 +252,12 @@ def build_parser():
         default=0.1,
         help="Probability of MNAR missingness",
     )
+    parser.add_argument(
+        "--tabpfn_path",
+        type=str,
+        default="/root/tabular/mcpfn/src/mcpfn/model/tabpfn_model.pt",
+        help="Path to the tabpfn model",
+    )
 
     ###########################################################################
     ##### Model Architecture Config ###########################################

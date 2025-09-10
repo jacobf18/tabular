@@ -27,11 +27,12 @@ class ImputePFN:
         encoder_path: str = "encoder.pth",
         borders_path: str = "borders.pt",
         checkpoint_path: str = "test.ckpt",
+        nhead: int = 2,
     ):
         self.device = device
 
         # Build model
-        self.model = MCPFN(encoder_path=encoder_path).to(self.device)
+        self.model = MCPFN(encoder_path=encoder_path, nhead=nhead).to(self.device)
 
         # Load borders tensor for outputting continuous values
         self.borders_path = borders_path
@@ -118,9 +119,10 @@ class ImputePFN:
         return X_imputed  # Return the imputed matrix
     
 class TabPFNImputer:
-    def __init__(self, device: str = "cpu"):
+    def __init__(self, device: str = "cpu", encoder_path: str = "encoder.pth"):
         self.device = device
-        self.reg = TabPFNRegressor(device=device)
+        self.reg = TabPFNRegressor(device=device, n_estimators=8)
+        self.encoder_path = encoder_path
         
     def impute(self, X: np.ndarray) -> np.ndarray:
         """Impute missing values in the input matrix.
@@ -138,11 +140,19 @@ class TabPFNImputer:
         test_X_npy = test_X.cpu().numpy()
         # test_y_npy = test_y.cpu().numpy()
         
-        self.reg.fit(train_X_npy, train_y_npy)
+        
+        mcpfn = MCPFN(encoder_path=self.encoder_path, nhead=2).to(self.device)
+        checkpoint = torch.load('/mnt/mcpfn_data/checkpoints/mixed_adaptive/step-49000.ckpt', map_location=self.device, weights_only=True)
+        # mcpfn.model.load_state_dict(torch.load('/root/tabular/mcpfn/src/mcpfn/model/tabpfn_model.pt', weights_only=True))
+        mcpfn.load_state_dict(checkpoint["state_dict"])
+        
+        self.reg.fit(train_X_npy, train_y_npy, model=mcpfn.model)
+        
+        # self.reg.model_ = mcpfn.model # override the model with the mcpfn model
         
         preds = self.reg.predict(test_X_npy)
         
-        X[np.where(np.isnan(X))] = preds
+        X[np.where(np.isnan(X))] = preds[train_y.shape[0]:]
         
         # Clean up memory
         del train_X, train_y, test_X, X_tensor

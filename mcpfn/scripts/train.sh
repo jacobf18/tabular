@@ -6,13 +6,9 @@ echo "Training model"
 # Set the save directory as an environment variable
 BASE_DIR="/root/checkpoints"
 # PRIOR_DIR="/mnt/volume_tor1_1754506427528/data"
-<<<<<<< HEAD
-CHECKPOINT_DIR="${BASE_DIR}/mixed_linear_fixed"
-=======
-CHECKPOINT_DIR="${BASE_DIR}/checkpoints/mixed_scm"
->>>>>>> 3d37d92 (updated benchmarking)
+CHECKPOINT_DIR="${BASE_DIR}/mixed_tabpfn"
 
-IF_SAVE=True
+IF_SAVE=False
 if [ "$IF_SAVE" = True ]; then
     mkdir -p ${CHECKPOINT_DIR}
     # Create a unique id for the checkpoint in a wand_id.txt file
@@ -22,14 +18,10 @@ if [ "$IF_SAVE" = True ]; then
     echo ${WAND_ID} > ${CHECKPOINT_DIR}/wand_id.txt
 fi
 # python3 /root/tabular/mcpfn/src/mcpfn/train/run.py \
-python3 -m torch.distributed.run --nproc_per_node=8 /root/tabular/mcpfn/src/mcpfn/train/run.py \
+python3 -m torch.distributed.run --nproc_per_node=1 /root/tabular/mcpfn/src/mcpfn/train/run.py \
             --wandb_log ${IF_SAVE} \
             --wandb_project MCPFN \
-<<<<<<< HEAD
-            --wandb_name mixed_linear_fixed \
-=======
-            --wandb_name mixed_scm \
->>>>>>> 3d37d92 (updated benchmarking)
+            --wandb_name mixed_tabpfn \
             --wandb_dir /root/tabular/mcpfn/wandb \
             --wandb_mode online \
             --device cuda \
@@ -67,13 +59,14 @@ python3 -m torch.distributed.run --nproc_per_node=8 /root/tabular/mcpfn/src/mcpf
             --save_perm_every 10000 \
             --encoder_path /root/tabular/mcpfn/src/mcpfn/model/encoder.pth \
             --borders_path /root/tabular/mcpfn/borders.pt \
+            --tabpfn_path /root/tabular/mcpfn/src/mcpfn/model/tabpfn_model.pt \
             --model_name ${1}.ckpt \
             --save_every 15 \
             --min_seq_len 5 \
             --max_seq_len 30 \
             --min_features 5 \
             --max_features 30 \
-            --missingness_type mixed
+            --missingness_type mcar
             # --checkpoint_path /root/checkpoints/checkpoints/mixed_random_2/step-101000.ckpt
             # --prior_dir ${PRIOR_DIR} \
             

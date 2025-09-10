@@ -680,7 +680,7 @@ class MultiHeadAttention(Attention):
 
             # print(f"USE_TORCH_2_GQA: {USE_TORCH_2_GQA}, nvidia_compute_capability:
             # {nvidia_compute_capability}, TORCH_2_SUPPORTS_GQ: {TORCH_2_SUPPORTS_GQ}")
-
+        use_flash_attention = False
         if use_flash_attention:
 
             def get_seqlen_cumsums(
@@ -1414,7 +1414,7 @@ class MultiHeadAttention(Attention):
 
             # print(f"USE_TORCH_2_GQA: {USE_TORCH_2_GQA}, nvidia_compute_capability:
             # {nvidia_compute_capability}, TORCH_2_SUPPORTS_GQ: {TORCH_2_SUPPORTS_GQ}")
-
+        use_flash_attention = False
         if use_flash_attention:
 
             def get_seqlen_cumsums(
@@ -1431,7 +1431,8 @@ class MultiHeadAttention(Attention):
                 )
 
             if qkv is not None:
-                attention_head_outputs = flash_attn_unpadded_qkvpacked_func(  # type: ignore
+                # attention_head_outputs = flash_attn_unpadded_qkvpacked_func(  # type: ignore
+                attention_head_outputs = flash_attn_qkvpacked_func(  # type: ignore
                     qkv.reshape(batch_size * seqlen_q, 3, nhead, d_k),
                     get_seqlen_cumsums(batch_size, seqlen_q, qkv.device),
                     seqlen_q,
@@ -1446,7 +1447,8 @@ class MultiHeadAttention(Attention):
                     kv,
                     share_kv_across_n_heads,
                 )
-                attention_head_outputs = flash_attn_unpadded_kvpacked_func(  # type: ignore
+                # attention_head_outputs = flash_attn_unpadded_kvpacked_func(  # type: ignore
+                attention_head_outputs = flash_attn_kvpacked_func(  # type: ignore
                     q.reshape(batch_size * seqlen_q, nhead, d_k),
                     kv.reshape(batch_size * seqlen_kv, 2, nhead, d_k),
                     get_seqlen_cumsums(batch_size, seqlen_q, q.device),
@@ -1475,7 +1477,8 @@ class MultiHeadAttention(Attention):
                     v,
                     share_kv_across_n_heads,
                 )
-                attention_head_outputs = flash_attn_unpadded_func(  # type: ignore
+                # attention_head_outputs = flash_attn_unpadded_func(  # type: ignore
+                attention_head_outputs = flash_attn_func(  # type: ignore
                     q.reshape(batch_size * seqlen_q, nhead, d_k_),  # type: ignore
                     k.reshape(batch_size * seqlen_kv, nhead, d_k_),  # type: ignore
                     v.reshape(batch_size * seqlen_kv, nhead, d_v),
