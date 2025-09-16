@@ -29,6 +29,7 @@ from .scm_prior import SCMPrior
 from .utils import DisablePrinting
 import copy
 from .mar_missing import MAR_missingness
+from .mar_onesided_missing import MAR_onesided_missingness
 from .mar_block_missing import MAR_block_missingness
 from .mar_sequential_missing import UnifiedBandit
 from ..diffusion.mar_diffusion_row10_30_col10_30_mar0_3_marblock0_3_marbandit0_4_epoch100_bs32_samples30k_lr1e_3 import (
@@ -952,6 +953,27 @@ class MARNeuralNetwork(BaseMissingness):
         self.mar_config['row_neighbor_upper'] = X.shape[0]//2
         self.mar_config['col_neighbor_upper'] = X.shape[1]//2
         self.mar = MAR_missingness(self.mar_config)
+        propensities = self.mar(X)
+        mask = torch.bernoulli(propensities).bool()
+        X[mask] = torch.nan
+        return X
+
+class MAROnesidedMissingness(BaseMissingness):
+    """
+    Induces missingness based on a neural network with random weights.
+    This is a simple implementation of the MAR missingness pattern.
+    """
+    def __init__(self, config: dict):
+        self.mar_onesided_config = config['mar_onesided_config']
+    
+    def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
+        self.mar_onesided_config['N'] = X.shape[0]
+        self.mar_onesided_config['T'] = X.shape[1]
+        self.mar_onesided_config['row_neighbor_upper'] = X.shape[0]//2
+        self.mar_onesided_config['col_neighbor_upper'] = X.shape[1]//2
+        self.mar_onesided_config['extreme_axis'] = 'row'
+        self.mar_onesided_config['extreme_neighbor_mode'] = 'zero'
+        self.mar = MAR_onesided_missingness(self.mar_onesided_config)
         propensities = self.mar(X)
         mask = torch.bernoulli(propensities).bool()
         X[mask] = torch.nan
