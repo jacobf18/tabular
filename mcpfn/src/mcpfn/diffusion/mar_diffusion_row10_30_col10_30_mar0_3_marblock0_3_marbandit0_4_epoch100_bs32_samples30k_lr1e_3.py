@@ -733,20 +733,22 @@ def create_mar_diffusion_pattern(config: Dict) -> MARDiffusion:
 
 
 # # Example usage:
-# from mcpfn.diffusion.mar_diffusion_row10_30_col10_30_mar0_3_marblock0_3_marbandit0_4_epoch100_bs32_samples30k_lr1e_3 import MARDiffusion
-# import torch
+if __name__ == "__main__":
+    # from mcpfn.diffusion.mar_diffusion_row10_30_col10_30_mar0_3_marblock0_3_marbandit0_4_epoch100_bs32_samples30k_lr1e_3 import MARDiffusion
+    import torch
 
-# # Create model
-# config = {
-#     'missingness_type': 'bandit',  # or 'mar', 'block_mar'
-#     'device': 'cuda',
-#     'target_shape': None,
-#     'num_samples': 1,
-#     'pad_mode': 'pad_crop'
-# }
+    # Create model
+    config = {
+        'missingness_type': 'bandit',  # or 'mar', 'block_mar'
+        'device': 'cuda',
+        'target_shape': None,
+        'num_samples': 1,
+        'pad_mode': 'pad_crop'
+    }
 
-# mar_diffusion = MARDiffusion(config)
+    mar_diffusion = MARDiffusion(config)
 
-# # Generate missingness
-# X = torch.randn(20, 25).to('cuda')
-# X_missing = mar_diffusion._induce_missingness(X)
+    # Generate missingness
+    X = torch.randn(300, 9).to('cuda')
+    X_missing = mar_diffusion._induce_missingness(X)
+    print(X, X_missing)

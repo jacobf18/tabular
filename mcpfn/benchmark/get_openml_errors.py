@@ -5,7 +5,7 @@ import pandas as pd
 import torch
 from tqdm import tqdm
 
-from mcpfn.interface import ImputePFN, TabPFNImputer
+from mcpfn.interface import ImputePFN, TabPFNImputer, TabPFNUnsupervisedModel
 from hyperimpute.plugins.imputers import Imputers
 
 # Optional: ForestDiffusion (pip install ForestDiffusion)
@@ -15,38 +15,70 @@ try:
 except Exception:
     HAS_FORESTDIFFUSION = False
 
+from mcpfn.prepreocess import (
+    RandomRowColumnPermutation, 
+    PowerTransform, 
+    SequentialPreprocess, 
+    RandomRowPermutation, 
+    RandomColumnPermutation, 
+    StandardizeWhiten
+)
+
 warnings.filterwarnings("ignore")
 
 # --- Choose which imputers to run ---
 imputers = set([
-    # "mcpfn",
+    "mcpfn",
     # "tabpfn",
+    # "tabpfn_unsupervised",
     # "column_mean",
     # "softimpute",
-    "hyperimpute_ot",
-    # "hyperimpute",        # Sinkhorn / Optimal Transport
-    "hyperimpute_missforest",
-    "hyperimpute_ice",
-    "hyperimpute_mice",
-    # "hyperimpute_em", # doesn't work well
-    "hyperimpute_gain",
-    # "hyperimpute_miracle",
-    "hyperimpute_miwae",
-    "forestdiffusion",
+    # "hyperimpute_ot", # Sinkhorn / Optimal Transport
+    # "hyperimpute",        
+    # "hyperimpute_missforest",
+    # "hyperimpute_ice",
+    # "hyperimpute_mice",
+    # # "hyperimpute_em", # doesn't work well
+    # "hyperimpute_gain",
+    # # "hyperimpute_miracle",
+    # "hyperimpute_miwae",
+    # # "forestdiffusion",
 ])
+
+patterns = {
+    "MCAR",
+    "MAR",
+    "MAR_Neural",
+    "MAR_BlockNeural",
+    "MAR_Sequential",
+    "MNAR",
+}
 
 # --- Initialize classes once ---
 if "mcpfn" in imputers:
+    preprocessors = [
+        RandomRowColumnPermutation(),
+        RandomRowColumnPermutation(),
+        RandomRowPermutation(),
+        RandomColumnPermutation(),
+        # StandardizeWhiten(whiten=True),
+    ]
+        
     mcpfn = ImputePFN(
         device="cuda",
         encoder_path="/root/tabular/mcpfn/src/mcpfn/model/encoder.pth",
         borders_path="/root/tabular/mcpfn/borders.pt",
-        checkpoint_path="/mnt/mcpfn_data/checkpoints/mixed_random/step-99999.ckpt",
+        checkpoint_path="/mnt/mcpfn_data/checkpoints/mixed_adaptive/step-125000.ckpt",
+        nhead=2,
+        preprocessors=preprocessors
     )
-    mcpfn_name = "mcpfn_mixed_random"
+    mcpfn_name = "mixed_adaptive"
 
 if "tabpfn" in imputers:
     tabpfn = TabPFNImputer(device="cuda")
+    
+if "tabpfn_unsupervised" in imputers:
+    tabpfn_unsupervised = TabPFNUnsupervisedModel(device="cuda")
 
 # Map friendly names → HyperImpute plugin ids and output filenames
 HYPERIMPUTE_MAP = {
@@ -84,6 +116,7 @@ def run_forest_diffusion(X_missing: np.ndarray, n_t: int = 50,
         int_indexes=int_indexes,
         n_jobs=n_jobs,
     )
+    model.y_label = np.zeros_like(X_missing[:, 0])
     if repaint:
         return model.impute(repaint=True, r=10, j=max(1, n_t // 10), k=1)
     return model.impute(k=1)
@@ -97,10 +130,13 @@ for name in pbar:
     pbar.set_description(f"Running {name}")
     configs = os.listdir(f"{base_path}/{name}")
     for config in configs:
-        print(f"Running {name} | {config}")
         cfg_dir = f"{base_path}/{name}/{config}"
         pattern_name = config.split("_")[0]
         p = config.split("_")[1]
+        if p != "0.4":
+            continue
+        if pattern_name not in patterns:
+            continue
 
         X_missing = np.load(f"{cfg_dir}/missing.npy")
         X_true = np.load(f"{cfg_dir}/true.npy")  # normalized/ground truth
@@ -111,9 +147,9 @@ for name in pbar:
         # --- MCPFN ---
         if "mcpfn" in imputers:
             out_path = f"{cfg_dir}/{mcpfn_name}.npy"
-            if not os.path.exists(out_path):
-                X_mcpfn = mcpfn.impute(X_missing.copy())
-                np.save(out_path, X_mcpfn)
+            # if not os.path.exists(out_path):
+            X_mcpfn = mcpfn.impute(X_missing.copy(), calibrate=False)
+            np.save(out_path, X_mcpfn)
 
         # --- TabPFN ---
         if "tabpfn" in imputers:
@@ -122,13 +158,28 @@ for name in pbar:
                 X_tabpfn = tabpfn.impute(X_missing.copy())
                 np.save(out_path, X_tabpfn)
 
+        # --- TabPFN Unsupervised ---
+        if "tabpfn_unsupervised" in imputers:
+            out_path = f"{cfg_dir}/tabpfn_impute.npy"
+            if not os.path.exists(out_path):
+                X_tabpfn_unsupervised = tabpfn_unsupervised.impute(X_missing.copy())
+                np.save(out_path, X_tabpfn_unsupervised)
+
         # --- Column Mean (HyperImpute simple baseline) ---
         if "column_mean" in imputers:
             out_path = f"{cfg_dir}/column_mean.npy"
-            if not os.path.exists(out_path):
-                plugin = Imputers().get("mean")
-                out = plugin.fit_transform(pd.DataFrame(X_missing.copy())).to_numpy()
-                np.save(out_path, out)
+            
+            # if not os.path.exists(out_path):
+            # Column means (ignoring NaN). This will be NaN if the column is all NaNs.
+            col_means = np.nanmean(X_missing, axis=0)
+
+            # Replace NaN means with 0 for all-NaN columns
+            col_means = np.where(np.isnan(col_means), 0, col_means)
+
+            # Impute: broadcast col_means into missing entries
+            X_missing[mask] = np.take(col_means, np.where(mask)[1])
+            
+            np.save(out_path, X_missing)
 
         # --- SoftImpute (HyperImpute) ---
         if "softimpute" in imputers:
@@ -140,7 +191,7 @@ for name in pbar:
 
         # --- HyperImpute family (OT/Sinkhorn, MissForest, ICE, MICE, EM, GAIN, MIRACLE, MIWAE) ---
         for key, (plugin_id, fname) in HYPERIMPUTE_MAP.items():
-            print(f"  Running HyperImpute plugin: {plugin_id}")
+            # print(key, fname)
             if fname == "ot_sinkhorn":
                 if key in imputers:
                     out_path = f"{cfg_dir}/{fname}.npy"
@@ -151,7 +202,11 @@ for name in pbar:
                 if key in imputers:
                     out_path = f"{cfg_dir}/{fname}.npy"
                     if not os.path.exists(out_path):
-                        out = run_hyperimpute(plugin_id, X_missing.copy())
+                        try:
+                            out = run_hyperimpute(plugin_id, X_missing.copy())
+                        except Exception as e:
+                            print(f"Error running {plugin_id}: {e}")
+                            out = np.zeros_like(X_missing)
                         np.save(out_path, out)
 
             

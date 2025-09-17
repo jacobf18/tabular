@@ -8,8 +8,38 @@ import numpy as np
 from mcpfn.model.mcpfn import MCPFN
 import argparse
 from mcpfn.model.bar_distribution import FullSupportBarDistribution
-from tabpfn import TabPFNRegressor
+# from tabpfn import TabPFNRegressor
+from mcpfn.prepreocess import (
+    RandomRowPermutation, 
+    RandomColumnPermutation, 
+    RandomRowColumnPermutation, 
+    Preprocess,
+    PowerTransform,
+    standardize_excluding_outliers_torch
+)
+from sklearn.linear_model import LinearRegression
+from tabpfn_extensions import TabPFNClassifier, TabPFNRegressor, unsupervised
 
+def calibrate_predictions(y_val, y_pred_val, pred_sigma_val,
+                          y_pred_test, pred_sigma_test):
+    """
+    Calibrate mean and std of predictive distribution.
+    Returns calibrated test means and stds.
+    """
+    # ---- Variance calibration ----
+    resid = y_val - y_pred_val
+    std_resid = np.std(resid)
+    mean_sigma = np.mean(pred_sigma_val)
+    alpha = std_resid / (mean_sigma + 1e-12)
+    
+    sigma_cal_test = pred_sigma_test * alpha
+
+    # ---- Linear correction for means ----
+    reg = LinearRegression().fit(y_pred_val.reshape(-1,1), y_val)
+    a, b = reg.coef_[0], reg.intercept_
+    mu_cal_test = a * y_pred_test + b
+
+    return mu_cal_test, sigma_cal_test, (a, b, alpha)
 
 class ImputePFN:
     """A Tabular Foundation Model for Matrix Completion.
@@ -28,6 +58,7 @@ class ImputePFN:
         borders_path: str = "borders.pt",
         checkpoint_path: str = "test.ckpt",
         nhead: int = 2,
+        preprocessors: list[Preprocess] = None,
     ):
         self.device = device
 
@@ -42,6 +73,8 @@ class ImputePFN:
             checkpoint_path, map_location=self.device, weights_only=True
         )
         self.model.load_state_dict(checkpoint["state_dict"])
+        
+        self.preprocessors = preprocessors
 
     def impute(self, X: np.ndarray) -> np.ndarray:
         """Impute missing values in the input matrix.
@@ -66,20 +99,43 @@ class ImputePFN:
         # Normalize the input matrix
         X_normalized = (X - means) / (stds + 1e-16) 
         # Add a small epsilon to avoid division by zero
+        
+        # If any preprocessors, do ensemble of them
+        X_imputed = np.zeros_like(X_normalized)
+        X_full = np.zeros_like(X_normalized)
+        if self.preprocessors is not None:
+            for preprocessor in self.preprocessors:
+                X_preprocessed = preprocessor.fit_transform(X_normalized)
+                imput, X_full = self.get_imputation(X_preprocessed)
+                X_imputed += preprocessor.inverse_transform(imput)
+                X_full += preprocessor.inverse_transform(X_full)
+            X_imputed /= len(self.preprocessors)
+        else:
+            X_imputed, X_full = self.get_imputation(X_normalized)
+        
+        torch.cuda.empty_cache()
+        
+        return X_imputed, X_full
 
+
+    def get_imputation(self, X_normalized: np.ndarray) -> np.ndarray:
         X_normalized_tensor = torch.from_numpy(X_normalized).to(self.device)
-
+        
         # Impute the missing values
         train_X, train_y, test_X, test_y = create_train_test_sets(
             X_normalized_tensor, X_normalized_tensor
         )
         
+        # Normalize the train_y and test_y
+        # train_y = (train_y - train_y.mean()) / (train_y.std() + 1e-8)
+        # train_y, mean, std = standardize_excluding_outliers_torch(train_y)
+        
         input_y = torch.cat((train_y, 
-                             torch.full_like(test_y, torch.nan)), 
+                             torch.full_like(test_y, torch.nan, device=self.device)), 
                             dim=0)
 
         missing_indices = np.where(
-            np.isnan(X)
+            np.isnan(X_normalized)
         )  # This will always be the same order as the calculated train_X and test_X
 
         # Move tensors to device
@@ -98,31 +154,34 @@ class ImputePFN:
 
         with torch.no_grad():
             preds = self.model(X_input, input_y.unsqueeze(0))
-            preds = preds[:, train_y.shape[0]:] # Only keep the predictions for the test set
 
             # Get the median predictions
             borders = torch.load(self.borders_path).to(self.device)
             bar_distribution = FullSupportBarDistribution(borders=borders)
 
-            medians = bar_distribution.median(logits=preds)
+            medians = bar_distribution.median(logits=preds).flatten()
+            stds = torch.sqrt(bar_distribution.variance(logits=preds).flatten())
+            
+        # Denormalize the predictions with train y mean and std
+        # medians = medians * (train_y.std() + 1e-8) + train_y.mean()
+        
+        X_full = X_normalized.copy()
+        
+        medians_train = medians[:train_y.shape[0]]
+        medians_test = medians[train_y.shape[0]:]
 
         # Impute the missing values with the median predictions
-        X_normalized[missing_indices] = medians.cpu().detach().numpy()
-
-        # Denormalize the imputed matrix
-        X_imputed = X_normalized * (stds + 1e-8) + means
-
-        # Clean up memory
-        del train_X, train_y, test_X, X_normalized_tensor, X_normalized, X_input, input_y, preds, borders, medians
-        torch.cuda.empty_cache()
-
-        return X_imputed  # Return the imputed matrix
+        X_normalized[missing_indices] = medians_test.cpu().detach().numpy()
+        
+        X_full[missing_indices] = medians_test.cpu().detach().numpy()
+        X_full[~missing_indices] = medians_train.cpu().detach().numpy()
+        
+        return X_normalized, X_full
     
 class TabPFNImputer:
-    def __init__(self, device: str = "cpu", encoder_path: str = "encoder.pth"):
+    def __init__(self, device: str = "cpu"):
         self.device = device
         self.reg = TabPFNRegressor(device=device, n_estimators=8)
-        self.encoder_path = encoder_path
         
     def impute(self, X: np.ndarray) -> np.ndarray:
         """Impute missing values in the input matrix.
@@ -141,18 +200,18 @@ class TabPFNImputer:
         # test_y_npy = test_y.cpu().numpy()
         
         
-        mcpfn = MCPFN(encoder_path=self.encoder_path, nhead=2).to(self.device)
-        checkpoint = torch.load('/mnt/mcpfn_data/checkpoints/mixed_adaptive/step-49000.ckpt', map_location=self.device, weights_only=True)
-        # mcpfn.model.load_state_dict(torch.load('/root/tabular/mcpfn/src/mcpfn/model/tabpfn_model.pt', weights_only=True))
-        mcpfn.load_state_dict(checkpoint["state_dict"])
+        # mcpfn = MCPFN(encoder_path=self.encoder_path, nhead=2).to(self.device)
+        # checkpoint = torch.load('/mnt/mcpfn_data/checkpoints/mixed_adaptive/step-49000.ckpt', map_location=self.device, weights_only=True)
+        # # mcpfn.model.load_state_dict(torch.load('/root/tabular/mcpfn/src/mcpfn/model/tabpfn_model.pt', weights_only=True))
+        # mcpfn.load_state_dict(checkpoint["state_dict"])
         
-        self.reg.fit(train_X_npy, train_y_npy, model=mcpfn.model)
+        self.reg.fit(train_X_npy, train_y_npy)
         
         # self.reg.model_ = mcpfn.model # override the model with the mcpfn model
         
         preds = self.reg.predict(test_X_npy)
         
-        X[np.where(np.isnan(X))] = preds[train_y.shape[0]:]
+        X[np.where(np.isnan(X))] = preds
         
         # Clean up memory
         del train_X, train_y, test_X, X_tensor
@@ -160,6 +219,51 @@ class TabPFNImputer:
         
         return X
 
+class TabPFNUnsupervisedModel:
+    def __init__(self, device: str = "cpu"):
+        self.device = device
+        clf = TabPFNClassifier(device=device, n_estimators=3)
+        reg = TabPFNRegressor(device=device, n_estimators=3)
+        self.model = unsupervised.TabPFNUnsupervisedModel(
+            tabpfn_clf=clf,
+            tabpfn_reg=reg,
+        )
+        
+    def impute(self, X, n_permutations=10):
+        self.model.fit(X)
+        return np.nanmean(self.model.impute(X, n_permutations=n_permutations).cpu().numpy(), axis=0)
+    
+    
+class MCTabPFNEnsemble:
+    def __init__(self, device: str = "cpu"):
+        self.device = device
+        self.tabpfn_reg = TabPFNRegressor(device=device, n_estimators=8)
+        self.mcpfn = MCPFN(device=device)
+        
+    def impute(self, X, n_permutations=10):
+        missing_mask = np.isnan(X)
+        y_missing = X[missing_mask]
+        y_observed = X[~missing_mask]
+        
+        tabpfn_preds = self.tabpfn_reg.predict(X)
+        mcpfn_preds = self.mcpfn.impute(X, n_permutations=n_permutations)
+    
+    def optimal_weights(x: np.ndarray, y: np.ndarray, z: np.ndarray):
+        """
+        Optimal weights for a convex combination of x and y to minimize the distance to z.
+        Returns the weights for x and y.
+        """
+        d = x - y
+        numerator = np.dot(z - y, d)
+        denominator = np.dot(d, d)
+        
+        if denominator == 0:
+            # x and y are identical, any convex combo works
+            return 0.5, 0.5
+        
+        w = numerator / denominator
+        w = np.clip(w, 0, 1)  # enforce nonnegativity and sum-to-1
+        return w, 1 - w
 
 # How to use:
 """
