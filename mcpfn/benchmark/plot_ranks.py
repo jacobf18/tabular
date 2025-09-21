@@ -22,10 +22,11 @@ methods = [
     "mice",
     "gain",
     "miwae",
+    "mcpfn_ensemble",
     # "mixed_perm_both_row_col",
     # "mixed_nonlinear",
-    "mixed_more",
-    "tabpfn",
+    # "mixed_adaptive",
+    # "tabpfn",
     "tabpfn_impute",
 ]
 
@@ -40,7 +41,8 @@ patterns = {
 
 method_names = {
     "mixed_nonlinear": "MCPFN (Nonlinear Permuted)",
-    "mixed_more": "MCPFN (Adaptive Permuted + More Training)",
+    "mixed_adaptive": "MCPFN",
+    "mcpfn_ensemble": "MCPFN Ensemble",
     "mixed_perm_both_row_col": "MCPFN (Linear Permuted)",
     "tabpfn_impute": "TabPFN (Unsupervised)",
     "tabpfn": "MC-TabPFN",
@@ -68,6 +70,8 @@ for dataset in datasets:
     for config in configs:
         config_split = config.split("_")
         p = config_split[-1]
+        if p != str(0.4):
+            continue
         # remove p from config_split
         config_split = config_split[:-1]
         pattern_name = "_".join(config_split)
@@ -199,17 +203,135 @@ if all_ranks_data:
     plt.savefig("figures/ranks_overall.png", dpi=300, bbox_inches='tight')
     plt.close()
     
+    
+table_methods = {
+    "MCPFN Ensemble",
+    "HyperImpute",
+    # "TabPFN",
+    # "Column Mean",
+    # "Optimal Transport",
+    "MissForest",
+    "SoftImpute",
+    # "ICE",
+}
 if all_ranks_data:
     summary_data = []
+    # Remove methods not in table_methods
     for pattern_name, pattern_df in pattern_ranks.items():
-        pattern_avg_ranks = pattern_df.groupby('Method')['Rank'].mean().reset_index()
+        # Filter to only include methods in table_methods
+        filtered_pattern_df = pattern_df[pattern_df['Method'].isin(table_methods)]
+        pattern_avg_ranks = filtered_pattern_df.groupby('Method')['Rank'].mean().reset_index()
         pattern_avg_ranks['Pattern'] = pattern_name
         summary_data.append(pattern_avg_ranks)
     
-    # Add overall ranks
-    overall_avg_ranks['Pattern'] = 'Overall'
-    summary_data.append(overall_avg_ranks)
+    # Add overall ranks (filtered to table_methods)
+    overall_avg_ranks_filtered = overall_avg_ranks[overall_avg_ranks['Method'].isin(table_methods)]
+    overall_avg_ranks_filtered['Pattern'] = 'Overall'
+    summary_data.append(overall_avg_ranks_filtered)
     
     summary_df = pd.concat(summary_data, ignore_index=True)
     summary_pivot = summary_df.pivot(index='Method', columns='Pattern', values='Rank')
     summary_pivot = summary_pivot.sort_values('Overall', ascending=True)
+    
+    # Create LaTeX table with mean rank ± std
+    print("Creating LaTeX table...")
+    
+    # Get all patterns including Overall
+    all_patterns = ['MCAR', 'MAR', 'MAR_Neural', 'MAR_BlockNeural', 'MAR_Sequential', 'MNAR', 'Overall']
+    
+    # Create a comprehensive table with mean ± std for each pattern
+    latex_table_data = []
+    
+    for pattern in all_patterns:
+        if pattern in pattern_ranks:
+            # Individual pattern - filter to table_methods
+            pattern_df = pattern_ranks[pattern]
+            filtered_pattern_df = pattern_df[pattern_df['Method'].isin(table_methods)]
+            pattern_stats = filtered_pattern_df.groupby('Method')['Rank'].agg(['mean', 'std']).reset_index()
+            pattern_stats['Pattern'] = pattern
+        else:
+            # Overall pattern - filter to table_methods
+            filtered_overall_df = overall_df[overall_df['Method'].isin(table_methods)]
+            pattern_stats = filtered_overall_df.groupby('Method')['Rank'].agg(['mean', 'std']).reset_index()
+            pattern_stats['Pattern'] = 'Overall'
+        
+        # Add to table data
+        for _, row in pattern_stats.iterrows():
+            latex_table_data.append({
+                'Pattern': pattern,
+                'Method': row['Method'],
+                'Mean_Rank': row['mean'],
+                'Std_Rank': row['std']
+            })
+    
+    # Convert to DataFrame and pivot (patterns as rows, methods as columns)
+    latex_df = pd.DataFrame(latex_table_data)
+    latex_pivot = latex_df.pivot(index='Pattern', columns='Method', values=['Mean_Rank', 'Std_Rank'])
+    
+    # Flatten column names
+    latex_pivot.columns = [f"{col[1]}_{col[0]}" for col in latex_pivot.columns]
+    
+    # Get all methods and sort by overall performance (using filtered methods)
+    all_methods = []
+    for method in overall_avg_ranks_filtered['Method']:
+        if f"{method}_Mean_Rank" in latex_pivot.columns:
+            all_methods.append(method)
+    
+    # Generate LaTeX table
+    latex_content = "\\begin{table}[h]\n"
+    latex_content += "\\centering\n"
+    latex_content += "\\caption{Mean Rank ± Standard Deviation by Missingness Pattern}\n"
+    latex_content += "\\label{tab:ranks_by_pattern}\n"
+    
+    # Create column specification
+    num_methods = len(all_methods)
+    col_spec = "l" + "c" * num_methods  # l for pattern names, c for each method
+    
+    latex_content += f"\\begin{{tabular}}{{{col_spec}}}\n"
+    latex_content += "\\toprule\n"
+    
+    # Header row
+    header = "Pattern"
+    for method in all_methods:
+        method_name = method.replace('_', '\\_')  # Escape underscores
+        header += f" & {method_name}"
+    header += " \\\\\n"
+    latex_content += header
+    latex_content += "\\midrule\n"
+    
+    # Data rows (patterns as rows)
+    for pattern in all_patterns:
+        row = pattern.replace('_', '\\_')  # Escape underscores in pattern names
+        
+        # Find the minimum mean rank for this pattern to bold it
+        min_mean = float('inf')
+        for method in all_methods:
+            if f"{method}_Mean_Rank" in latex_pivot.columns:
+                mean_val = latex_pivot.loc[pattern, f"{method}_Mean_Rank"]
+                if pd.notna(mean_val) and mean_val < min_mean:
+                    min_mean = mean_val
+        
+        for method in all_methods:
+            if f"{method}_Mean_Rank" in latex_pivot.columns:
+                mean_val = latex_pivot.loc[pattern, f"{method}_Mean_Rank"]
+                std_val = latex_pivot.loc[pattern, f"{method}_Std_Rank"]
+                if pd.notna(mean_val) and pd.notna(std_val):
+                    # Bold if this is the minimum mean rank for this pattern
+                    if abs(mean_val - min_mean) < 1e-6:  # Use small epsilon for float comparison
+                        row += f" & \\textbf{{{mean_val:.2f} ± {std_val:.2f}}}"
+                    else:
+                        row += f" & {mean_val:.2f} ± {std_val:.2f}"
+                else:
+                    row += " & --"
+        row += " \\\\\n"
+        latex_content += row
+    
+    latex_content += "\\bottomrule\n"
+    latex_content += "\\end{tabular}\n"
+    latex_content += "\\end{table}\n"
+    
+    # Save to file
+    with open("figures/ranks_table.txt", "w") as f:
+        f.write(latex_content)
+    
+    print("LaTeX table saved to figures/ranks_table.txt")

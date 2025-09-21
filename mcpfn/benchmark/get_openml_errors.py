@@ -5,7 +5,7 @@ import pandas as pd
 import torch
 from tqdm import tqdm
 
-from mcpfn.interface import ImputePFN, TabPFNImputer, TabPFNUnsupervisedModel
+from mcpfn.interface import ImputePFN, TabPFNImputer, TabPFNUnsupervisedModel, MCTabPFNEnsemble
 from hyperimpute.plugins.imputers import Imputers
 
 # Optional: ForestDiffusion (pip install ForestDiffusion)
@@ -24,34 +24,46 @@ from mcpfn.prepreocess import (
     StandardizeWhiten
 )
 
+import time
+
 warnings.filterwarnings("ignore")
 
 # --- Choose which imputers to run ---
 imputers = set([
     "mcpfn",
-    # "tabpfn",
-    # "tabpfn_unsupervised",
-    # "column_mean",
-    # "softimpute",
-    # "hyperimpute_ot", # Sinkhorn / Optimal Transport
-    # "hyperimpute",        
-    # "hyperimpute_missforest",
-    # "hyperimpute_ice",
-    # "hyperimpute_mice",
+    "mcpfn_ensemble",
+    "tabpfn",
+    "tabpfn_unsupervised",
+    "column_mean",
+    "softimpute",
+    "hyperimpute_ot", # Sinkhorn / Optimal Transport
+    "hyperimpute",
+    "hyperimpute_missforest",
+    "hyperimpute_ice",
+    "hyperimpute_mice",
     # # "hyperimpute_em", # doesn't work well
-    # "hyperimpute_gain",
-    # # "hyperimpute_miracle",
-    # "hyperimpute_miwae",
+    "hyperimpute_gain",
+    # # # "hyperimpute_miracle",
+    "hyperimpute_miwae",
     # # "forestdiffusion",
 ])
 
 patterns = {
     "MCAR",
-    "MAR",
-    "MAR_Neural",
-    "MAR_BlockNeural",
-    "MAR_Sequential",
-    "MNAR",
+    # "MAR",
+    # "MAR_Neural",
+    # "MAR_BlockNeural",
+    # "MAR_Sequential",
+    # "MNAR",
+    # "MAR_Diffusion",
+    # "MNARPanelPattern",
+    # "MNARSequentialPattern",
+    # "MNARPolarizationPattern",
+    # "MNARSoftPolarizationPattern",
+    # "MNARLatentFactorPattern",
+    # "MNARPositivityViolationPattern",
+    # "MNARClusterLevelPattern",
+    # "MNARTwoPhaseSubsetPattern",
 }
 
 # --- Initialize classes once ---
@@ -63,7 +75,7 @@ if "mcpfn" in imputers:
         RandomColumnPermutation(),
         # StandardizeWhiten(whiten=True),
     ]
-        
+    
     mcpfn = ImputePFN(
         device="cuda",
         encoder_path="/root/tabular/mcpfn/src/mcpfn/model/encoder.pth",
@@ -73,6 +85,21 @@ if "mcpfn" in imputers:
         preprocessors=preprocessors
     )
     mcpfn_name = "mixed_adaptive"
+    
+if "mcpfn_ensemble" in imputers:
+    preprocessors = [
+        RandomRowColumnPermutation(),
+        RandomRowColumnPermutation(),
+        RandomRowPermutation(),
+        RandomColumnPermutation(),
+        # StandardizeWhiten(whiten=True),
+    ]
+    mcpfn_ensemble = MCTabPFNEnsemble(device="cuda", 
+                           encoder_path="/root/tabular/mcpfn/src/mcpfn/model/encoder.pth",
+                           borders_path="/root/tabular/mcpfn/borders.pt",
+                           checkpoint_path="/mnt/mcpfn_data/checkpoints/mixed_adaptive/step-125000.ckpt",
+                           nhead=2,
+                           preprocessors=preprocessors)
 
 if "tabpfn" in imputers:
     tabpfn = TabPFNImputer(device="cuda")
@@ -82,6 +109,7 @@ if "tabpfn_unsupervised" in imputers:
 
 # Map friendly names → HyperImpute plugin ids and output filenames
 HYPERIMPUTE_MAP = {
+    "hyperimpute": ("hyperimpute", "hyperimpute"),
     "hyperimpute_ot": ("sinkhorn", "ot_sinkhorn"),
     "hyperimpute_missforest": ("missforest", "missforest"),
     "hyperimpute_ice": ("ice", "ice"),
@@ -92,11 +120,21 @@ HYPERIMPUTE_MAP = {
     "hyperimpute_miwae": ("miwae", "miwae"),
 }
 
+def fill_all_nan_columns(X_missing: np.ndarray) -> np.ndarray:
+    """Fill columns that are entirely NaN with 0's, leaving other NaN values unchanged."""
+    X_processed = X_missing.copy()
+    for col_idx in range(X_processed.shape[1]):
+        if np.all(np.isnan(X_processed[:, col_idx])):
+            X_processed[:, col_idx] = 0.0
+    return X_processed
+
 def run_hyperimpute(plugin_name: str, X_missing: np.ndarray) -> np.ndarray:
     """Run a single HyperImpute plugin on X_missing (numpy with NaNs)."""
+    # Fill all-NaN columns with 0's before running hyperimpute
+    X_processed = fill_all_nan_columns(X_missing)
     plugin = Imputers().get(plugin_name)
     # HyperImpute expects pandas DataFrame and returns a DataFrame
-    out_df = plugin.fit_transform(pd.DataFrame(X_missing))
+    out_df = plugin.fit_transform(pd.DataFrame(X_processed))
     return out_df.to_numpy()
 
 def run_forest_diffusion(X_missing: np.ndarray, n_t: int = 50,
@@ -131,12 +169,20 @@ for name in pbar:
     configs = os.listdir(f"{base_path}/{name}")
     for config in configs:
         cfg_dir = f"{base_path}/{name}/{config}"
-        pattern_name = config.split("_")[0]
-        p = config.split("_")[1]
-        if p != "0.4":
+        config_split = config.split("_")
+        p = config_split[-1]
+        
+        if float(p) != 0.4:
             continue
+        
+        # remove p from config_split
+        config_split = config_split[:-1]
+        pattern_name = "_".join(config_split)
+        
         if pattern_name not in patterns:
             continue
+        
+        print(config)
 
         X_missing = np.load(f"{cfg_dir}/missing.npy")
         X_true = np.load(f"{cfg_dir}/true.npy")  # normalized/ground truth
@@ -148,46 +194,83 @@ for name in pbar:
         if "mcpfn" in imputers:
             out_path = f"{cfg_dir}/{mcpfn_name}.npy"
             # if not os.path.exists(out_path):
-            X_mcpfn = mcpfn.impute(X_missing.copy(), calibrate=False)
-            np.save(out_path, X_mcpfn)
+            # Time the imputation
+            start_time = time.time()
+            X_mcpfn = mcpfn.impute(X_missing.copy())
+            # np.save(out_path, X_mcpfn)
+            end_time = time.time()
+            print(f"MCPFN imputation time: {end_time - start_time} seconds")
+            # save the imputation time
+            with open(f"{cfg_dir}/mcpfn_imputation_time.txt", "a") as f:
+                f.write(f"{end_time - start_time}\n")
+            
+        if "mcpfn_ensemble" in imputers:
+            out_path = f"{cfg_dir}/mcpfn_ensemble.npy"
+            # if not os.path.exists(out_path):
+            start_time = time.time()
+            X_mcpfn_ensemble = mcpfn_ensemble.impute(X_missing.copy())
+            end_time = time.time()
+            print(f"MCPFN Ensemble imputation time: {end_time - start_time} seconds")
+            # np.save(out_path, X_mcpfn_ensemble)
+            # save the imputation time
+            with open(f"{cfg_dir}/mcpfn_ensemble_imputation_time.txt", "a") as f:
+                f.write(f"{end_time - start_time}\n")
 
         # --- TabPFN ---
         if "tabpfn" in imputers:
             out_path = f"{cfg_dir}/tabpfn.npy"
-            if not os.path.exists(out_path):
-                X_tabpfn = tabpfn.impute(X_missing.copy())
-                np.save(out_path, X_tabpfn)
+            # if not os.path.exists(out_path):
+            start_time = time.time()
+            X_tabpfn = tabpfn.impute(X_missing.copy())
+            end_time = time.time()
+            print(f"TabPFN imputation time: {end_time - start_time} seconds")
+            # save the imputation time
+            with open(f"{cfg_dir}/tabpfn_imputation_time.txt", "a") as f:
+                f.write(f"{end_time - start_time}\n")
+            # np.save(out_path, X_tabpfn)
 
         # --- TabPFN Unsupervised ---
         if "tabpfn_unsupervised" in imputers:
             out_path = f"{cfg_dir}/tabpfn_impute.npy"
-            if not os.path.exists(out_path):
-                X_tabpfn_unsupervised = tabpfn_unsupervised.impute(X_missing.copy())
-                np.save(out_path, X_tabpfn_unsupervised)
+            # if not os.path.exists(out_path):
+            start_time = time.time()
+            X_tabpfn_unsupervised = tabpfn_unsupervised.impute(fill_all_nan_columns(X_missing.copy()))
+            end_time = time.time()
+            print(f"TabPFN Unsupervised imputation time: {end_time - start_time} seconds")
+            # save the imputation time
+            with open(f"{cfg_dir}/tabpfn_unsupervised_imputation_time.txt", "a") as f:
+                f.write(f"{end_time - start_time}\n")
+            # np.save(out_path, X_tabpfn_unsupervised)
 
         # --- Column Mean (HyperImpute simple baseline) ---
         if "column_mean" in imputers:
             out_path = f"{cfg_dir}/column_mean.npy"
             
             # if not os.path.exists(out_path):
-            # Column means (ignoring NaN). This will be NaN if the column is all NaNs.
-            col_means = np.nanmean(X_missing, axis=0)
-
-            # Replace NaN means with 0 for all-NaN columns
-            col_means = np.where(np.isnan(col_means), 0, col_means)
-
-            # Impute: broadcast col_means into missing entries
-            X_missing[mask] = np.take(col_means, np.where(mask)[1])
+            start_time = time.time()
+            plugin = Imputers().get("mean")
+            out = plugin.fit_transform(pd.DataFrame(fill_all_nan_columns(X_missing.copy()))).to_numpy()
             
-            np.save(out_path, X_missing)
+            end_time = time.time()
+            print(f"Column Mean imputation time: {end_time - start_time} seconds")
+            # save the imputation time
+            with open(f"{cfg_dir}/column_mean_imputation_time.txt", "a") as f:
+                f.write(f"{end_time - start_time}\n")
+            # np.save(out_path, out)
 
         # --- SoftImpute (HyperImpute) ---
         if "softimpute" in imputers:
             out_path = f"{cfg_dir}/softimpute.npy"
-            if not os.path.exists(out_path):
-                plugin = Imputers().get("softimpute")
-                out = plugin.fit_transform(pd.DataFrame(X_missing.copy())).to_numpy()
-                np.save(out_path, out)
+            # if not os.path.exists(out_path):
+            start_time = time.time()
+            plugin = Imputers().get("softimpute")
+            out = plugin.fit_transform(pd.DataFrame(fill_all_nan_columns(X_missing.copy()))).to_numpy()
+            end_time = time.time()
+            print(f"SoftImpute imputation time: {end_time - start_time} seconds")
+            # save the imputation time
+            with open(f"{cfg_dir}/softimpute_imputation_time.txt", "a") as f:
+                f.write(f"{end_time - start_time}\n")
+            # np.save(out_path, out)
 
         # --- HyperImpute family (OT/Sinkhorn, MissForest, ICE, MICE, EM, GAIN, MIRACLE, MIWAE) ---
         for key, (plugin_id, fname) in HYPERIMPUTE_MAP.items():
@@ -196,18 +279,31 @@ for name in pbar:
                 if key in imputers:
                     out_path = f"{cfg_dir}/{fname}.npy"
                     if not os.path.exists(out_path):
+                        start_time = time.time()
                         out = run_hyperimpute(plugin_id, X_missing.astype(np.float64).copy())
-                        np.save(out_path, out)
+                        end_time = time.time()
+                        print(f"HyperImpute (OT/Sinkhorn) imputation time: {end_time - start_time} seconds")
+                        # save the imputation time
+                        with open(f"{cfg_dir}/hyperimpute_ot_sinkhorn_imputation_time.txt", "a") as f:
+                            f.write(f"{end_time - start_time}\n")
+                        # np.save(out_path, out)
             else:
                 if key in imputers:
+                    print(key)
                     out_path = f"{cfg_dir}/{fname}.npy"
-                    if not os.path.exists(out_path):
-                        try:
-                            out = run_hyperimpute(plugin_id, X_missing.copy())
-                        except Exception as e:
-                            print(f"Error running {plugin_id}: {e}")
-                            out = np.zeros_like(X_missing)
-                        np.save(out_path, out)
+                    # if not os.path.exists(out_path):
+                    try:
+                        start_time = time.time()
+                        out = run_hyperimpute(plugin_id, X_missing.copy())
+                        end_time = time.time()
+                        print(f"HyperImpute ({key}) imputation time: {end_time - start_time} seconds")
+                        # save the imputation time
+                        with open(f"{cfg_dir}/hyperimpute_{key}_imputation_time.txt", "a") as f:
+                            f.write(f"{end_time - start_time}\n")
+                    except Exception as e:
+                        print(f"Error running {plugin_id}: {e}")
+                        out = np.zeros_like(X_missing)
+                    # np.save(out_path, out)
 
             
         # --- ForestDiffusion (separate package) ---

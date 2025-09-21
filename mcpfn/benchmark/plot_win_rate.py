@@ -15,9 +15,9 @@ datasets = os.listdir(base_path)
 methods = [
     # "softimpute", 
     # "column_mean", 
-    "hyperimpute", 
+    # "hyperimpute", 
     # "ot_sinkhorn",
-    "missforest",
+    # "missforest",
     # "ice",
     # "mice",
     # "gain",
@@ -25,22 +25,24 @@ methods = [
     # "mixed_perm_both_row_col",
     # "mixed_nonlinear",
     "mixed_adaptive",
+    # "mcpfn_ensemble",
     "tabpfn",
-    # "tabpfn_impute",
+    "tabpfn_impute",
 ]
 
-patterns = {
+patterns = [
     "MCAR",
     "MAR",
-    "MAR_Neural",
-    "MAR_BlockNeural",
+    # "MAR_Neural",
+    # "MAR_BlockNeural",
     "MAR_Sequential",
     "MNAR",
-}
+]
 
 method_names = {
     "mixed_nonlinear": "MCPFN (Nonlinear Permuted)",
     "mixed_adaptive": "MCPFN",
+    "mcpfn_ensemble": "MCPFN Ensemble",
     "mixed_perm_both_row_col": "MCPFN (Linear Permuted)",
     "tabpfn_impute": "TabPFN (Unsupervised)",
     "tabpfn": "MC-TabPFN",
@@ -191,3 +193,55 @@ for i, v in enumerate(overall_df['Win Rate (%)']):
 plt.tight_layout()
 plt.savefig("figures/win_rate_overall.png", dpi=300, bbox_inches='tight')
 plt.close()
+
+# Create LaTeX table with win rates
+# Create a comprehensive table with all methods and patterns
+all_methods = set()
+for pattern_rates in pattern_win_rates.values():
+    all_methods.update(pattern_rates.keys())
+
+# Sort methods for consistent ordering
+all_methods = sorted(list(all_methods))
+
+# Create LaTeX table
+latex_table = []
+latex_table.append("\\begin{table}[h!]")
+latex_table.append("\\centering")
+latex_table.append("\\caption{Win Rates (\\%) by Missingness Pattern and Method}")
+latex_table.append("\\label{tab:win_rates}")
+latex_table.append("\\begin{tabular}{l" + "c" * len(patterns) + "}")
+latex_table.append("\\toprule")
+latex_table.append("Method & " + " & ".join([p.replace("_", "\\_") for p in patterns]) + " \\\\")
+latex_table.append("\\midrule")
+
+# Find maximum values for each pattern to bold them
+max_values = {}
+for pattern in patterns:
+    if pattern in pattern_win_rates:
+        max_values[pattern] = max(pattern_win_rates[pattern].values()) if pattern_win_rates[pattern] else 0
+    else:
+        max_values[pattern] = 0
+
+# Add rows for each method
+for method in all_methods:
+    row = [method.replace("_", "\\_")]
+    for pattern in patterns:
+        if pattern in pattern_win_rates and method in pattern_win_rates[pattern]:
+            win_rate = pattern_win_rates[pattern][method]
+            # Bold if this is the maximum value for this pattern
+            if win_rate == max_values[pattern]:
+                row.append(f"\\textbf{{{win_rate:.1f}}}")
+            else:
+                row.append(f"{win_rate:.1f}")
+        else:
+            row.append("--")
+    
+    latex_table.append(" & ".join(row) + " \\\\")
+
+latex_table.append("\\bottomrule")
+latex_table.append("\\end{tabular}")
+latex_table.append("\\end{table}")
+
+# Save to file in figures folder
+with open("figures/win_rates_table.tex", "w") as f:
+    f.write("\n".join(latex_table))

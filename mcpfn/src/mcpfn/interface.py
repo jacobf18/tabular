@@ -76,7 +76,7 @@ class ImputePFN:
         
         self.preprocessors = preprocessors
 
-    def impute(self, X: np.ndarray) -> np.ndarray:
+    def impute(self, X: np.ndarray, return_full: bool = False) -> np.ndarray:
         """Impute missing values in the input matrix.
         Imputes the missing values in place.
 
@@ -115,7 +115,10 @@ class ImputePFN:
         
         torch.cuda.empty_cache()
         
-        return X_imputed, X_full
+        if return_full:
+            return X_imputed, X_full
+        else:
+            return X_imputed
 
 
     def get_imputation(self, X_normalized: np.ndarray) -> np.ndarray:
@@ -137,6 +140,9 @@ class ImputePFN:
         missing_indices = np.where(
             np.isnan(X_normalized)
         )  # This will always be the same order as the calculated train_X and test_X
+        non_missing_indices = np.where(
+            ~np.isnan(X_normalized)
+        )
 
         # Move tensors to device
         train_X = train_X.to(self.device)
@@ -174,7 +180,7 @@ class ImputePFN:
         X_normalized[missing_indices] = medians_test.cpu().detach().numpy()
         
         X_full[missing_indices] = medians_test.cpu().detach().numpy()
-        X_full[~missing_indices] = medians_train.cpu().detach().numpy()
+        X_full[non_missing_indices] = medians_train.cpu().detach().numpy()
         
         return X_normalized, X_full
     
@@ -183,7 +189,7 @@ class TabPFNImputer:
         self.device = device
         self.reg = TabPFNRegressor(device=device, n_estimators=8)
         
-    def impute(self, X: np.ndarray) -> np.ndarray:
+    def impute(self, X: np.ndarray, return_full: bool = False) -> np.ndarray:
         """Impute missing values in the input matrix.
         Imputes the missing values in place.
         """
@@ -199,7 +205,6 @@ class TabPFNImputer:
         test_X_npy = test_X.cpu().numpy()
         # test_y_npy = test_y.cpu().numpy()
         
-        
         # mcpfn = MCPFN(encoder_path=self.encoder_path, nhead=2).to(self.device)
         # checkpoint = torch.load('/mnt/mcpfn_data/checkpoints/mixed_adaptive/step-49000.ckpt', map_location=self.device, weights_only=True)
         # # mcpfn.model.load_state_dict(torch.load('/root/tabular/mcpfn/src/mcpfn/model/tabpfn_model.pt', weights_only=True))
@@ -210,14 +215,22 @@ class TabPFNImputer:
         # self.reg.model_ = mcpfn.model # override the model with the mcpfn model
         
         preds = self.reg.predict(test_X_npy)
+        preds_train = self.reg.predict(train_X_npy)
         
-        X[np.where(np.isnan(X))] = preds
+        X_full = X.copy()
+        mask = np.isnan(X)
+        X[mask] = preds
+        X_full[mask] = preds
+        X_full[~mask] = preds_train
         
         # Clean up memory
         del train_X, train_y, test_X, X_tensor
         torch.cuda.empty_cache()
         
-        return X
+        if return_full:
+            return X, X_full
+        else:
+            return X
 
 class TabPFNUnsupervisedModel:
     def __init__(self, device: str = "cpu"):
@@ -235,20 +248,35 @@ class TabPFNUnsupervisedModel:
     
     
 class MCTabPFNEnsemble:
-    def __init__(self, device: str = "cpu"):
+    def __init__(self, 
+                 device: str = "cpu", 
+                 encoder_path: str = "encoder.pth",
+                 borders_path: str = "borders.pt",
+                 checkpoint_path: str = "test.ckpt",
+                 nhead: int = 2,
+                 preprocessors: list[Preprocess] = None):
         self.device = device
-        self.tabpfn_reg = TabPFNRegressor(device=device, n_estimators=8)
-        self.mcpfn = MCPFN(device=device)
+        self.tabpfn_imputer = TabPFNImputer(device=device)
+        self.mcpfn_imputer = ImputePFN(device=device, encoder_path=encoder_path, borders_path=borders_path, checkpoint_path=checkpoint_path, nhead=nhead, preprocessors=preprocessors)
         
-    def impute(self, X, n_permutations=10):
+    def impute(self, X):
         missing_mask = np.isnan(X)
         y_missing = X[missing_mask]
         y_observed = X[~missing_mask]
         
-        tabpfn_preds = self.tabpfn_reg.predict(X)
-        mcpfn_preds = self.mcpfn.impute(X, n_permutations=n_permutations)
+        X_tabpfn, X_full_tabpfn = self.tabpfn_imputer.impute(X, return_full=True)
+        X_mcpfn, X_full_mcpfn = self.mcpfn_imputer.impute(X, return_full=True)
+        
+        y_tabpfn = X_full_tabpfn[~missing_mask]
+        y_mcpfn = X_full_mcpfn[~missing_mask]
+        
+        w_tabpfn, w_mcpfn = self.optimal_weights(y_tabpfn, y_mcpfn, y_observed)
+        
+        X[missing_mask] = (w_tabpfn * X_tabpfn[missing_mask]) + (w_mcpfn * X_mcpfn[missing_mask])
+        
+        return X
     
-    def optimal_weights(x: np.ndarray, y: np.ndarray, z: np.ndarray):
+    def optimal_weights(self, x: np.ndarray, y: np.ndarray, z: np.ndarray):
         """
         Optimal weights for a convex combination of x and y to minimize the distance to z.
         Returns the weights for x and y.

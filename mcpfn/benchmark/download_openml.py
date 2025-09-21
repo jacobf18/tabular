@@ -16,7 +16,7 @@ def fetch_clean_openml_datasets(
     """
     datasets_df = openml.datasets.list_datasets(output_format='dataframe')
     datasets_df = datasets_df[
-        (datasets_df['NumberOfMissingValues'] == 0) &
+        (datasets_df['NumberOfMissingValues'] > 0) &
         (datasets_df['NumberOfFeatures'] >= min_cols) &
         (datasets_df['NumberOfInstances'] >= min_rows) &
         (datasets_df['NumberOfInstances'] <= max_rows) & 
@@ -57,3 +57,12 @@ def fetch_clean_openml_datasets(
         raise RuntimeError("❌ No valid datasets found under the given constraints.")
 
     return collected
+
+
+if __name__ == "__main__":
+    datasets = fetch_clean_openml_datasets(num_datasets=100, verbose=True)
+    
+    # calculate the percentage of missing values
+    for X, name, did in datasets:
+        with open("dataset_sizes_missing.txt", "a") as f:
+            f.write(f"{name} | {torch.mean(torch.isnan(X).float())}\n")
