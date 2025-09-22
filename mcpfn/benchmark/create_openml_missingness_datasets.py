@@ -34,7 +34,7 @@ p_mar = 0.4
 p_mnar = 0.4
 
 patterns = {
-    "MCAR": MCARPattern(config={"p_missing": p_mcar}),
+    # "MCAR": MCARPattern(config={"p_missing": p_mcar}),
     # "MAR": MARPattern(config={"p_missing": p_mar}),
     # "MNAR": MNARPattern(config={"p_missing": p_mnar}),
     # "MAR_Neural": MARNeuralNetwork(config={
@@ -68,7 +68,7 @@ patterns = {
     #     }
     # }),
     # 'MNARPanelPattern': MNARPanelPattern(config={}),
-    # 'MNARSequentialPattern': MNARSequentialPattern(config={'n_policies': 4}),
+    'MNARSequentialPattern': MNARSequentialPattern(config={'n_policies': 2}),
     # 'MNARPolarizationPattern': MNARPolarizationPattern(config={'threshold_quantile': 0.25}),
     # 'MNARSoftPolarizationPattern': MNARSoftPolarizationPattern(config={'soft_polarization_alpha': 2.5, 'soft_polarization_epsilon': 0.05}),
     # 'MNARLatentFactorPattern': MNARLatentFactorPattern(config={'latent_rank_low': 1, 'latent_rank_high': 5}),
@@ -92,8 +92,6 @@ for X, name, did in datasets:
     with open("dataset_sizes.txt", "a") as f:
         f.write(f"{name} | {X.shape[0]} \\times {X.shape[1]}\n")
 
-exit()
-
 max_attempts = 10
 # --- Run benchmark ---
 for X, name, did in datasets:
@@ -114,7 +112,7 @@ for X, name, did in datasets:
             X_normalized = (X - mean) / std
             
             # p = p_mcar if pattern_name == "MCAR" else p_mar if pattern_name == "MAR" else p_mnar
-            p = pattern.config['p_missing']
+            # p = pattern.config['p_missing']
             
             # Create the directory if it doesn't exist
             print(f"{base_path}/{name}/{pattern_name}_{p}")

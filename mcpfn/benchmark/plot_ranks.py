@@ -237,7 +237,19 @@ if all_ranks_data:
     print("Creating LaTeX table...")
     
     # Get all patterns including Overall
-    all_patterns = ['MCAR', 'MAR', 'MAR_Neural', 'MAR_BlockNeural', 'MAR_Sequential', 'MNAR', 'Overall']
+    all_patterns = ['MCAR', 
+                'MAR', 
+                'MAR_Neural', 
+                'MAR_BlockNeural', 
+                'MAR_Sequential', 
+                'MNAR', 
+                "MNARPanelPattern",
+                "MNARPolarizationPattern",
+                "MNARSoftPolarizationPattern",
+                "MNARLatentFactorPattern",
+                "MNARClusterLevelPattern",
+                "MNARTwoPhaseSubsetPattern",
+                'Overall']
     
     # Create a comprehensive table with mean ± std for each pattern
     latex_table_data = []
@@ -277,61 +289,77 @@ if all_ranks_data:
         if f"{method}_Mean_Rank" in latex_pivot.columns:
             all_methods.append(method)
     
-    # Generate LaTeX table
-    latex_content = "\\begin{table}[h]\n"
-    latex_content += "\\centering\n"
-    latex_content += "\\caption{Mean Rank ± Standard Deviation by Missingness Pattern}\n"
-    latex_content += "\\label{tab:ranks_by_pattern}\n"
+    # Generate LaTeX table with maximum 4 columns
+    max_cols = 4
+    num_tables = (len(all_methods) + max_cols - 1) // max_cols
     
-    # Create column specification
-    num_methods = len(all_methods)
-    col_spec = "l" + "c" * num_methods  # l for pattern names, c for each method
-    
-    latex_content += f"\\begin{{tabular}}{{{col_spec}}}\n"
-    latex_content += "\\toprule\n"
-    
-    # Header row
-    header = "Pattern"
-    for method in all_methods:
-        method_name = method.replace('_', '\\_')  # Escape underscores
-        header += f" & {method_name}"
-    header += " \\\\\n"
-    latex_content += header
-    latex_content += "\\midrule\n"
-    
-    # Data rows (patterns as rows)
-    for pattern in all_patterns:
-        row = pattern.replace('_', '\\_')  # Escape underscores in pattern names
+    for table_idx in range(num_tables):
+        start_col = table_idx * max_cols
+        end_col = min(start_col + max_cols, len(all_methods))
+        table_methods = all_methods[start_col:end_col]
         
-        # Find the minimum mean rank for this pattern to bold it
-        min_mean = float('inf')
-        for method in all_methods:
-            if f"{method}_Mean_Rank" in latex_pivot.columns:
-                mean_val = latex_pivot.loc[pattern, f"{method}_Mean_Rank"]
-                if pd.notna(mean_val) and mean_val < min_mean:
-                    min_mean = mean_val
+        latex_content = "\\begin{table}[h]\n"
+        latex_content += "\\centering\n"
+        if num_tables > 1:
+            latex_content += f"\\caption{{Mean Rank ± Standard Deviation by Missingness Pattern (Table {table_idx + 1}/{num_tables})}}\n"
+        else:
+            latex_content += "\\caption{Mean Rank ± Standard Deviation by Missingness Pattern}\n"
+        latex_content += f"\\label{{tab:ranks_by_pattern_{table_idx + 1}}}\n"
         
-        for method in all_methods:
-            if f"{method}_Mean_Rank" in latex_pivot.columns:
-                mean_val = latex_pivot.loc[pattern, f"{method}_Mean_Rank"]
-                std_val = latex_pivot.loc[pattern, f"{method}_Std_Rank"]
-                if pd.notna(mean_val) and pd.notna(std_val):
-                    # Bold if this is the minimum mean rank for this pattern
-                    if abs(mean_val - min_mean) < 1e-6:  # Use small epsilon for float comparison
-                        row += f" & \\textbf{{{mean_val:.2f} ± {std_val:.2f}}}"
+        # Create column specification
+        num_methods_table = len(table_methods)
+        col_spec = "l" + "c" * num_methods_table  # l for pattern names, c for each method
+        
+        latex_content += f"\\begin{{tabular}}{{{col_spec}}}\n"
+        latex_content += "\\toprule\n"
+        
+        # Header row
+        header = "Pattern"
+        for method in table_methods:
+            method_name = method.replace('_', '\\_')  # Escape underscores
+            header += f" & {method_name}"
+        header += " \\\\\n"
+        latex_content += header
+        latex_content += "\\midrule\n"
+        
+        # Data rows (patterns as rows)
+        for i, pattern in enumerate(all_patterns):
+            row = pattern.replace('_', '\\_')  # Escape underscores in pattern names
+            
+            # Add midrule before Overall performance
+            if pattern == 'Overall' and i > 0:
+                latex_content += "\\midrule\n"
+            
+            # Find the minimum mean rank for this pattern to bold it
+            min_mean = float('inf')
+            for method in table_methods:
+                if f"{method}_Mean_Rank" in latex_pivot.columns:
+                    mean_val = latex_pivot.loc[pattern, f"{method}_Mean_Rank"]
+                    if pd.notna(mean_val) and mean_val < min_mean:
+                        min_mean = mean_val
+            
+            for method in table_methods:
+                if f"{method}_Mean_Rank" in latex_pivot.columns:
+                    mean_val = latex_pivot.loc[pattern, f"{method}_Mean_Rank"]
+                    std_val = latex_pivot.loc[pattern, f"{method}_Std_Rank"]
+                    if pd.notna(mean_val) and pd.notna(std_val):
+                        # Bold if this is the minimum mean rank for this pattern
+                        if abs(mean_val - min_mean) < 1e-6:  # Use small epsilon for float comparison
+                            row += f" & \\textbf{{{mean_val:.2f} ± {std_val:.2f}}}"
+                        else:
+                            row += f" & {mean_val:.2f} ± {std_val:.2f}"
                     else:
-                        row += f" & {mean_val:.2f} ± {std_val:.2f}"
-                else:
-                    row += " & --"
-        row += " \\\\\n"
-        latex_content += row
-    
-    latex_content += "\\bottomrule\n"
-    latex_content += "\\end{tabular}\n"
-    latex_content += "\\end{table}\n"
-    
-    # Save to file
-    with open("figures/ranks_table.txt", "w") as f:
-        f.write(latex_content)
-    
-    print("LaTeX table saved to figures/ranks_table.txt")
+                        row += " & --"
+            row += " \\\\\n"
+            latex_content += row
+        
+        latex_content += "\\bottomrule\n"
+        latex_content += "\\end{tabular}\n"
+        latex_content += "\\end{table}\n"
+        
+        # Save each table to a separate file
+        filename = f"figures/ranks_table_{table_idx + 1}.txt" if num_tables > 1 else "figures/ranks_table.txt"
+        with open(filename, "w") as f:
+            f.write(latex_content)
+        
+        print(f"LaTeX table {table_idx + 1} saved to {filename}")

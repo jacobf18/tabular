@@ -528,12 +528,12 @@ class MNARPanelPattern(BaseMissingness):
 
 class MNARSequentialPattern(BaseMissingness):
     def _induce_missingness(self, X):
-        n_policies = self.config.get("n_policies", 4)
+        n_policies = self.config.get("n_policies", 2)
         n_users, n_cols = X.shape
-        if n_policies <= 0 or n_cols < n_policies or n_cols % n_policies != 0:
-            return X
+        # if n_policies <= 0 or n_cols < n_policies or n_cols % n_policies != 0:
+        #     return X
         n_timesteps = n_cols // n_policies
-        mask = torch.full(X.shape, False)
+        mask = torch.ones(X.shape, dtype=torch.bool)
         for i in range(n_users):
             for t in range(n_timesteps):
                 mask[i, t * n_policies + torch.randint(0, n_policies, (1,))] = True

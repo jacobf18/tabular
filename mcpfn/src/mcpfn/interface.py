@@ -233,7 +233,7 @@ class TabPFNImputer:
             return X
 
 class TabPFNUnsupervisedModel:
-    def __init__(self, device: str = "cpu"):
+    def __init__(self, device: str = "cuda"):
         self.device = device
         clf = TabPFNClassifier(device=device, n_estimators=3)
         reg = TabPFNRegressor(device=device, n_estimators=3)
@@ -244,7 +244,7 @@ class TabPFNUnsupervisedModel:
         
     def impute(self, X, n_permutations=10):
         self.model.fit(X)
-        return np.nanmean(self.model.impute(X, n_permutations=n_permutations).cpu().numpy(), axis=0)
+        return self.model.impute(X, n_permutations=n_permutations).cpu().numpy()
     
     
 class MCTabPFNEnsemble:

@@ -3,6 +3,7 @@
 .venv/
 
 *.png
+*.pdf
 
 # Ignore Python bytecode files
 *.py[cod]

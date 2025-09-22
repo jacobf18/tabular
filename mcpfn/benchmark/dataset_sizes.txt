@@ -44,3 +44,17 @@ breast-cancer-coimbra | 116 \times 10
 chscase_vine1 | 52 \times 10
 seeds_dataset | 209 \times 8
 dataset_analcatdata_creditscore | 100 \times 7
+sleep | 62 \times 8
+Wine-Dataset | 178 \times 14
+hip | 54 \times 8
+NCI_60_Thioguanine | 60 \times 49
+Phenotype_202 | 178 \times 46
+CSM | 231 \times 13
+sleep | 62 \times 10
+sleep | 62 \times 8
+Wine-Dataset | 178 \times 14
+hip | 54 \times 8
+NCI_60_Thioguanine | 60 \times 49
+Phenotype_202 | 178 \times 46
+CSM | 231 \times 13
+sleep | 62 \times 10
