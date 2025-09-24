@@ -68,13 +68,13 @@ patterns = {
     #     }
     # }),
     # 'MNARPanelPattern': MNARPanelPattern(config={}),
-    'MNARSequentialPattern': MNARSequentialPattern(config={'n_policies': 2}),
+    # 'MNARSequentialPattern': MNARSequentialPattern(config={'n_policies': 2}),
     # 'MNARPolarizationPattern': MNARPolarizationPattern(config={'threshold_quantile': 0.25}),
     # 'MNARSoftPolarizationPattern': MNARSoftPolarizationPattern(config={'soft_polarization_alpha': 2.5, 'soft_polarization_epsilon': 0.05}),
     # 'MNARLatentFactorPattern': MNARLatentFactorPattern(config={'latent_rank_low': 1, 'latent_rank_high': 5}),
     # 'MNARPositivityViolationPattern': MNARPositivityViolationPattern(config={}),
     # 'MNARClusterLevelPattern': MNARClusterLevelPattern(config={'cluster_level_n_row_clusters': 5, 'cluster_level_n_col_clusters': 4}),
-    # 'MNARCensoringPattern': MNARCensoringPattern(config={'censor_quantile': 0.1}),
+    'MNARCensoringPattern': MNARCensoringPattern(config={'censor_quantile': 0.25}),
     # 'MNARTwoPhaseSubsetPattern': MNARTwoPhaseSubsetPattern(config={'two_phase_cheap_fraction': 0.4}),
     # "MAR_Diffusion": MARDiffusion(config={
     #     'missingness_type': 'bandit',
@@ -93,8 +93,13 @@ for X, name, did in datasets:
         f.write(f"{name} | {X.shape[0]} \\times {X.shape[1]}\n")
 
 max_attempts = 10
+print(datasets)
 # --- Run benchmark ---
 for X, name, did in datasets:
+    # If dataset folder does not exist, skip it
+    if not os.path.exists(f"{base_path}/{name}"):
+        continue
+    
     for pattern_name, pattern in patterns.items():
         num_attempts = 0
         while num_attempts < max_attempts:
@@ -111,7 +116,7 @@ for X, name, did in datasets:
             # std is set to 1 if all values are the same
             X_normalized = (X - mean) / std
             
-            # p = p_mcar if pattern_name == "MCAR" else p_mar if pattern_name == "MAR" else p_mnar
+            p = p_mcar if pattern_name == "MCAR" else p_mar if pattern_name == "MAR" else p_mnar
             # p = pattern.config['p_missing']
             
             # Create the directory if it doesn't exist

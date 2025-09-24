@@ -13,7 +13,7 @@ base_path = "datasets/openml"
 datasets = os.listdir(base_path)
 
 methods = [
-    # "softimpute", 
+    "softimpute", 
     "column_mean", 
     "hyperimpute",
     # # "ot_sinkhorn",
@@ -27,7 +27,7 @@ methods = [
 ]
 
 method_names = {
-    "mcpfn_ensemble": "MatFormer",
+    "mcpfn_ensemble": "TabImpute++",
     "tabpfn_impute": "TabPFN",
     "column_mean": "Col Mean",
     "hyperimpute": "HyperImpute",
@@ -109,14 +109,14 @@ df["value_norm"] = df.groupby(["dataset"])["value"].transform(
     lambda x: (x - x.min()) / (x.max() - x.min())
 )
 print(df)
-include_methods = ["MatFormer", "HyperImpute", "Col Mean", "SoftImpute"]
+include_methods = ["TabImpute++", "HyperImpute", "Col Mean", "MissForest"]
 
 # Plot the values with a separate line for each method
 plt.figure(figsize=(10, 6))
 sns.lineplot(x="p", y="value_norm", hue="method", data=df[df["method"].isin(include_methods)], hue_order=include_methods)
-plt.ylabel("Normalized Negative RMSE (0–1)")
-plt.xlabel("Percentage of Missing Values (p)")
+plt.ylabel("1 - Normalized RMSE (0–1)")
+plt.xlabel("Fraction of Missing Values")
 # Remove legend title
 plt.legend(title="")
-plt.savefig('figures/mcar_normalized_performance_vs_p.png', dpi=300)
+plt.savefig('figures/mcar_normalized_performance_vs_p.pdf', dpi=300)
 plt.close()

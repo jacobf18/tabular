@@ -73,6 +73,7 @@ class ImputePFN:
             checkpoint_path, map_location=self.device, weights_only=True
         )
         self.model.load_state_dict(checkpoint["state_dict"])
+        # self.model.model.load_state_dict(torch.load('/root/tabular/mcpfn/data/tabpfn_model.pt', weights_only=True))
         
         self.preprocessors = preprocessors
 

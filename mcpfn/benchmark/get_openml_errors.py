@@ -26,39 +26,43 @@ from mcpfn.prepreocess import (
     RandomColumnPermutation, 
     StandardizeWhiten
 )
+from sklearn.impute import KNNImputer
 
 import time
 
 warnings.filterwarnings("ignore")
 
+force_rerun = True
+
 # --- Choose which imputers to run ---
 imputers = set([
-    # "mcpfn",
+    "mcpfn",
     "mcpfn_ensemble",
-    # "tabpfn",
-    # "tabpfn_unsupervised",
-    # "column_mean",
-    # "softimpute",
-    # "hyperimpute_ot", # Sinkhorn / Optimal Transport
-    # "hyperimpute",
-    # "hyperimpute_missforest",
-    # "hyperimpute_ice",
-    # "hyperimpute_mice",
-    # # # # "hyperimpute_em", # doesn't work well
-    # "hyperimpute_gain",
-    # # # # # "hyperimpute_miracle",
-    # "hyperimpute_miwae",
-    # # # # "forestdiffusion",
+    "knn",
+    "tabpfn",
+    "tabpfn_unsupervised",
+    "column_mean",
+    "softimpute",
+    "hyperimpute_ot", # Sinkhorn / Optimal Transport
+    "hyperimpute",
+    "hyperimpute_missforest",
+    "hyperimpute_ice",
+    "hyperimpute_mice",
+    # # # # # "hyperimpute_em", # doesn't work well
+    "hyperimpute_gain",
+    # # # # # # "hyperimpute_miracle",
+    "hyperimpute_miwae",
+    # # # # # "forestdiffusion",
 ])
 
 patterns = {
-    "MCAR",
+    # "MCAR",
     # "MAR",
     # "MAR_Neural",
     # "MAR_BlockNeural",
     # "MAR_Sequential",
     # "MNAR",
-    # "MAR_Diffusion",
+    # # "MAR_Diffusion",
     # "MNARPanelPattern",
     # # "MNARSequentialPattern",
     # "MNARPolarizationPattern",
@@ -67,6 +71,7 @@ patterns = {
     # # "MNARPositivityViolationPattern",
     # "MNARClusterLevelPattern",
     # "MNARTwoPhaseSubsetPattern",
+    "MNARCensoringPattern",
 }
 
 # --- Initialize classes once ---
@@ -84,10 +89,13 @@ if "mcpfn" in imputers:
         encoder_path="/root/tabular/mcpfn/src/mcpfn/model/encoder.pth",
         borders_path="/root/tabular/mcpfn/borders.pt",
         checkpoint_path="/mnt/mcpfn_data/checkpoints/mixed_adaptive/step-125000.ckpt",
+        # checkpoint_path = "/mnt/mcpfn_data/checkpoints/mixed_nonlinear/step-7000.ckpt",
+        # checkpoint_path = "/mnt/mcpfn_data/checkpoints/mar_batch_size_64/step-49900.ckpt",
+        # checkpoint_path="/mnt/mcpfn_data/checkpoints/mixed_adaptive_more_heads/step-100000.ckpt",
         nhead=2,
         preprocessors=preprocessors
     )
-    mcpfn_name = "mixed_adaptive"
+    mcpfn_name = "mcpfn_mixed_adaptive"
     
 if "mcpfn_ensemble" in imputers:
     preprocessors = [
@@ -97,7 +105,7 @@ if "mcpfn_ensemble" in imputers:
         RandomColumnPermutation(),
         # StandardizeWhiten(whiten=True),
     ]
-    mcpfn_ensemble = MCTabPFNEnsemble(device="cpu", 
+    mcpfn_ensemble = MCTabPFNEnsemble(device="cuda", 
                            encoder_path="/root/tabular/mcpfn/src/mcpfn/model/encoder.pth",
                            borders_path="/root/tabular/mcpfn/borders.pt",
                            checkpoint_path="/mnt/mcpfn_data/checkpoints/mixed_adaptive/step-125000.ckpt",
@@ -166,7 +174,7 @@ def run_forest_diffusion(X_missing: np.ndarray, n_t: int = 50,
 base_path = "datasets/openml"
 datasets = os.listdir(base_path)
 
-pbar = tqdm(datasets)
+pbar = tqdm(datasets[21:])
 for name in pbar:
     pbar.set_description(f"Running {name}")
     configs = os.listdir(f"{base_path}/{name}")
@@ -196,7 +204,7 @@ for name in pbar:
         # --- MCPFN ---
         if "mcpfn" in imputers:
             out_path = f"{cfg_dir}/{mcpfn_name}.npy"
-            if not os.path.exists(out_path):
+            if not os.path.exists(out_path) or force_rerun:
                 # Time the imputation
                 start_time = time.time()
                 X_mcpfn = mcpfn.impute(X_missing.copy())
@@ -206,23 +214,36 @@ for name in pbar:
                 # save the imputation time
                 with open(f"{cfg_dir}/mcpfn_imputation_time.txt", "a") as f:
                     f.write(f"{end_time - start_time}\n")
+                    
+        # --- KNN ---
+        if "knn" in imputers:
+            out_path = f"{cfg_dir}/knn.npy"
+            if not os.path.exists(out_path) or force_rerun:
+                start_time = time.time()
+                X_knn = KNNImputer(n_neighbors=5).fit_transform(fill_all_nan_columns(X_missing.copy()))
+                end_time = time.time()
+                print(f"KNN imputation time: {end_time - start_time} seconds")
+                # save the imputation time
+                with open(f"{cfg_dir}/knn_imputation_time.txt", "a") as f:
+                    f.write(f"{end_time - start_time}\n")
+                np.save(out_path, X_knn)
             
         if "mcpfn_ensemble" in imputers:
             out_path = f"{cfg_dir}/mcpfn_ensemble.npy"
-            # if not os.path.exists(out_path):
-            start_time = time.time()
-            X_mcpfn_ensemble = mcpfn_ensemble.impute(X_missing.copy())
-            end_time = time.time()
-            print(f"MCPFN Ensemble imputation time: {end_time - start_time} seconds")
-            # np.save(out_path, X_mcpfn_ensemble)
-            # save the imputation time
-            with open(f"{cfg_dir}/mcpfn_ensemble_cpu_imputation_time.txt", "a") as f:
-                f.write(f"{end_time - start_time}\n")
+            if not os.path.exists(out_path) or force_rerun:
+                start_time = time.time()
+                X_mcpfn_ensemble = mcpfn_ensemble.impute(X_missing.copy())
+                end_time = time.time()
+                print(f"MCPFN Ensemble imputation time: {end_time - start_time} seconds")
+                np.save(out_path, X_mcpfn_ensemble)
+                # save the imputation time
+                with open(f"{cfg_dir}/mcpfn_ensemble_cpu_imputation_time.txt", "a") as f:
+                    f.write(f"{end_time - start_time}\n")
 
         # --- TabPFN ---
         if "tabpfn" in imputers:
             out_path = f"{cfg_dir}/tabpfn.npy"
-            if not os.path.exists(out_path):
+            if not os.path.exists(out_path) or force_rerun:
                 start_time = time.time()
                 X_tabpfn = tabpfn.impute(X_missing.copy())
                 end_time = time.time()
@@ -235,7 +256,7 @@ for name in pbar:
         # --- TabPFN Unsupervised ---
         if "tabpfn_unsupervised" in imputers:
             out_path = f"{cfg_dir}/tabpfn_impute.npy"
-            if not os.path.exists(out_path):
+            if not os.path.exists(out_path) or force_rerun:
                 start_time = time.time()
                 X_tabpfn_unsupervised = tabpfn_unsupervised.impute(fill_all_nan_columns(X_missing.copy()))
                 end_time = time.time()
@@ -249,7 +270,7 @@ for name in pbar:
         if "column_mean" in imputers:
             out_path = f"{cfg_dir}/column_mean.npy"
             
-            if not os.path.exists(out_path):
+            if not os.path.exists(out_path) or force_rerun:
                 start_time = time.time()
                 plugin = Imputers().get("mean")
                 out = plugin.fit_transform(pd.DataFrame(fill_all_nan_columns(X_missing.copy()))).to_numpy()
@@ -264,7 +285,7 @@ for name in pbar:
         # --- SoftImpute (HyperImpute) ---
         if "softimpute" in imputers:
             out_path = f"{cfg_dir}/softimpute.npy"
-            if not os.path.exists(out_path):
+            if not os.path.exists(out_path) or force_rerun:
                 start_time = time.time()
                 plugin = Imputers().get("softimpute")
                 out = plugin.fit_transform(pd.DataFrame(fill_all_nan_columns(X_missing.copy()))).to_numpy()
@@ -281,7 +302,7 @@ for name in pbar:
             if fname == "ot_sinkhorn":
                 if key in imputers:
                     out_path = f"{cfg_dir}/{fname}.npy"
-                    if not os.path.exists(out_path):
+                    if not os.path.exists(out_path) or force_rerun:
                         start_time = time.time()
                         out = run_hyperimpute(plugin_id, X_missing.astype(np.float64).copy())
                         end_time = time.time()
@@ -294,7 +315,7 @@ for name in pbar:
                 if key in imputers:
                     print(key)
                     out_path = f"{cfg_dir}/{fname}.npy"
-                    if not os.path.exists(out_path):
+                    if not os.path.exists(out_path) or force_rerun:
                         try:
                             start_time = time.time()
                             out = run_hyperimpute(plugin_id, X_missing.copy())
@@ -312,7 +333,7 @@ for name in pbar:
         # --- ForestDiffusion (separate package) ---
         if "forestdiffusion" in imputers:
             out_path = f"{cfg_dir}/forestdiffusion.npy"
-            if not os.path.exists(out_path):
+            if not os.path.exists(out_path) or force_rerun:
                 # If you have metadata, pass cat/int indexes here for better handling of categorical/ordinal cols.
                 out = run_forest_diffusion(X_missing.copy(), n_t=50, cat_indexes=[], int_indexes=[], n_jobs=-1, repaint=False)
                 np.save(out_path, out)

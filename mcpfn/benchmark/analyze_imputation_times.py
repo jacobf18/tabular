@@ -90,11 +90,12 @@ def find_imputation_times(base_path):
     return imputation_data
 
 method_names = {
-    "mcpfn_ensemble": "TabImpute++",
-    "mcpfn": "TabImpute",
+    "mcpfn_ensemble": "TabImpute+ (GPU)",
+    "mcpfn": "TabImpute (GPU)",
     "mixed_perm_both_row_col": "MCPFN (Linear Permuted)",
     "tabpfn": "TabPFN-Impute",
-    "tabpfn_unsupervised": "TabPFN",
+    "tabpfn_impute": "TabPFN (GPU)",
+    "tabpfn_unsupervised": "TabPFN (GPU)",
     "column_mean": "Col Mean",
     "hyperimpute_hyperimpute": "HyperImpute",
     "hyperimpute_hyperimpute_ot_sinkhorn": "OT",
@@ -105,16 +106,48 @@ method_names = {
     "hyperimpute_hyperimpute_mice": "MICE",
     "hyperimpute_hyperimpute_gain": "GAIN",
     "hyperimpute_hyperimpute_miwae": "MIWAE",
+    "mcpfn_ensemble_cpu": "TabImpute+ (CPU)",
+    "knn": "K-Nearest Neighbors",
+}
+
+# Define consistent color mapping for methods (using display names as they appear in the DataFrame)
+method_colors = {
+    "TabImpute+ (GPU)": "#2f88a8",  # Blue
+    "TabImpute+ (CPU)": "#2e8b57",  # Sea Green (distinct from GPU)
+    "TabImpute (GPU)": "#2f88a8",  # Sea Green (distinct from GPU)
+    "HyperImpute": "#ff7f0e",  # Orange
+    "MissForest": "#2ca02c",   # Green
+    "OT": "#591942",           # Red
+    "Col Mean": "#9467bd",     # Purple
+    "SoftImpute": "#8c564b",   # Brown
+    "ICE": "#a14d88",          # Pink
+    "MICE": "#7f7f7f",         # Gray
+    "GAIN": "#286b33",         # Dark Green
+    "MIWAE": "#17becf",        # Cyan
+    "TabPFN (GPU)": "#3e3b6e",       # Blue
+    "K-Nearest Neighbors": "#a36424",  # Orange
+    "ForestDiffusion": "#98df8a",      # Light Green
+    "MCPFN": "#ff9896",        # Light Red
+    "MCPFN (Linear Permuted)": "#c5b0d5",  # Light Purple
+    "MCPFN (Nonlinear Permuted)": "#c49c94",  # Light Brown
 }
 
 include_methods = [
+    "mcpfn",
     "mcpfn_ensemble",
-    # "mcpfn",
-    # "tabpfn",
+    "mcpfn_ensemble_cpu",
     "tabpfn_unsupervised",
+    "tabpfn_impute",
     "hyperimpute_hyperimpute",
     "hyperimpute_hyperimpute_missforest",
     "hyperimpute_ot_sinkhorn",
+    "hyperimpute_hyperimpute_ice",
+    "hyperimpute_hyperimpute_mice",
+    "hyperimpute_hyperimpute_gain",
+    "hyperimpute_hyperimpute_miwae",
+    "column_mean",
+    "knn",
+    "softimpute",
 ]
 
 def create_plots(imputation_data, dataset_info):
@@ -135,133 +168,29 @@ def create_plots(imputation_data, dataset_info):
     print(f"Unique methods: {df['method'].unique()}")
     print(f"Unique datasets: {df['dataset'].unique()}")
     
-    # Create three plots: dataset size, rows, and columns
-    fig, axes = plt.subplots(1, 3, figsize=(24, 8))
-    
-    # Get unique methods and assign colors
-    methods = [method for method in df['method'].unique() if method in include_methods]
-    colors = plt.cm.tab10(np.linspace(0, 1, len(methods)))
-    method_colors = dict(zip(methods, colors))
-    
-    # Plot 1: Time vs Dataset Size
-    ax1 = axes[0]
-    for method in methods:
-        method_data = df[df['method'] == method]
-        
-        # Create scatter plot with alpha=0.5
-        ax1.scatter(method_data['dataset_size'], method_data['time'], 
-                   label=method_names[method], alpha=0.5, s=50, color=method_colors[method])
-        
-        # Add line of best fit if we have enough data points
-        if len(method_data) > 1:
-            # Use log scale for fitting
-            x_log = np.log10(method_data['dataset_size'])
-            y_log = np.log10(method_data['time'])
-            
-            # Fit linear regression in log space
-            slope, intercept, r_value, p_value, std_err = stats.linregress(x_log, y_log)
-            
-            # Generate points for the line
-            x_line = np.logspace(np.log10(method_data['dataset_size'].min()), 
-                               np.log10(method_data['dataset_size'].max()), 100)
-            y_line = 10**(intercept + slope * np.log10(x_line))
-            
-            # Plot the line of best fit in bold
-            ax1.plot(x_line, y_line, color=method_colors[method], 
-                    linewidth=3, alpha=0.8)
-    
-    ax1.set_xlabel('Dataset Size (rows × columns)')
-    ax1.set_ylabel('Imputation Time (seconds)')
-    ax1.set_title('Imputation Time vs Dataset Size')
-    ax1.grid(True, alpha=0.3)
-    ax1.set_xscale('log')
-    ax1.set_yscale('log')
-    
-    # Plot 2: Time vs Number of Rows
-    ax2 = axes[1]
-    for method in methods:
-        method_data = df[df['method'] == method]
-        
-        # Create scatter plot with alpha=0.5
-        ax2.scatter(method_data['rows'], method_data['time'], 
-                   label=method_names[method], alpha=0.5, s=50, color=method_colors[method])
-        
-        # Add line of best fit if we have enough data points
-        if len(method_data) > 1:
-            # Use log scale for fitting
-            x_log = np.log10(method_data['rows'])
-            y_log = np.log10(method_data['time'])
-            
-            # Fit linear regression in log space
-            slope, intercept, r_value, p_value, std_err = stats.linregress(x_log, y_log)
-            
-            # Generate points for the line
-            x_line = np.logspace(np.log10(method_data['rows'].min()), 
-                               np.log10(method_data['rows'].max()), 100)
-            y_line = 10**(intercept + slope * np.log10(x_line))
-            
-            # Plot the line of best fit in bold
-            ax2.plot(x_line, y_line, color=method_colors[method], 
-                    linewidth=3, alpha=0.8)
-    
-    ax2.set_xlabel('Number of Rows')
-    ax2.set_ylabel('Imputation Time (seconds)')
-    ax2.set_title('Imputation Time vs Number of Rows')
-    ax2.grid(True, alpha=0.3)
-    ax2.set_xscale('log')
-    ax2.set_yscale('log')
-    
-    # Plot 3: Time vs Number of Columns
-    ax3 = axes[2]
-    for method in methods:
-        method_data = df[df['method'] == method]
-        
-        # Create scatter plot with alpha=0.5
-        ax3.scatter(method_data['cols'], method_data['time'], 
-                   label=method_names[method], alpha=0.5, s=50, color=method_colors[method])
-        
-        # Add line of best fit if we have enough data points
-        if len(method_data) > 1:
-            # Use log scale for fitting
-            x_log = np.log10(method_data['cols'])
-            y_log = np.log10(method_data['time'])
-            
-            # Fit linear regression in log space
-            slope, intercept, r_value, p_value, std_err = stats.linregress(x_log, y_log)
-            
-            # Generate points for the line
-            x_line = np.logspace(np.log10(method_data['cols'].min()), 
-                               np.log10(method_data['cols'].max()), 100)
-            y_line = 10**(intercept + slope * np.log10(x_line))
-            
-            # Plot the line of best fit in bold
-            ax3.plot(x_line, y_line, color=method_colors[method], 
-                    linewidth=3, alpha=0.8)
-    
-    ax3.set_xlabel('Number of Columns')
-    ax3.set_ylabel('Imputation Time (seconds)')
-    ax3.set_title('Imputation Time vs Number of Columns')
-    ax3.grid(True, alpha=0.3)
-    ax3.set_xscale('log')
-    ax3.set_yscale('log')
-    
-    # Add legend to the right of all plots - only for methods that were actually plotted
-    handles, labels = ax1.get_legend_handles_labels()
-    fig.legend(handles, labels, bbox_to_anchor=(1.05, 0.5), loc='center left')
-    
-    plt.tight_layout()
-    plt.savefig('/root/tabular/mcpfn/benchmark/imputation_times_analysis.pdf', 
-                dpi=300, bbox_inches='tight')
-    plt.show()
     
     # Create efficiency bar plot (runtime per dataset size) using seaborn
-    plt.figure(figsize=(6,5))
+    fig = plt.figure(figsize=(6.5,4.5))
     
     # Calculate efficiency metric: time per dataset size
     df['efficiency'] = df['time'] / df['dataset_size']
     
     # Filter to only include methods in include_methods list
     df_filtered = df[df['method'].isin(include_methods)].copy()
+    
+    # Calculate and print speedup of TabPFN+ (GPU) compared to TabPFN (GPU)
+    tabpfn_plus_data = df_filtered[df_filtered['method'] == 'mcpfn_ensemble']
+    tabpfn_data = df_filtered[df_filtered['method'] == 'mcpfn']
+    
+    if len(tabpfn_plus_data) > 0 and len(tabpfn_data) > 0:
+        tabpfn_plus_mean_time = tabpfn_plus_data['time'].mean()
+        tabpfn_mean_time = tabpfn_data['time'].mean()
+        speedup = tabpfn_mean_time / tabpfn_plus_mean_time
+        print(f"\nSpeedup of TabPFN+ (GPU) compared to TabPFN (GPU): {speedup:.2f}x")
+        print(f"TabPFN+ (GPU) mean time: {tabpfn_plus_mean_time:.3f} seconds")
+        print(f"TabPFN (GPU) mean time: {tabpfn_mean_time:.3f} seconds")
+    else:
+        print("\nWarning: Could not calculate speedup - missing data for TabPFN+ (GPU) or TabPFN (GPU)")
     
     # Add method names for plotting
     df_filtered['Method'] = df_filtered['method'].map(method_names)
@@ -273,9 +202,10 @@ def create_plots(imputation_data, dataset_info):
     sns.set(style="whitegrid")
     
     # Create seaborn bar plot with error bars, sorted by efficiency (decreasing time)
-    ax = sns.barplot(data=df_filtered, x='Method', y='efficiency', hue='Method', 
-                legend=False, order=efficiency_means.index,
-                capsize=0.2, err_kws={'color': 'dimgray'})
+    ax = sns.barplot(data=df_filtered, x='Method', y='efficiency', hue='Method',
+                order=efficiency_means.index,
+                palette=method_colors,  # Use consistent colors from palette
+                legend=False, capsize=0.2, err_kws={'color': '#999999'})
     
     # Remove x-axis labels since we'll put text inside/above bars
     ax.set_xticklabels([])
@@ -306,24 +236,30 @@ def create_plots(imputation_data, dataset_info):
         max_height = max(bar_heights)
         threshold = max_height * 0.5
         
-        if height > threshold:
-            # Place text at bottom of the bar (white text, vertical)
-            # Position at 15% of bar height to ensure it's well within the bar
-            ax.text(center, height/2, method_name, ha='center', va='center', 
-                   color='white', fontweight='bold', fontsize=18, rotation=90)
+        if method_name == "K-Nearest Neighbors" or method_name == "Col Mean":
+            ax.text(center, 0.000005, method_name, ha='center', va='bottom', 
+                   color='black', fontweight='bold', fontsize=14, rotation=90)
+            
         else:
-            # Place text above the bar (black text, vertical)
-            # Position slightly above the bar top
-            ax.text(center, height*1.6, method_name, ha='center', va='bottom', 
-                   color='black', fontweight='bold', fontsize=18, rotation=90)
+            ax.text(center, 0.000002, method_name, ha='center', va='bottom', 
+                   color='white', fontweight='bold', fontsize=14, rotation=90)
     
-    plt.ylabel('Seconds per entry', fontsize=18)
+    plt.ylabel('Milliseconds per entry', fontsize=18)
     # plt.title('Runtime per entry \n(seconds per number of entries (rows × columns))', fontsize=18.0)
+    plt.yscale('log')  # Set y-axis to log scale
+    
+    # Convert y-axis to milliseconds and format ticks without scientific notation
+    ax = plt.gca()
+    
+    fig.subplots_adjust(left=0.2, right=0.95, bottom=0.05, top=0.95)
+    
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x*1000:.2f}'))
+    
     plt.grid(True, alpha=0.3, axis='y')
     
-    plt.tight_layout()
+    # plt.tight_layout()
     plt.savefig('/root/tabular/mcpfn/benchmark/imputation_efficiency_barplot.pdf', 
-                dpi=300, bbox_inches='tight')
+                dpi=300, bbox_inches=None)
     plt.show()
     
     # Print efficiency statistics
@@ -369,9 +305,7 @@ def main():
     df = create_plots(imputation_data, dataset_info)
     
     print(f"\nAnalysis complete! Results saved to:")
-    print("- /root/tabular/mcpfn/benchmark/imputation_times_analysis.png")
-    print("- /root/tabular/mcpfn/benchmark/imputation_efficiency_barplot.png")
-    print("- /root/tabular/mcpfn/benchmark/imputation_times_summary.csv")
+    print("- /root/tabular/mcpfn/benchmark/imputation_efficiency_barplot.pdf")
 
 if __name__ == "__main__":
     main()
