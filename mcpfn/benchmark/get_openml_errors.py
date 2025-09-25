@@ -86,7 +86,7 @@ if "mcpfn" in imputers:
     
     mcpfn = ImputePFN(
         device="cuda",
-        checkpoint_path="/mnt/mcpfn_data/checkpoints/mixed_adaptive/step-125000.ckpt",
+        # checkpoint_path="/mnt/mcpfn_data/checkpoints/mixed_adaptive/step-125000.ckpt",
         # checkpoint_path = "/mnt/mcpfn_data/checkpoints/mixed_nonlinear/step-7000.ckpt",
         # checkpoint_path = "/mnt/mcpfn_data/checkpoints/mar_batch_size_64/step-49900.ckpt",
         # checkpoint_path="/mnt/mcpfn_data/checkpoints/mixed_adaptive_more_heads/step-100000.ckpt",
@@ -104,7 +104,7 @@ if "mcpfn_ensemble" in imputers:
         # StandardizeWhiten(whiten=True),
     ]
     mcpfn_ensemble = MCTabPFNEnsemble(device="cuda", 
-                           checkpoint_path="/mnt/mcpfn_data/checkpoints/mixed_adaptive/step-125000.ckpt",
+                        #    checkpoint_path="/mnt/mcpfn_data/checkpoints/mixed_adaptive/step-125000.ckpt",
                            nhead=2,
                            preprocessors=preprocessors)
 
