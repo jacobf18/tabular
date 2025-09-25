@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import torch
 
-from mcpfn.prior.training_set_generation import create_train_test_sets
+from .prior.training_set_generation import create_train_test_sets
 
 import numpy as np
-from mcpfn.model.mcpfn import MCPFN
+from .model.mcpfn import MCPFN
 import argparse
-from mcpfn.model.bar_distribution import FullSupportBarDistribution
+from .model.bar_distribution import FullSupportBarDistribution
 # from tabpfn import TabPFNRegressor
-from mcpfn.prepreocess import (
+from .prepreocess import (
     RandomRowPermutation, 
     RandomColumnPermutation, 
     RandomRowColumnPermutation, 
@@ -19,6 +19,7 @@ from mcpfn.prepreocess import (
 )
 from sklearn.linear_model import LinearRegression
 from tabpfn_extensions import TabPFNClassifier, TabPFNRegressor, unsupervised
+import importlib.resources as resources
 
 def calibrate_predictions(y_val, y_pred_val, pred_sigma_val,
                           y_pred_test, pred_sigma_test):
@@ -48,14 +49,10 @@ class ImputePFN:
 
     Parameters
     ----------
-
     """
-
     def __init__(
         self,
         device: str = "cpu",
-        encoder_path: str = "encoder.pth",
-        borders_path: str = "borders.pt",
         checkpoint_path: str = "test.ckpt",
         nhead: int = 2,
         preprocessors: list[Preprocess] = None,
@@ -63,10 +60,11 @@ class ImputePFN:
         self.device = device
 
         # Build model
-        self.model = MCPFN(encoder_path=encoder_path, nhead=nhead).to(self.device)
+        self.model = MCPFN(nhead=nhead).to(self.device)
 
         # Load borders tensor for outputting continuous values
-        self.borders_path = borders_path
+        with resources.files("tabimpute.data").joinpath("borders.pt").open("rb") as f:
+            self.borders = torch.load(f, map_location=self.device)
 
         # Load model state dict
         checkpoint = torch.load(
@@ -163,7 +161,7 @@ class ImputePFN:
             preds = self.model(X_input, input_y.unsqueeze(0))
 
             # Get the median predictions
-            borders = torch.load(self.borders_path).to(self.device)
+            borders = self.borders.to(self.device)
             bar_distribution = FullSupportBarDistribution(borders=borders)
 
             medians = bar_distribution.median(logits=preds).flatten()
@@ -204,12 +202,6 @@ class TabPFNImputer:
         train_X_npy = train_X.cpu().numpy()
         train_y_npy = train_y.cpu().numpy()
         test_X_npy = test_X.cpu().numpy()
-        # test_y_npy = test_y.cpu().numpy()
-        
-        # mcpfn = MCPFN(encoder_path=self.encoder_path, nhead=2).to(self.device)
-        # checkpoint = torch.load('/mnt/mcpfn_data/checkpoints/mixed_adaptive/step-49000.ckpt', map_location=self.device, weights_only=True)
-        # # mcpfn.model.load_state_dict(torch.load('/root/tabular/mcpfn/src/mcpfn/model/tabpfn_model.pt', weights_only=True))
-        # mcpfn.load_state_dict(checkpoint["state_dict"])
         
         self.reg.fit(train_X_npy, train_y_npy)
         
@@ -251,14 +243,12 @@ class TabPFNUnsupervisedModel:
 class MCTabPFNEnsemble:
     def __init__(self, 
                  device: str = "cpu", 
-                 encoder_path: str = "encoder.pth",
-                 borders_path: str = "borders.pt",
                  checkpoint_path: str = "test.ckpt",
                  nhead: int = 2,
                  preprocessors: list[Preprocess] = None):
         self.device = device
         self.tabpfn_imputer = TabPFNImputer(device=device)
-        self.mcpfn_imputer = ImputePFN(device=device, encoder_path=encoder_path, borders_path=borders_path, checkpoint_path=checkpoint_path, nhead=nhead, preprocessors=preprocessors)
+        self.mcpfn_imputer = ImputePFN(device=device, checkpoint_path=checkpoint_path, nhead=nhead, preprocessors=preprocessors)
         
     def impute(self, X):
         missing_mask = np.isnan(X)
@@ -299,8 +289,6 @@ class MCTabPFNEnsemble:
 from mcpfn.model.interface import ImputePFN
 
 imputer = ImputePFN(device='cpu', # 'cuda' if you have a GPU
-                    encoder_path='./src/mcpfn/model/encoder.pth', # Path to the encoder model
-                    borders_path='./borders.pt', # Path to the borders model
                     checkpoint_path='./test.ckpt') 
 
 X = np.random.rand(10, 10) # Test matrix of size 10 x 10

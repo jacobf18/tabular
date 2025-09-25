@@ -15,15 +15,15 @@ import torch
 from torch import nn
 from torch.utils.checkpoint import checkpoint
 
-from mcpfn.model.encoders import (
+from .encoders import (
     LinearInputEncoderStep,
     NanHandlingEncoderStep,
     SequentialEncoder,
 )
-from mcpfn.model.layer import PerFeatureEncoderLayer
+from .layer import PerFeatureEncoderLayer
 
 if TYPE_CHECKING:
-    from mcpfn.model.config import ModelConfig
+    from .config import ModelConfig
 
 
 @contextmanager

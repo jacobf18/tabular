@@ -15,9 +15,9 @@ datasets = os.listdir(base_path)
 methods = [
     # "softimpute", 
     # "column_mean", 
-    # "hyperimpute",
-    # "ot_sinkhorn",
-    # "missforest",
+    "hyperimpute",
+    "ot_sinkhorn",
+    "missforest",
     # "ice",
     # "mice",
     # "gain",
@@ -26,20 +26,20 @@ methods = [
     # "mcpfn_mixed_random",
     # "mcpfn_mixed_linear_fixed",
     # "mcpfn_mixed_adaptive",
-    "tabpfn_no_proprocessing",
+    # "tabpfn_no_proprocessing",
     # # "mixed_adaptive_more_heads",
     # # "mixed_adaptive_permuted_3",
     # "mixed_perm_both_row_col",
     # "mixed_nonlinear",
-    "mcpfn_mixed_adaptive",
+    # "mcpfn_mixed_adaptive",
     "mcpfn_ensemble",
-    "mixed_more_heads",
+    # "mixed_more_heads",
     # # # "mixed_perm_all_row_col_whiten",
     # # # "mixed_adaptive_row_column_permutation_8",
     # # # "mcpfn_mcar_linear",
-    "mcpfn_mar_linear",
-    "tabpfn",
-    "tabpfn_impute",
+    # "mcpfn_mar_linear",
+    # "tabpfn",
+    # "tabpfn_impute",
     # "knn",
     # "mcpfn_tabpfn_with_preprocessing",
     # "forestdiffusion",
@@ -244,16 +244,16 @@ print("Creating LaTeX table for normalized negative RMSE...")
 # Define methods to include in the table (subset of all methods)
 table_methods = [
     "TabImpute+",
-    "TabImpute",
-    "TabPFN Fine-Tuned No Preprocessing",
-    "EWF-TabPFN",
-    "TabPFN",
-    "TabImpute (MCAR then MAR)",
-    "TabImpute (More Heads)",
-    "TabImpute (Nonlinear FM)",
-    # "HyperImpute",
-    # "MissForest",
-    # "OT",
+    # "TabImpute",
+    # "TabPFN Fine-Tuned No Preprocessing",
+    # "EWF-TabPFN",
+    # "TabPFN",
+    # "TabImpute (MCAR then MAR)",
+    # "TabImpute (More Heads)",
+    # "TabImpute (Nonlinear FM)",
+    "HyperImpute",
+    "MissForest",
+    "OT",
     # "Col Mean",
     # "SoftImpute",
     # "ICE",
@@ -604,10 +604,23 @@ if not mcar_data.empty:
             dataset_name = row_data['Dataset'].replace('_', '\\_')  # Escape underscores
             row = dataset_name
             
+            # Find the minimum (best) RMSE value for this row
+            valid_rmse_values = []
             for method in available_methods:
                 rmse_val = row_data[method]
                 if pd.notna(rmse_val):
-                    row += f" & {rmse_val:.3f}"
+                    valid_rmse_values.append(rmse_val)
+            
+            min_rmse = min(valid_rmse_values) if valid_rmse_values else None
+            
+            for method in available_methods:
+                rmse_val = row_data[method]
+                if pd.notna(rmse_val):
+                    # Bold if this is the minimum (best) RMSE value for this row
+                    if abs(rmse_val - min_rmse) < 1e-6:  # Use small epsilon for float comparison
+                        row += f" & \\textbf{{{rmse_val:.3f}}}"
+                    else:
+                        row += f" & {rmse_val:.3f}"
                 else:
                     row += " & --"
             

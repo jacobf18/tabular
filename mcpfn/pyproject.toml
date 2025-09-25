@@ -1,7 +1,7 @@
 [project]
-name = "mcpfn"
+name = "tabimpute"
 dynamic = ["version"]
-description = "MCPFN: A Tabular Foundation Model for Missing Data Imputation"
+description = "TabImpute: A Pre-trained Transformer for Missing Data Imputation"
 readme = "README.md"
 authors = [
     { name = "Jacob Feitelberg" },
@@ -12,7 +12,7 @@ authors = [
     { name = "Raaz Dwivedi" } ,
 ]
 requires-python = ">=3.9,<3.13"
-keywords = ["tabular data", "foundation model", "MCPFN", "in-context learning"]
+keywords = ["tabular data", "missing data imputation", "foundation model", "in-context learning"]
 classifiers = [
     "Intended Audience :: Science/Research",
     "Intended Audience :: Developers",
@@ -48,10 +48,10 @@ requires = ["hatchling>=1.26.1"]  # https://github.com/pypa/hatch/issues/1818
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
-path = "src/mcpfn/__about__.py"
+path = "src/tabimpute/__about__.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/mcpfn"]
+packages = ["src/tabimpute"]
 
 [tool.hatch.envs.default]
 installer = "uv"
@@ -63,25 +63,25 @@ installer = "uv"
 features = []
 
 [tool.pytest.ini_options]
-pythonpath = "src"  # to allow importing mcpfn instead of src.mcpfn
+pythonpath = "src"  # to allow importing tabimpute instead of src.tabimpute
 
 [tool.hatch.envs.types]
 extra-dependencies = [
     "mypy>=1.0.0",
 ]
 [tool.hatch.envs.types.scripts]
-check = "mypy --install-types --non-interactive {args:mcpfn tests}"
+check = "mypy --install-types --non-interactive {args:tabimpute tests}"
 
 [tool.coverage.run]
 source = ["src"]
 branch = true
 parallel = true
 omit = [
-    "src/mcpfn/__about__.py",
+    "src/tabimpute/__about__.py",
 ]
 
 [tool.coverage.paths]
-mcpfn = ["src"]
+tabimpute = ["src"]
 
 [tool.coverage.report]
 exclude_lines = [
@@ -89,3 +89,6 @@ exclude_lines = [
     "if __name__ == .__main__.:",
     "if TYPE_CHECKING:",
 ]
+
+[tool.setuptools.package-data]
+"tabimpute" = ["data/*.pt", "data/*.pth"]

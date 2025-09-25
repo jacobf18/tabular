@@ -125,16 +125,3 @@ class MAR_block_missingness(nn.Module):
         propensity_small = self.mar_generator(X_small)
 
         return propensity_small, row_cumsum, col_cumsum
-
-# def recover_block_missingness(propensity_small, row_cumsum, col_cumsum):
-#     N = row_cumsum[-1]
-#     T = col_cumsum[-1]
-#     missing_mask = torch.zeros(N, T)
-    
-#     # Clamp propensities to valid range [0, 1]
-#     propensity_small = torch.clamp(propensity_small, 0.0, 1.0)
-    
-#     for i in range(row_cumsum.shape[0]-1):
-#         for t in range(col_cumsum.shape[0]-1):
-#             missing_mask[row_cumsum[i]:row_cumsum[i+1], col_cumsum[t]:col_cumsum[t+1]] = torch.bernoulli(propensity_small[i, t])
-#     return missing_mask

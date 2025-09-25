@@ -24,7 +24,7 @@ from typing import Optional, Tuple, Dict
 import warnings
 from pathlib import Path
 from tqdm import tqdm
-from mcpfn.model.encoders import normalize_data
+from ..model.encoders import normalize_data
 from .scm_prior import SCMPrior
 from .utils import DisablePrinting
 import copy

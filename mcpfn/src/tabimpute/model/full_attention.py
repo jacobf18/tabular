@@ -15,11 +15,10 @@ from torch.utils.checkpoint import checkpoint
 import torch.nn as nn
 from abc import ABC, abstractmethod
 
-# from mcpfn.model.attention import Attention
-from mcpfn.model.memory import support_save_peak_mem_factor
+from tabimpute.model.memory import support_save_peak_mem_factor
 
 if TYPE_CHECKING:
-    from mcpfn.model.config import ModelConfig
+    from tabimpute.model.config import ModelConfig
 
 try:
     from flash_attn.flash_attn_interface import (

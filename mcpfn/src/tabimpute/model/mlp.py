@@ -8,7 +8,7 @@ from functools import partial
 import torch
 from torch.utils.checkpoint import checkpoint
 
-from mcpfn.model.memory import support_save_peak_mem_factor
+from .memory import support_save_peak_mem_factor
 
 
 class Activation(Enum):

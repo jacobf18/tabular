@@ -30,15 +30,15 @@ import wandb
 
 
 # from mcpfn import TabICL
-from mcpfn.model.mcpfn import MCPFN
-from mcpfn.prior.dataset import PriorDataset
-from mcpfn.prior.genload import LoadPriorDataset
-from mcpfn.train.optim import get_scheduler
-from mcpfn.train.train_config import build_parser
-from mcpfn.model.bar_distribution import FullSupportBarDistribution
-from mcpfn.model.encoders import torch_nanmean
-from mcpfn.model.mcpfn import TabPFNModel
-from mcpfn.prior.training_set_generation import ACTIVATION_FUNCTIONS, MissingnessPrior
+from ..model.mcpfn import MCPFN
+from ..prior.dataset import PriorDataset
+from ..prior.genload import LoadPriorDataset
+from .optim import get_scheduler
+from .train_config import build_parser
+from ..model.bar_distribution import FullSupportBarDistribution
+from ..model.encoders import torch_nanmean
+from ..model.mcpfn import TabPFNModel
+from ..prior.training_set_generation import ACTIVATION_FUNCTIONS, MissingnessPrior
 
 warnings.filterwarnings(
     "ignore",

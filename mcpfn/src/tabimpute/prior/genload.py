@@ -36,9 +36,9 @@ import torch
 import numpy as np
 from torch.utils.data import IterableDataset
 
-from mcpfn.prior.dataset import PriorDataset
-from mcpfn.prior.prior_config import DEFAULT_FIXED_HP, DEFAULT_SAMPLED_HP
-from mcpfn.prior.training_set_generation import MissingnessPrior
+from .dataset import PriorDataset
+from .prior_config import DEFAULT_FIXED_HP, DEFAULT_SAMPLED_HP
+from .training_set_generation import MissingnessPrior
 
 warnings.filterwarnings(
     "ignore",

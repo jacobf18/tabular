@@ -4,16 +4,14 @@ from typing import Optional, Literal
 from torch import nn, Tensor
 import torch
 
-from mcpfn.model.config import ModelConfig
-from mcpfn.model.transformer import PerFeatureTransformer
+from .config import ModelConfig
+from .transformer import PerFeatureTransformer
 from tabpfn import TabPFNRegressor
 from .encoders import torch_nanmean
 
-# from mcpfn.prior.training_set_generation import TabICLSCMPrior
-# from mcpfn.train.run import Trainer
-
 import einops
 import numpy as np
+import importlib.resources as resources
 
 
 class MCPFN(nn.Module):
@@ -34,7 +32,6 @@ class MCPFN(nn.Module):
         nhead: int = 2,
         remove_duplicate_features: bool = True,
         num_buckets: Literal[1000, 5000] = 5000,
-        encoder_path: str = "encoder.pth",
     ):
         super().__init__()
 
@@ -48,7 +45,8 @@ class MCPFN(nn.Module):
             max_num_features=max_num_features,
         )
 
-        self.encoder = torch.load(encoder_path, weights_only=False)
+        with resources.files("tabimpute.data").joinpath("encoder.pth").open("rb") as f:
+            self.encoder = torch.load(f, weights_only=False)
 
         self.model = PerFeatureTransformer(
             config=self.config, encoder=self.encoder, n_out=5000, 

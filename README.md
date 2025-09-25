@@ -1,6 +1,6 @@
-# MCPFN (Matrix Completion Prior-Fitted Network)
+# TabImpute
 
-This is a PyTorch implementation of MCPFN, a transformer-based architecture for matrix completion on tabular data.
+This is the official repository of TabImpute, a transformer-based architecture for missing data imputation on tabular data.
 
 ## Installation
 
@@ -11,7 +11,7 @@ pip install -e .
 ## Usage
 
 ```python
-from mcpfn.interface import ImputePFN
+from tabimpute.interface import ImputePFN
 import numpy as np
 
 imputer = ImputePFN(device='cpu', # 'cuda' if you have a GPU

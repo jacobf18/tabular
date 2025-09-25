@@ -8,7 +8,7 @@ import os
 
 os.environ["TABPFN_ALLOW_CPU_LARGE_DATASET"] = "1"
 
-from mcpfn.interface import ImputePFN, TabPFNImputer, TabPFNUnsupervisedModel, MCTabPFNEnsemble
+from tabimpute.interface import ImputePFN, TabPFNImputer, TabPFNUnsupervisedModel, MCTabPFNEnsemble
 from hyperimpute.plugins.imputers import Imputers
 
 # Optional: ForestDiffusion (pip install ForestDiffusion)
@@ -18,7 +18,7 @@ try:
 except Exception:
     HAS_FORESTDIFFUSION = False
 
-from mcpfn.prepreocess import (
+from tabimpute.prepreocess import (
     RandomRowColumnPermutation, 
     PowerTransform, 
     SequentialPreprocess, 
@@ -86,8 +86,6 @@ if "mcpfn" in imputers:
     
     mcpfn = ImputePFN(
         device="cuda",
-        encoder_path="/root/tabular/mcpfn/src/mcpfn/model/encoder.pth",
-        borders_path="/root/tabular/mcpfn/borders.pt",
         checkpoint_path="/mnt/mcpfn_data/checkpoints/mixed_adaptive/step-125000.ckpt",
         # checkpoint_path = "/mnt/mcpfn_data/checkpoints/mixed_nonlinear/step-7000.ckpt",
         # checkpoint_path = "/mnt/mcpfn_data/checkpoints/mar_batch_size_64/step-49900.ckpt",
@@ -106,8 +104,6 @@ if "mcpfn_ensemble" in imputers:
         # StandardizeWhiten(whiten=True),
     ]
     mcpfn_ensemble = MCTabPFNEnsemble(device="cuda", 
-                           encoder_path="/root/tabular/mcpfn/src/mcpfn/model/encoder.pth",
-                           borders_path="/root/tabular/mcpfn/borders.pt",
                            checkpoint_path="/mnt/mcpfn_data/checkpoints/mixed_adaptive/step-125000.ckpt",
                            nhead=2,
                            preprocessors=preprocessors)

@@ -12,9 +12,9 @@ import torch
 from torch import nn
 from torch.nn.modules.transformer import Module, Tensor
 
-from mcpfn.model.full_attention import MultiHeadAttention
-from mcpfn.model.memory import support_save_peak_mem_factor
-from mcpfn.model.mlp import MLP
+from .full_attention import MultiHeadAttention
+from .memory import support_save_peak_mem_factor
+from .mlp import MLP
 
 if TYPE_CHECKING:
     from tabpfn.model.attention import Attention
