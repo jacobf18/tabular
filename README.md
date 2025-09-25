@@ -15,8 +15,8 @@ pip install -e .
 from tabimpute.interface import ImputePFN, MCTabPFNEnsemble
 import numpy as np
 
-imputer = ImputePFN(device='cpu') # Path to the checkpoint file
-ensemble_imputer = MCTabPFNEnsemble(device='cpu') # Path to the checkpoint file
+imputer = ImputePFN(device='cpu') # cuda if available
+ensemble_imputer = MCTabPFNEnsemble(device='cpu') # cuda if available
 
 X = np.random.rand(5, 5)
 print("Original X:")
