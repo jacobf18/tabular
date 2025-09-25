@@ -5,33 +5,29 @@ This is the official repository of TabImpute, a transformer-based architecture f
 ## Installation
 
 ```bash
+cd mcpfn
 pip install -e .
 ```
 
 ## Usage
 
 ```python
-from tabimpute.interface import ImputePFN
+from tabimpute.interface import ImputePFN, MCTabPFNEnsemble
 import numpy as np
 
-imputer = ImputePFN(device='cpu', # 'cuda' if you have a GPU
-                    encoder_path='./src/mcpfn/model/encoder.pth', # Path to the encoder model
-                    borders_path='./borders.pt', # Path to the borders tensor
-                    checkpoint_path='./stage1/checkpoint/test.ckpt') # Path to the checkpoint file
+imputer = ImputePFN(device='cpu') # Path to the checkpoint file
+ensemble_imputer = MCTabPFNEnsemble(device='cpu') # Path to the checkpoint file
 
 X = np.random.rand(5, 5)
+print("Original X:")
 print(X)
 X[np.random.rand(*X.shape) < 0.1] = np.nan
+print('X with NaNs:')
 print(X)
 
-out = imputer.impute(X)
-print(out)
+out1 = imputer.impute(X.copy())
+out2 = ensemble_imputer.impute(X.copy())
+print(out1)
+print(out2)
 ```
 
-## Generate data
-
-Run the `generate_data.sh` script to generate the data.
-
-## Train
-
-Run the `train.sh` script to train the model.
