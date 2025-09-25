@@ -20,6 +20,13 @@ from .prepreocess import (
 from sklearn.linear_model import LinearRegression
 from tabpfn_extensions import TabPFNClassifier, TabPFNRegressor, unsupervised
 import importlib.resources as resources
+from huggingface_hub import hf_hub_download
+
+def get_model_from_huggingface() -> str:
+    repo_id = "Tabimpute/TabImpute"
+    filename = "tabimpute_001.ckpt"
+    return hf_hub_download(repo_id=repo_id, filename=filename)
+    
 
 def calibrate_predictions(y_val, y_pred_val, pred_sigma_val,
                           y_pred_test, pred_sigma_test):
@@ -53,7 +60,6 @@ class ImputePFN:
     def __init__(
         self,
         device: str = "cpu",
-        checkpoint_path: str = "test.ckpt",
         nhead: int = 2,
         preprocessors: list[Preprocess] = None,
     ):
@@ -65,6 +71,8 @@ class ImputePFN:
         # Load borders tensor for outputting continuous values
         with resources.files("tabimpute.data").joinpath("borders.pt").open("rb") as f:
             self.borders = torch.load(f, map_location=self.device)
+            
+        checkpoint_path = get_model_from_huggingface()
 
         # Load model state dict
         checkpoint = torch.load(
@@ -243,12 +251,11 @@ class TabPFNUnsupervisedModel:
 class MCTabPFNEnsemble:
     def __init__(self, 
                  device: str = "cpu", 
-                 checkpoint_path: str = "test.ckpt",
                  nhead: int = 2,
                  preprocessors: list[Preprocess] = None):
         self.device = device
         self.tabpfn_imputer = TabPFNImputer(device=device)
-        self.mcpfn_imputer = ImputePFN(device=device, checkpoint_path=checkpoint_path, nhead=nhead, preprocessors=preprocessors)
+        self.mcpfn_imputer = ImputePFN(device=device, nhead=nhead, preprocessors=preprocessors)
         
     def impute(self, X):
         missing_mask = np.isnan(X)
@@ -288,8 +295,7 @@ class MCTabPFNEnsemble:
 """
 from mcpfn.model.interface import ImputePFN
 
-imputer = ImputePFN(device='cpu', # 'cuda' if you have a GPU
-                    checkpoint_path='./test.ckpt') 
+imputer = ImputePFN(device='cpu') # cuda if you have a GPU
 
 X = np.random.rand(10, 10) # Test matrix of size 10 x 10
 X[np.random.rand(*X.shape) < 0.1] = np.nan # Set 10% of values to NaN
