@@ -6,6 +6,7 @@ from torch import Tensor
 import torch.nn.functional as F
 from .prior_config import DEFAULT_FIXED_HP, DEFAULT_SAMPLED_HP
 
+
 class Prior:
     """
     Abstract base class for dataset prior generators.

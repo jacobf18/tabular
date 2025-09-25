@@ -12,6 +12,7 @@ from .prior_config import DEFAULT_FIXED_HP, DEFAULT_SAMPLED_HP
 from .reg2cls import Reg2Cls
 from torch.nested import nested_tensor
 
+
 class SCMPrior(Prior):
     """
     Generates synthetic datasets using Structural Causal Models (SCM).
@@ -174,9 +175,7 @@ class SCMPrior(Prior):
 
         # Add batch dim for single dataset to be compatible with delete_unique_features and sanity_check
         X, y = X.unsqueeze(0), y.unsqueeze(0)
-        d = torch.tensor(
-            [params["num_features"]], device=self.device, dtype=torch.long
-        )
+        d = torch.tensor([params["num_features"]], device=self.device, dtype=torch.long)
 
         # Only keep valid datasets with sufficient features and balanced classes
         X, d = self.delete_unique_features(X, d)

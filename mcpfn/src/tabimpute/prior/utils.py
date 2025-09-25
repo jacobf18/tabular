@@ -8,6 +8,7 @@ from torch import nn
 import os
 import sys
 
+
 class DisablePrinting:
     """Context manager to temporarily suppress printed output."""
 
@@ -18,7 +19,6 @@ class DisablePrinting:
     def __exit__(self, exc_type, exc_val, exc_tb):
         sys.stdout.close()
         sys.stdout = self.original_stdout
-
 
 
 class GaussianNoise(nn.Module):

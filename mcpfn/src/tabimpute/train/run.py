@@ -5,8 +5,8 @@ import timeit
 import warnings
 
 # Set CUDA environment variables for debugging
-os.environ['TORCH_USE_CUDA_DSA'] = '1'
-os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+os.environ["TORCH_USE_CUDA_DSA"] = "1"
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 import functools
 from contextlib import nullcontext
 from typing import Optional
@@ -108,7 +108,7 @@ class Trainer:
         self.bar_distribution = FullSupportBarDistribution(borders=borders)
 
         self.step_progress = step_progress
-        
+
         self.len_train = 8
         self.len_val = 2
 
@@ -213,10 +213,12 @@ class Trainer:
 
         model = MCPFN(encoder_path=self.config.encoder_path, nhead=6)
         model.to(device=self.config.device)
-        
+
         print(f"Loading tabpfn model weights from {self.config.tabpfn_path}")
-        model.model.load_state_dict(torch.load(self.config.tabpfn_path, weights_only=True))
-        
+        model.model.load_state_dict(
+            torch.load(self.config.tabpfn_path, weights_only=True)
+        )
+
         # self.tabpfn_model = TabPFNModel(device=self.config.device)
 
         if self.master_process:
@@ -294,45 +296,69 @@ class Trainer:
             )
         else:
             config = {
-                'num_rows_low': self.config.min_seq_len, 'num_rows_high': self.config.max_seq_len, 
-                'num_cols_low': self.config.min_features, 'num_cols_high': self.config.max_features,
-                'p_missing': 0.4,
+                "num_rows_low": self.config.min_seq_len,
+                "num_rows_high": self.config.max_seq_len,
+                "num_cols_low": self.config.min_features,
+                "num_cols_high": self.config.max_features,
+                "p_missing": 0.4,
                 # Mixed configs
-                'mcar_prob': self.config.mcar_prob, 'mar_prob': self.config.mar_prob, 'mnar_prob': self.config.mnar_prob,
+                "mcar_prob": self.config.mcar_prob,
+                "mar_prob": self.config.mar_prob,
+                "mnar_prob": self.config.mnar_prob,
                 # MNAR configs
-                'threshold_quantile': 0.25, 'n_core_items': 5, 'n_genres': 3, 'n_policies': 4,
+                "threshold_quantile": 0.25,
+                "n_core_items": 5,
+                "n_genres": 3,
+                "n_policies": 4,
                 # Latent Factor configs
-                'latent_rank_low': 1, 'latent_rank_high': 15, 'latent_spike_p': 0.3, 'latent_slab_sigma': 2.0,
-                'apply_feature_warping_prob': 0.0, 'apply_quantization_prob': 0.0,
+                "latent_rank_low": 1,
+                "latent_rank_high": 15,
+                "latent_spike_p": 0.3,
+                "latent_slab_sigma": 2.0,
+                "apply_feature_warping_prob": 0.0,
+                "apply_quantization_prob": 0.0,
                 # Non-linear Factor configs
-                'spline_knot_k': [3, 5, 7], 'gp_length_scale_low': 0.3, 'gp_length_scale_high': 2.0,
-                'fourier_dim_low': 100, 'fourier_dim_high': 501,
+                "spline_knot_k": [3, 5, 7],
+                "gp_length_scale_low": 0.3,
+                "gp_length_scale_high": 2.0,
+                "fourier_dim_low": 100,
+                "fourier_dim_high": 501,
                 # Robust-PCA configs
-                'rpca_beta_a': 2, 'rpca_beta_b': 30,
+                "rpca_beta_a": 2,
+                "rpca_beta_b": 30,
                 # Soft Polarization configs
-                'soft_polarization_alpha': 2.5, 'soft_polarization_epsilon': 0.05,
+                "soft_polarization_alpha": 2.5,
+                "soft_polarization_epsilon": 0.05,
                 # User Cascade configs
-                'cascade_n_genres': 5, 'cascade_delta': 1.5,
+                "cascade_n_genres": 5,
+                "cascade_delta": 1.5,
                 # Cluster Level configs
-                'cluster_level_n_row_clusters': 8, 'cluster_level_n_col_clusters': 8, 'cluster_level_tau_r_std': 1.0,
+                "cluster_level_n_row_clusters": 8,
+                "cluster_level_n_col_clusters": 8,
+                "cluster_level_tau_r_std": 1.0,
                 # Spatial Block configs
-                'spatial_block_n_blocks': 5, 'spatial_block_p_geom': 0.2,
+                "spatial_block_n_blocks": 5,
+                "spatial_block_p_geom": 0.2,
                 # Last few ones
-                'censor_quantile': 0.1, 'two_phase_cheap_fraction': 0.4, 'two_phase_beta': 2.5,
-                'skip_logic_p_noise': 0.9, 'cold_start_fraction': 0.3, 'cold_start_gamma': 0.15,
+                "censor_quantile": 0.1,
+                "two_phase_cheap_fraction": 0.4,
+                "two_phase_beta": 2.5,
+                "skip_logic_p_noise": 0.9,
+                "cold_start_fraction": 0.3,
+                "cold_start_gamma": 0.15,
                 # MAR configs
-                'mar_config': {
+                "mar_config": {
                     "num_layers_upper": 3,
                     "hidden_lower": 1,
                     "hidden_upper": 100,
                     "activation": "relu",
-                    "N": 100, # Row size of X (reduced for testing)
-                    "T": 50, # Column size of X (reduced for testing)
-                    "row_neighbor_upper": 5, # Upper bound of row neighbor (reduced for testing)
-                    "col_neighbor_upper": 5, # Upper bound of column neighbor (reduced for testing)
+                    "N": 100,  # Row size of X (reduced for testing)
+                    "T": 50,  # Column size of X (reduced for testing)
+                    "row_neighbor_upper": 5,  # Upper bound of row neighbor (reduced for testing)
+                    "col_neighbor_upper": 5,  # Upper bound of column neighbor (reduced for testing)
                     "seed": 42,
-                    "neighbor_type": "random"
-                }
+                    "neighbor_type": "random",
+                },
             }
             # Create data on the fly
             self.train_dataset = MissingnessPrior(
@@ -340,7 +366,7 @@ class Trainer:
                 missingness_type=self.config.missingness_type,
                 config=config,
                 batch_size=self.config.batch_size,
-                verbose=False
+                verbose=False,
             )
             self.val_dataloader = None
         # Create dataloader for efficient loading and prefetching
@@ -353,7 +379,7 @@ class Trainer:
             pin_memory=True,
             pin_memory_device=(
                 self.config.device if self.config.prior_device == "cpu" else ""
-            )
+            ),
         )
 
     def configure_optimizer(self):
@@ -439,11 +465,14 @@ class Trainer:
         # Load model state
         if "state_dict" not in checkpoint:
             raise ValueError("Checkpoint does not contain model state")
-        
+
         # If 'module.' not in prefix of keys, add it
         if self.ddp:
-            if not any(key.startswith('module.') for key in checkpoint["state_dict"]):
-                checkpoint["state_dict"] = {f'module.{key}': val for key, val in checkpoint["state_dict"].items()}
+            if not any(key.startswith("module.") for key in checkpoint["state_dict"]):
+                checkpoint["state_dict"] = {
+                    f"module.{key}": val
+                    for key, val in checkpoint["state_dict"].items()
+                }
 
         self.model.load_state_dict(checkpoint["state_dict"])
 
@@ -476,7 +505,6 @@ class Trainer:
                 "curr_step": self.curr_step,
             }
             torch.save(checkpoint, checkpoint_path)
-        
 
     def manage_checkpoint(self):
         """
@@ -531,7 +559,7 @@ class Trainer:
             step_progress = range(self.curr_step, self.config.max_steps)
 
         # train_dataloader = iter(self.train_dataloader)
-        
+
         if self.val_dataloader is not None:
             val_dataloader = iter(self.val_dataloader)
         else:
@@ -551,7 +579,7 @@ class Trainer:
                 # "train_time": 0.0,
                 # "lr": 0.0,
             }
-            
+
             # Get the next batch
             # batch = next(train_dataloader)
             batch = self.train_dataset.get_batch(self.config.batch_size)
@@ -574,12 +602,12 @@ class Trainer:
                 # results["prior_time"] += prior_time
                 # results["train_time"] += train_time
                 # results["lr"] = self.scheduler.get_last_lr()[0]
-                
+
                 print_vals = {
-                    'ce': round(results["ce"], 3),
-                    'mae': round(results["mae"], 3),
-                    'missing_ce': round(results["missing_ce"], 3),
-                    'missing_mae': round(results["missing_mae"], 3),
+                    "ce": round(results["ce"], 3),
+                    "mae": round(results["mae"], 3),
+                    "missing_ce": round(results["missing_ce"], 3),
+                    "missing_mae": round(results["missing_mae"], 3),
                     # 'val_ce': round(results["val_ce"], 3),
                     # 'val_mae': round(results["val_mae"], 3),
                     # 'val_missing_ce': round(results["val_missing_ce"], 3),
@@ -603,7 +631,7 @@ class Trainer:
                         and self.config.max_checkpoints > 0
                     ):
                         self.manage_checkpoint()
-            
+
             # Logging to Weights & Biases
             if self.wandb_run is not None:
                 wandb.log(results, step=self.curr_step)
@@ -611,7 +639,7 @@ class Trainer:
         # Save last checkpoint
         ckpt_name = f"step-{self.curr_step}.ckpt"
         self.save_checkpoint(name=ckpt_name)
-            
+
     def validate_micro_batch(self, micro_seq_len, micro_train_size):
         """
         Validate consistent sequence length and train size within a micro batch.
@@ -696,7 +724,12 @@ class Trainer:
         return micro_X, micro_y
 
     def run_micro_batch(
-        self, micro_batch, micro_batch_idx, num_micro_batches, is_train=True, is_tabpfn = False
+        self,
+        micro_batch,
+        micro_batch_idx,
+        num_micro_batches,
+        is_train=True,
+        is_tabpfn=False,
     ):
         """Process a micro batch for gradient accumulation.
 
@@ -718,7 +751,9 @@ class Trainer:
         """
         micro_X, micro_y, micro_d, micro_seq_len, micro_train_size = micro_batch
         # seq_len, train_size = self.validate_micro_batch(micro_seq_len, micro_train_size)
-        seq_len = micro_seq_len[0].item() # this should be the same for all datasets in the micro batch
+        seq_len = micro_seq_len[
+            0
+        ].item()  # this should be the same for all datasets in the micro batch
         micro_X, micro_y = self.align_micro_batch(micro_X, micro_y, micro_d, seq_len)
 
         # Move to device
@@ -738,17 +773,17 @@ class Trainer:
 
         # Replace NaNs with corresponding mean values
         # micro_X[nan_mask] = mean_vals_expanded[nan_mask]
-        
+
         y_train = micro_y.clone()
 
         # Create a mask for each row up to its train_size
         mask = torch.zeros_like(micro_y, dtype=torch.bool)
         for i in range(len(micro_train_size)):
-            mask[i, :micro_train_size[i]] = True
+            mask[i, : micro_train_size[i]] = True
 
         # Set values after train_size to nan for each row
         y_train[~mask] = torch.nan
-        
+
         # Add a new column of mask to X at the first position
         micro_X = torch.cat([mask.unsqueeze(2), micro_X], dim=2)
 
@@ -773,7 +808,7 @@ class Trainer:
                     logits=pred, y=einops.rearrange(micro_y, "b t -> t b")
                 )
                 # mean = self.bar_distribution.mean(pred)
-                
+
                 # Get MSE loss
                 # loss = (mean - einops.rearrange(micro_y, "b t -> t b")).pow(2)
 
@@ -781,7 +816,7 @@ class Trainer:
             scaled_loss = loss.mean() / num_micro_batches
             # self.scaler.scale(scaled_loss).backward()
             missing_loss = loss[~mask_reshaped].mean() / num_micro_batches
-            
+
             self.scaler.scale(missing_loss).backward()
 
         else:  # val
@@ -794,24 +829,26 @@ class Trainer:
                     pred = self.tabpfn_model.forward(
                         micro_X, y_train, micro_train_size
                     )  # (B, test_size, max_classes)
-                
+
                 pred = einops.rearrange(pred, "b t h -> t b h")
                 loss = self.bar_distribution(
                     logits=pred, y=einops.rearrange(micro_y, "b t -> t b")
                 )
                 scaled_loss = torch_nanmean(loss).mean() / num_micro_batches
-                missing_loss = torch_nanmean(loss[~mask_reshaped]).mean() / num_micro_batches
+                missing_loss = (
+                    torch_nanmean(loss[~mask_reshaped]).mean() / num_micro_batches
+                )
 
         with torch.no_grad():
             micro_results = {}
             micro_results["ce"] = scaled_loss.item()
             micro_results["missing_ce"] = missing_loss.item()
             median = self.bar_distribution.median(logits=pred)
-            accuracy = (
-                (median - einops.rearrange(micro_y, "b t -> t b")).abs()
-            )  # mae
+            accuracy = (median - einops.rearrange(micro_y, "b t -> t b")).abs()  # mae
             micro_results["mae"] = torch_nanmean(accuracy).mean().item()
-            micro_results["missing_mae"] = torch_nanmean(accuracy[~mask_reshaped]).mean().item()
+            micro_results["missing_mae"] = (
+                torch_nanmean(accuracy[~mask_reshaped]).mean().item()
+            )
 
         return micro_results
 
@@ -917,16 +954,16 @@ if __name__ == "__main__":
     # Create trainer and start training
     # step_progress = tqdm(range(0,config.epochs), desc="Epoch")
     trainer = Trainer(config)
-    
+
     # val_dataloader = iter(trainer.val_dataloader)
-    
+
     # for i in tqdm(range(trainer.len_val), desc="TabPFN Validation"):
     #     batch = next(val_dataloader)
     #     tabpfn_results_dict = trainer.run_batch(batch, is_train=False, is_tabpfn=True)
-        
+
     #     # output results to JSON file in the same directory as the prior data
     #     with open(f"{trainer.config.prior_dir}/tabpfn_results_{i}.json", "w") as f:
     #         json.dump(tabpfn_results_dict, f)
-    
+
     trainer.curr_step = config.start_step
     trainer.train()

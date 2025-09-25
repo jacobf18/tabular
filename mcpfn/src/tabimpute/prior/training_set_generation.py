@@ -33,14 +33,16 @@ from .mar_onesided_missing import MAR_onesided_missingness
 from .mar_block_missing import MAR_block_missingness
 from .mar_sequential_missing import UnifiedBandit
 from ..diffusion.mar_diffusion_row10_30_col10_30_mar0_3_marblock0_3_marbandit0_4_epoch100_bs32_samples30k_lr1e_3 import (
-    MARDiffusionModel, 
-    FlexibleConvBlock, 
-    FlexibleUpBlock, 
+    MARDiffusionModel,
+    FlexibleConvBlock,
+    FlexibleUpBlock,
     ConvolutionalSelfAttention,
     FullyConvolutionalX0Model,
     D3PM,
-    mar_diffusion_config
+    mar_diffusion_config,
 )
+
+
 # Helpers
 def sample_log_uniform(low, high, size=1, base=np.e):
     return np.power(
@@ -49,6 +51,7 @@ def sample_log_uniform(low, high, size=1, base=np.e):
             np.log(low) / np.log(base), np.log(high) / np.log(base), size
         ),
     )
+
 
 def sample_exponential(scale, min_val, size=1):
     return min_val + np.round(np.random.exponential(scale=scale, size=size)).astype(int)
@@ -467,6 +470,7 @@ class MCARPattern(BaseMissingness):
         X[torch.rand(*X.shape) < self.config.get("p_missing", 0.6)] = torch.nan
         return X
 
+
 class MARPattern(BaseMissingness):
     def _induce_missingness(self, X):
         p, (_, n_cols) = self.config.get("p_missing", 0.6), X.shape
@@ -480,6 +484,7 @@ class MARPattern(BaseMissingness):
         for col_idx in target_indices:
             X[torch.rand(len(X)) < probs, col_idx] = torch.nan
         return X
+
 
 class MNARPattern(BaseMissingness):
     def _induce_missingness(self, X):
@@ -495,6 +500,7 @@ class MNARPattern(BaseMissingness):
                 probs = torch.sigmoid(log_odds + beta_0)
                 X[torch.rand(len(X)) < probs, col_idx] = torch.nan
         return X
+
 
 class MNARRecSysPattern(BaseMissingness):
     def _induce_missingness(self, X):
@@ -514,6 +520,7 @@ class MNARRecSysPattern(BaseMissingness):
                 mask[i, matching_items] = True
         X[~mask] = torch.nan
         return X
+
 
 class MNARPanelPattern(BaseMissingness):
     def _induce_missingness(self, X):
@@ -893,105 +900,118 @@ def create_train_test_sets(
     for i, j in zip(non_missing_indices[0], non_missing_indices[1]):
         # row = torch.cat((X[i, :j], X[i, j + 1 :]))
         # col = torch.cat((X[:i, j], X[i + 1 :, j]))
-        row = X[i,:]
-        col = X[:,j]
-        train_X_list.append(torch.cat((torch.tensor([i, j], device=X.device), row, col)))
+        row = X[i, :]
+        col = X[:, j]
+        train_X_list.append(
+            torch.cat((torch.tensor([i, j], device=X.device), row, col))
+        )
         train_y_list.append(X_full[i, j])
     for i, j in zip(missing_indices[0], missing_indices[1]):
         # row = torch.cat((X[i, :j], X[i, j + 1 :]))
         # col = torch.cat((X[:i, j], X[i + 1 :, j]))
-        row = X[i,:]
-        col = X[:,j]
+        row = X[i, :]
+        col = X[:, j]
         test_X_list.append(torch.cat((torch.tensor([i, j], device=X.device), row, col)))
         test_y_list.append(X_full[i, j])
     train_X = (
         torch.stack(train_X_list)
         if train_X_list
-        else torch.empty(0, X.shape[0] + X.shape[1] + 2) # +2 for the row and column indices
+        else torch.empty(
+            0, X.shape[0] + X.shape[1] + 2
+        )  # +2 for the row and column indices
     )
     train_y = torch.stack(train_y_list) if train_y_list else torch.empty(0)
     test_X = (
         torch.stack(test_X_list)
         if test_X_list
-        else torch.empty(0, X.shape[0] + X.shape[1] + 2) # +2 for the row and column indices
+        else torch.empty(
+            0, X.shape[0] + X.shape[1] + 2
+        )  # +2 for the row and column indices
     )
     test_y = torch.stack(test_y_list) if test_y_list else torch.empty(0)
-    
+
     # Clean up memory
     del train_X_list, train_y_list, test_X_list, test_y_list
-    
+
     # Clear cache
     torch.cuda.empty_cache()
-    
+
     return train_X, train_y, test_X, test_y
+
 
 class SCMPriorTabICL:
     def __init__(self, config: dict):
         # Map the config to the SCMPrior config
-        
+
         self.scm = SCMPrior(
-            min_features = config['num_cols_low'],
-            max_features = config['num_cols_high'],
-            min_seq_len = config['num_rows_low'],
-            max_seq_len = config['num_rows_high'],
-            seq_len_per_gp = False,
-            prior_type = "mix_scm",
-            n_jobs=-1
+            min_features=config["num_cols_low"],
+            max_features=config["num_cols_high"],
+            min_seq_len=config["num_rows_low"],
+            max_seq_len=config["num_rows_high"],
+            seq_len_per_gp=False,
+            prior_type="mix_scm",
+            n_jobs=-1,
         )
-        
+
+
 class MARNeuralNetwork(BaseMissingness):
     """
     Induces missingness based on a neural network with random weights.
     This is a simple implementation of the MAR missingness pattern.
     """
+
     def __init__(self, config: dict):
-        self.mar_config = config['mar_config']
-        
+        self.mar_config = config["mar_config"]
+
     def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
-        self.mar_config['N'] = X.shape[0]
-        self.mar_config['T'] = X.shape[1]
-        self.mar_config['row_neighbor_upper'] = X.shape[0]//2
-        self.mar_config['col_neighbor_upper'] = X.shape[1]//2
+        self.mar_config["N"] = X.shape[0]
+        self.mar_config["T"] = X.shape[1]
+        self.mar_config["row_neighbor_upper"] = X.shape[0] // 2
+        self.mar_config["col_neighbor_upper"] = X.shape[1] // 2
         self.mar = MAR_missingness(self.mar_config)
         propensities = self.mar(X)
         mask = torch.bernoulli(propensities).bool()
         X[mask] = torch.nan
         return X
 
+
 class MAROnesidedMissingness(BaseMissingness):
     """
     Induces missingness based on a neural network with random weights.
     This is a simple implementation of the MAR missingness pattern.
     """
+
     def __init__(self, config: dict):
-        self.mar_onesided_config = config['mar_onesided_config']
-    
+        self.mar_onesided_config = config["mar_onesided_config"]
+
     def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
-        self.mar_onesided_config['N'] = X.shape[0]
-        self.mar_onesided_config['T'] = X.shape[1]
-        self.mar_onesided_config['row_neighbor_upper'] = X.shape[0]//2
-        self.mar_onesided_config['col_neighbor_upper'] = X.shape[1]//2
-        self.mar_onesided_config['extreme_axis'] = 'row'
-        self.mar_onesided_config['extreme_neighbor_mode'] = 'zero'
+        self.mar_onesided_config["N"] = X.shape[0]
+        self.mar_onesided_config["T"] = X.shape[1]
+        self.mar_onesided_config["row_neighbor_upper"] = X.shape[0] // 2
+        self.mar_onesided_config["col_neighbor_upper"] = X.shape[1] // 2
+        self.mar_onesided_config["extreme_axis"] = "row"
+        self.mar_onesided_config["extreme_neighbor_mode"] = "zero"
         self.mar = MAR_onesided_missingness(self.mar_onesided_config)
         propensities = self.mar(X)
         mask = torch.bernoulli(propensities).bool()
         X[mask] = torch.nan
         return X
 
+
 class MARBlockNeuralNetwork(BaseMissingness):
     """
     Induces missingness based on a neural network with random weights.
     This is a simple implementation of the MAR missingness pattern.
     """
+
     def __init__(self, config: dict):
-        self.mar_block_config = config['mar_block_config']
+        self.mar_block_config = config["mar_block_config"]
 
     def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
-        self.mar_block_config['N'] = X.shape[0]
-        self.mar_block_config['T'] = X.shape[1]
-        self.mar_block_config['row_blocks'] = X.shape[0]//3
-        self.mar_block_config['col_blocks'] = X.shape[1]//3
+        self.mar_block_config["N"] = X.shape[0]
+        self.mar_block_config["T"] = X.shape[1]
+        self.mar_block_config["row_blocks"] = X.shape[0] // 3
+        self.mar_block_config["col_blocks"] = X.shape[1] // 3
         self.mar_block = MAR_block_missingness(self.mar_block_config)
         propensities, row_cumsum, col_cumsum = self.mar_block(X)
 
@@ -999,26 +1019,31 @@ class MARBlockNeuralNetwork(BaseMissingness):
             N = row_cumsum[-1]
             T = col_cumsum[-1]
             missing_mask = torch.zeros(N, T)
-            for i in range(row_cumsum.shape[0]-1):
-                for t in range(col_cumsum.shape[0]-1):
-                    missing_mask[row_cumsum[i]:row_cumsum[i+1], col_cumsum[t]:col_cumsum[t+1]] = torch.bernoulli(propensity_small[i, t])
+            for i in range(row_cumsum.shape[0] - 1):
+                for t in range(col_cumsum.shape[0] - 1):
+                    missing_mask[
+                        row_cumsum[i] : row_cumsum[i + 1],
+                        col_cumsum[t] : col_cumsum[t + 1],
+                    ] = torch.bernoulli(propensity_small[i, t])
             return missing_mask
 
         mask = recover_block_missingness(propensities, row_cumsum, col_cumsum).bool()
         X[mask] = torch.nan
         return X
 
+
 class MARSequentialBandit(BaseMissingness):
     """
     Induces missingness based on a sequential bandit algorithm.
     This is a simple implementation of the MAR missingness pattern.
     """
+
     def __init__(self, config: dict):
-        self.mar_sequential_bandit_config = config['mar_sequential_bandit_config']
+        self.mar_sequential_bandit_config = config["mar_sequential_bandit_config"]
 
     def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
-        self.mar_sequential_bandit_config['N'] = X.shape[0]
-        self.mar_sequential_bandit_config['T'] = X.shape[1]
+        self.mar_sequential_bandit_config["N"] = X.shape[0]
+        self.mar_sequential_bandit_config["T"] = X.shape[1]
         self.mar_sequential_bandit = UnifiedBandit(self.mar_sequential_bandit_config)
         assignments, _, _ = self.mar_sequential_bandit.fit(X.detach().cpu().numpy())
 
@@ -1026,40 +1051,47 @@ class MARSequentialBandit(BaseMissingness):
         X[mask] = torch.nan
         return X
 
+
 class MARDiffusion(BaseMissingness):
     """MAR Diffusion missingness pattern generator using trained diffusion model"""
-    
+
     def __init__(self, config: dict):
         super().__init__(config)
-        self.device = torch.device(config.get('device', 'cpu'))
+        self.device = torch.device(config.get("device", "cpu"))
         self.diffusion_config = mar_diffusion_config.copy()
         self.diffusion_config.update(config)
-        
+
         # Model configuration
         model_config = {
-            'n_channel': 1,
-            'N': 2,
-            'num_classes': 3,  # bandit, mar, block_mar
-            'diffusion_steps': 1000,
-            'hybrid_loss_coeff': 0.0
+            "n_channel": 1,
+            "N": 2,
+            "num_classes": 3,  # bandit, mar, block_mar
+            "diffusion_steps": 1000,
+            "hybrid_loss_coeff": 0.0,
         }
-        
+
         # Initialize model
         self.model = MARDiffusionModel(model_config).to(self.device)
-        
+
         # Load pretrained weights
         self._load_model_weights()
-        
+
         # Set to evaluation mode
         self.model.eval()
-    
+
     def _load_model_weights(self):
         """Load pre-trained model weights"""
         # Updated path to work from the new location
-        weights_path = Path(__file__).parent.parent / "diffusion" / "models" / "diffusion-row-10-30-col-10-30-mar0.3-marblock0.3-marbandit0.4-epoch100-bs32-samples30k-lr1e-3" / "model_final.pth"
-        
+        weights_path = (
+            Path(__file__).parent.parent
+            / "diffusion"
+            / "models"
+            / "diffusion-row-10-30-col-10-30-mar0.3-marblock0.3-marbandit0.4-epoch100-bs32-samples30k-lr1e-3"
+            / "model_final.pth"
+        )
+
         if weights_path.exists():
-            state_dict = torch.load(weights_path, map_location='cpu')
+            state_dict = torch.load(weights_path, map_location="cpu")
             try:
                 self.model.x0_model.load_state_dict(state_dict, strict=True)
                 print("Successfully loaded pretrained weights")
@@ -1069,53 +1101,60 @@ class MARDiffusion(BaseMissingness):
                 print("Loaded weights with partial matching")
         else:
             raise FileNotFoundError(f"Model weights not found at {weights_path}")
-    
+
     def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
         """
         Generate missingness pattern using the diffusion model.
-        
+
         Args:
             X: Input tensor of shape (height, width)
-            
+
         Returns:
             Tensor with missing values (NaN) applied
         """
         height, width = X.shape
-        
+
         # Use target_shape if specified, otherwise use X shape
-        if self.diffusion_config['target_shape'] is not None:
-            target_height, target_width = self.diffusion_config['target_shape']
+        if self.diffusion_config["target_shape"] is not None:
+            target_height, target_width = self.diffusion_config["target_shape"]
         else:
             target_height, target_width = height, width
-        
+
         # Check if matrix size is within training range
         if not (10 <= target_height <= 30 and 10 <= target_width <= 30):
-            warnings.warn(f"Matrix size ({target_height}, {target_width}) outside training range (10-30). "
-                         "Results may be suboptimal.")
-        
+            warnings.warn(
+                f"Matrix size ({target_height}, {target_width}) outside training range (10-30). "
+                "Results may be suboptimal."
+            )
+
         # Prepare X conditioning tensor
         X_cond = X.unsqueeze(0).unsqueeze(0)  # (1, 1, height, width)
         X_cond = X_cond.to(self.device)
-        
+
         # Resize X_cond to target shape if needed
         if (target_height, target_width) != (height, width):
-            X_cond = F.interpolate(X_cond, size=(target_height, target_width), mode='bilinear', align_corners=False)
-        
+            X_cond = F.interpolate(
+                X_cond,
+                size=(target_height, target_width),
+                mode="bilinear",
+                align_corners=False,
+            )
+
         # Generate missingness pattern
         with torch.no_grad():
             missingness_mask = self.model.generate(
                 shape=(target_height, target_width),
                 x_cond=X_cond,
-                missingness_type=self.diffusion_config['missingness_type'],
-                num_samples=self.diffusion_config['num_samples']
+                missingness_type=self.diffusion_config["missingness_type"],
+                num_samples=self.diffusion_config["num_samples"],
             )
-        
+
         # Convert to boolean mask and apply missingness
         mask = missingness_mask[0].bool()  # Remove batch dimension
-        
+
         # If target shape differs from X shape, resize mask
         if (target_height, target_width) != (height, width):
-            if self.diffusion_config['pad_mode'] == 'pad_crop':
+            if self.diffusion_config["pad_mode"] == "pad_crop":
                 # Simple crop/pad to match X shape
                 if target_height >= height and target_width >= width:
                     mask = mask[:height, :width]
@@ -1127,48 +1166,55 @@ class MARDiffusion(BaseMissingness):
                     mask = mask[:height, :width]
             else:  # tile mode
                 # Tile the mask to cover X shape
-                mask = mask.repeat(height // target_height + 1, width // target_width + 1)[:height, :width]
-        
+                mask = mask.repeat(
+                    height // target_height + 1, width // target_width + 1
+                )[:height, :width]
+
         X_missing = X.clone()
         X_missing[mask] = torch.nan
-        
+
         return X_missing
+
 
 class MixedPattern(BaseMissingness):
     """
     Induces missingness by randomly selcting a type of missingness pattern and then inducing missingness based on that pattern.
     This randomness is controlled by the config parameters 'mcar_prob', 'mar_prob', and 'mnar_prob'.
     """
+
     def __init__(self, config: dict):
         self.patterns = [
             MCARPattern(config),
             MARNeuralNetwork(config),
-            MNARPattern(config)
+            MNARPattern(config),
         ]
-        self.mcar_prob = config.get('mcar_prob', 0.5)
-        self.mar_prob = config.get('mar_prob', 0.25)
-        self.mnar_prob = config.get('mnar_prob', 0.25)
-        
+        self.mcar_prob = config.get("mcar_prob", 0.5)
+        self.mar_prob = config.get("mar_prob", 0.25)
+        self.mnar_prob = config.get("mnar_prob", 0.25)
+
         # check that the probabilities sum to 1
         if np.abs(self.mcar_prob + self.mar_prob + self.mnar_prob - 1) > 1e-6:
-            raise ValueError('The sum of the probabilities must be 1')
-        
+            raise ValueError("The sum of the probabilities must be 1")
+
     def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
-        pattern = np.random.choice(self.patterns, p=np.array([self.mcar_prob, self.mar_prob, self.mnar_prob]))
+        pattern = np.random.choice(
+            self.patterns, p=np.array([self.mcar_prob, self.mar_prob, self.mnar_prob])
+        )
         return pattern._induce_missingness(X)
-        
+
 
 # Main class
 class MissingnessPrior(IterableDataset):
     """
     Main dataset class that provides an infinite iterator over synthetic tabular datasets.
     """
+
     generator_map = {
-            "scm": SCMPriorTabICL,
-            "latent_factor": LatentFactorPrior,
-            "nonlinear_factor": NonLinearFactorPrior,
-            "robust_pca": RobustPCAPrior,
-        }
+        "scm": SCMPriorTabICL,
+        "latent_factor": LatentFactorPrior,
+        "nonlinear_factor": NonLinearFactorPrior,
+        "robust_pca": RobustPCAPrior,
+    }
     missingness_map = {
         # Standard Patterns
         "mcar": MCARPattern,
@@ -1191,19 +1237,21 @@ class MissingnessPrior(IterableDataset):
         "mnar_skip_logic": MNARSkipLogicPattern,
         "mnar_cold_start": MNARColdStartPattern,
         # Diffusion-based MAR pattern (lazy import to avoid circular dependency)
-        "mar_diffusion": (lambda cfg: __import__(
-            'mcpfn.diffusion', fromlist=['MARDiffusion']
-        ).MARDiffusion(cfg))
+        "mar_diffusion": (
+            lambda cfg: __import__(
+                "mcpfn.diffusion", fromlist=["MARDiffusion"]
+            ).MARDiffusion(cfg)
+        ),
     }
 
     def __init__(
         self,
-        generator_type: str = 'scm',
-        missingness_type: str = 'mcar',
+        generator_type: str = "scm",
+        missingness_type: str = "mcar",
         config: dict = {},
         num_missing: int = 10,
         batch_size: int = 10,
-        device: str = 'cpu',
+        device: str = "cpu",
         verbose: bool = False,
     ):
         self.config = config
@@ -1231,11 +1279,15 @@ class MissingnessPrior(IterableDataset):
         """Generates a new batch of datasets by combining a generator and a missingness pattern."""
         if batch_size is None:
             batch_size = self.batch_size
-        X_list, y_list, train_sizes = [], [], torch.zeros(self.batch_size, dtype=torch.long)
+        X_list, y_list, train_sizes = (
+            [],
+            [],
+            torch.zeros(self.batch_size, dtype=torch.long),
+        )
         step = 0
         if self.verbose:
             pbar = tqdm(total=self.batch_size, desc="Generating batches")
-        
+
         if isinstance(self.generator, SCMPriorTabICL):
             # X_list, y_list, train_sizes = self.generator.generate_batch(batch_size)
             scm_X, scm_y, _, _, _ = self.generator.scm.get_batch(batch_size)
@@ -1251,27 +1303,31 @@ class MissingnessPrior(IterableDataset):
                 )[0]
             )
             new_config = copy.deepcopy(self.config)
-            new_config['num_rows_low'] = n_rows
-            new_config['num_rows_high'] = n_rows
-            new_config['num_cols_low'] = n_cols
-            new_config['num_cols_high'] = n_cols
-            new_config['latent_rank_high'] = min(new_config['latent_rank_high'], n_rows, n_cols) # Ensure rank is not too high
-            
+            new_config["num_rows_low"] = n_rows
+            new_config["num_rows_high"] = n_rows
+            new_config["num_cols_low"] = n_cols
+            new_config["num_cols_high"] = n_cols
+            new_config["latent_rank_high"] = min(
+                new_config["latent_rank_high"], n_rows, n_cols
+            )  # Ensure rank is not too high
+
             self.generator = self.generator_map[self.generator_type](new_config)
-        
+
         while step < self.batch_size:
-        # for i in tqdm(range(self.batch_size), desc="Generating batches"):
+            # for i in tqdm(range(self.batch_size), desc="Generating batches"):
             # try:
             if isinstance(self.generator, SCMPriorTabICL):
-                X = torch.cat((scm_X[step, :, :], scm_y[step, :].unsqueeze(dim=-1)), dim=1)
+                X = torch.cat(
+                    (scm_X[step, :, :], scm_y[step, :].unsqueeze(dim=-1)), dim=1
+                )
             else:
                 complete_df = self.generator.generate_complete_matrix()
                 X = torch.tensor(complete_df.values, dtype=torch.float32)
-            
+
             # Normalize the data
             X = torch.squeeze(normalize_data(torch.unsqueeze(X, 1)), 1)
-            
-            if X.numel() == 0: # if the matrix is empty, skip
+
+            if X.numel() == 0:  # if the matrix is empty, skip
                 continue
             X_missing = self.missingness_inducer._induce_missingness(X.clone())
             train_X, train_y, test_X, test_y = create_train_test_sets(
@@ -1290,10 +1346,10 @@ class MissingnessPrior(IterableDataset):
             #     continue
         if not X_list:
             return self.get_batch()  # Retry if all generations failed
-        
-        X_full = torch.stack(X_list, dim = 0)
-        y_full = torch.stack(y_list, dim = 0)
-        
+
+        X_full = torch.stack(X_list, dim=0)
+        y_full = torch.stack(y_list, dim=0)
+
         # d is the number of columns. This should always be the same across datasets.
         d = torch.tensor(X_list[0].shape[1], device=self.device).repeat(len(X_list))
         seq_lens = torch.tensor(
@@ -1301,7 +1357,6 @@ class MissingnessPrior(IterableDataset):
         )
         # train sizes is the part that is different
         return X_full, y_full, d, seq_lens, train_sizes
-
 
     @torch.no_grad()
     def get_pair(self, batch_size: Optional[int] = None):
@@ -1312,21 +1367,23 @@ class MissingnessPrior(IterableDataset):
         step = 0
         if self.verbose:
             pbar = tqdm(total=self.batch_size, desc="Generating batches")
-        
+
         if isinstance(self.generator, SCMPriorTabICL):
             scm_X, scm_y, _, _, _ = self.generator.scm.get_batch(batch_size)
-        
+
         while step < self.batch_size:
             if isinstance(self.generator, SCMPriorTabICL):
-                X = torch.cat((scm_X[step, :, :], scm_y[step, :].unsqueeze(dim=-1)), dim=1)
+                X = torch.cat(
+                    (scm_X[step, :, :], scm_y[step, :].unsqueeze(dim=-1)), dim=1
+                )
             else:
                 complete_df = self.generator.generate_complete_matrix()
                 X = torch.tensor(complete_df.values, dtype=torch.float32)
-            
+
             # Normalize the data
             X = torch.squeeze(normalize_data(torch.unsqueeze(X, 1)), 1)
-            
-            if X.numel() == 0: # if the matrix is empty, skip
+
+            if X.numel() == 0:  # if the matrix is empty, skip
                 continue
             X_missing = self.missingness_inducer._induce_missingness(X.clone())
             masking = torch.logical_not(torch.isnan(X_missing)).float()
@@ -1335,15 +1392,15 @@ class MissingnessPrior(IterableDataset):
             step += 1
             if self.verbose:
                 pbar.update(1)
-            
+
         if not X_list:
-            return self.get_pair() 
-            
+            return self.get_pair()
+
         X_full = torch.stack(X_list, dim=0)
         masking_full = torch.stack(masking_list, dim=0)
-        
+
         return X_full, masking_full
-    
+
     def __iter__(self) -> "MissingnessPrior":
         """
         Returns an iterator that yields batches indefinitely.
@@ -1364,36 +1421,64 @@ class MissingnessPrior(IterableDataset):
         # with DisablePrinting():
         return self.get_batch()
 
+
 # Execution Block
-if __name__ == '__main__':
+if __name__ == "__main__":
     config = {
-        'num_rows_low': 12, 'num_rows_high': 12, 'num_cols_low': 5, 'num_cols_high': 5.5,
-        'p_missing': 0.4,
+        "num_rows_low": 12,
+        "num_rows_high": 12,
+        "num_cols_low": 5,
+        "num_cols_high": 5.5,
+        "p_missing": 0.4,
         # SCM configs
-        'num_nodes_low': 60, 'num_nodes_high': 80, 'graph_generation_method': ['MLP-Dropout', 'Scale-Free'],
-        'root_node_noise_dist': ['Normal', 'Uniform'], 'scm_activation_functions': list(ACTIVATION_FUNCTIONS.keys()),
-        'xgb_n_estimators_exp_scale': 0.5, 'xgb_max_depth_exp_scale': 0.5,
-        'apply_feature_warping_prob': 0.1, 'apply_quantization_prob': 0.1,
+        "num_nodes_low": 60,
+        "num_nodes_high": 80,
+        "graph_generation_method": ["MLP-Dropout", "Scale-Free"],
+        "root_node_noise_dist": ["Normal", "Uniform"],
+        "scm_activation_functions": list(ACTIVATION_FUNCTIONS.keys()),
+        "xgb_n_estimators_exp_scale": 0.5,
+        "xgb_max_depth_exp_scale": 0.5,
+        "apply_feature_warping_prob": 0.1,
+        "apply_quantization_prob": 0.1,
         # MNAR configs
-        'threshold_quantile': 0.25, 'n_core_items': 5, 'n_genres': 3, 'n_policies': 4,
+        "threshold_quantile": 0.25,
+        "n_core_items": 5,
+        "n_genres": 3,
+        "n_policies": 4,
         # Latent Factor configs
-        'latent_rank_low': 1, 'latent_rank_high': 11, 'latent_spike_p': 0.3, 'latent_slab_sigma': 2.0,
+        "latent_rank_low": 1,
+        "latent_rank_high": 11,
+        "latent_spike_p": 0.3,
+        "latent_slab_sigma": 2.0,
         # Non-linear Factor configs
-        'spline_knot_k': [3, 5, 7], 'gp_length_scale_low': 0.3, 'gp_length_scale_high': 2.0,
-        'fourier_dim_low': 100, 'fourier_dim_high': 501,
+        "spline_knot_k": [3, 5, 7],
+        "gp_length_scale_low": 0.3,
+        "gp_length_scale_high": 2.0,
+        "fourier_dim_low": 100,
+        "fourier_dim_high": 501,
         # Robust-PCA configs
-        'rpca_beta_a': 2, 'rpca_beta_b': 30,
+        "rpca_beta_a": 2,
+        "rpca_beta_b": 30,
         # Soft Polarization configs
-        'soft_polarization_alpha': 2.5, 'soft_polarization_epsilon': 0.05,
+        "soft_polarization_alpha": 2.5,
+        "soft_polarization_epsilon": 0.05,
         # User Cascade configs
-        'cascade_n_genres': 5, 'cascade_delta': 1.5,
+        "cascade_n_genres": 5,
+        "cascade_delta": 1.5,
         # Cluster Level configs
-        'cluster_level_n_row_clusters': 8, 'cluster_level_n_col_clusters': 8, 'cluster_level_tau_r_std': 1.0,
+        "cluster_level_n_row_clusters": 8,
+        "cluster_level_n_col_clusters": 8,
+        "cluster_level_tau_r_std": 1.0,
         # Spatial Block configs
-        'spatial_block_n_blocks': 5, 'spatial_block_p_geom': 0.2,
+        "spatial_block_n_blocks": 5,
+        "spatial_block_p_geom": 0.2,
         # Last few ones
-        'censor_quantile': 0.1, 'two_phase_cheap_fraction': 0.4, 'two_phase_beta': 2.5,
-        'skip_logic_p_noise': 0.9, 'cold_start_fraction': 0.3, 'cold_start_gamma': 0.15,
+        "censor_quantile": 0.1,
+        "two_phase_cheap_fraction": 0.4,
+        "two_phase_beta": 2.5,
+        "skip_logic_p_noise": 0.9,
+        "cold_start_fraction": 0.3,
+        "cold_start_gamma": 0.15,
     }
 
     # Example, specify one data generation type and one missingness pattern
@@ -1403,28 +1488,30 @@ if __name__ == '__main__':
         num_missing=10,
         config=config,
         batch_size=1,
-        verbose=False
+        verbose=False,
     )
-    
+
     # X_full, y_full, d, seq_lens, train_sizes = prior.get_batch()
-    
+
     mcpfn_errors = []
     tabpfn_errors = []
-    
+
     import os
     from mcpfn.interface import ImputePFN
-    
+
     for _ in tqdm(range(50)):
         X, X_missing = prior.get_batch()
-        
+
         os.environ["OMP_NUM_THREADS"] = "1"
         os.environ["TABPFN_ALLOW_CPU_LARGE_DATASET"] = "1"
-        
-        imputer = ImputePFN(device='cpu', 
-                            encoder_path='/Users/jfeit/tabular/mcpfn/src/mcpfn/model/encoder.pth',
-                            borders_path='/Users/jfeit/tabular/mcpfn/borders.pt',
-                            checkpoint_path='/Users/jfeit/Downloads/small_data.ckpt')
-        
+
+        imputer = ImputePFN(
+            device="cpu",
+            encoder_path="/Users/jfeit/tabular/mcpfn/src/mcpfn/model/encoder.pth",
+            borders_path="/Users/jfeit/tabular/mcpfn/borders.pt",
+            checkpoint_path="/Users/jfeit/Downloads/small_data.ckpt",
+        )
+
         X_missing_np = X_missing.numpy()
         X_np = X.numpy()
         imputed_X = imputer.impute(X_missing_np)
@@ -1432,14 +1519,13 @@ if __name__ == '__main__':
         # print(f'Max: {X_np[missing_inds].max():.2f}, Min: {X_np[missing_inds].min():.2f}, Std: {X_np[missing_inds].std():.2f}')
         # print(np.abs(X_np[missing_inds] - imputed_X[missing_inds]).mean())
         mcpfn_errors.append(np.abs(X_np[missing_inds] - imputed_X[missing_inds]).mean())
-        
-        train_X, train_y, test_X, test_y = create_train_test_sets(
-                        X_missing, X_full=X
-                    )
-    
-    import pickle 
+
+        train_X, train_y, test_X, test_y = create_train_test_sets(X_missing, X_full=X)
+
+    import pickle
+
     # save errors to pickle
-    with open('mcpfn_errors.pkl', 'wb') as f:
+    with open("mcpfn_errors.pkl", "wb") as f:
         pickle.dump(mcpfn_errors, f)
-    with open('tabpfn_errors.pkl', 'wb') as f:
+    with open("tabpfn_errors.pkl", "wb") as f:
         pickle.dump(tabpfn_errors, f)

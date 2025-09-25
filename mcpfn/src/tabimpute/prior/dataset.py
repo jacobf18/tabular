@@ -606,41 +606,67 @@ class PriorDataset(IterableDataset):
             )
         elif prior_type == "missing":
             config = {
-                'num_rows_low': min_seq_len, 'num_rows_high': max_seq_len, 'num_cols_low': min_features, 'num_cols_high': max_features,
-                'p_missing': 0.4,
+                "num_rows_low": min_seq_len,
+                "num_rows_high": max_seq_len,
+                "num_cols_low": min_features,
+                "num_cols_high": max_features,
+                "p_missing": 0.4,
                 # SCM configs
-                'num_nodes_low': 60, 'num_nodes_high': 80, 'graph_generation_method': ['MLP-Dropout', 'Scale-Free'],
-                'root_node_noise_dist': ['Normal', 'Uniform'], 
-                'scm_activation_functions': list(ACTIVATION_FUNCTIONS.keys()),
-                'xgb_n_estimators_exp_scale': 0.5, 'xgb_max_depth_exp_scale': 0.5,
-                'apply_feature_warping_prob': 0.1, 'apply_quantization_prob': 0.1,
+                "num_nodes_low": 60,
+                "num_nodes_high": 80,
+                "graph_generation_method": ["MLP-Dropout", "Scale-Free"],
+                "root_node_noise_dist": ["Normal", "Uniform"],
+                "scm_activation_functions": list(ACTIVATION_FUNCTIONS.keys()),
+                "xgb_n_estimators_exp_scale": 0.5,
+                "xgb_max_depth_exp_scale": 0.5,
+                "apply_feature_warping_prob": 0.1,
+                "apply_quantization_prob": 0.1,
                 # MNAR configs
-                'threshold_quantile': 0.25, 'n_core_items': 5, 'n_genres': 3, 'n_policies': 4,
+                "threshold_quantile": 0.25,
+                "n_core_items": 5,
+                "n_genres": 3,
+                "n_policies": 4,
                 # Latent Factor configs
-                'latent_rank_low': 1, 'latent_rank_high': 11, 'latent_spike_p': 0.3, 'latent_slab_sigma': 2.0,
+                "latent_rank_low": 1,
+                "latent_rank_high": 11,
+                "latent_spike_p": 0.3,
+                "latent_slab_sigma": 2.0,
                 # Non-linear Factor configs
-                'spline_knot_k': [3, 5, 7], 'gp_length_scale_low': 0.3, 'gp_length_scale_high': 2.0,
-                'fourier_dim_low': 100, 'fourier_dim_high': 501,
+                "spline_knot_k": [3, 5, 7],
+                "gp_length_scale_low": 0.3,
+                "gp_length_scale_high": 2.0,
+                "fourier_dim_low": 100,
+                "fourier_dim_high": 501,
                 # Robust-PCA configs
-                'rpca_beta_a': 2, 'rpca_beta_b': 30,
+                "rpca_beta_a": 2,
+                "rpca_beta_b": 30,
                 # Soft Polarization configs
-                'soft_polarization_alpha': 2.5, 'soft_polarization_epsilon': 0.05,
+                "soft_polarization_alpha": 2.5,
+                "soft_polarization_epsilon": 0.05,
                 # User Cascade configs
-                'cascade_n_genres': 5, 'cascade_delta': 1.5,
+                "cascade_n_genres": 5,
+                "cascade_delta": 1.5,
                 # Cluster Level configs
-                'cluster_level_n_row_clusters': 8, 'cluster_level_n_col_clusters': 8, 'cluster_level_tau_r_std': 1.0,
+                "cluster_level_n_row_clusters": 8,
+                "cluster_level_n_col_clusters": 8,
+                "cluster_level_tau_r_std": 1.0,
                 # Spatial Block configs
-                'spatial_block_n_blocks': 5, 'spatial_block_p_geom': 0.2,
+                "spatial_block_n_blocks": 5,
+                "spatial_block_p_geom": 0.2,
                 # Last few ones
-                'censor_quantile': 0.1, 'two_phase_cheap_fraction': 0.4, 'two_phase_beta': 2.5,
-                'skip_logic_p_noise': 0.9, 'cold_start_fraction': 0.3, 'cold_start_gamma': 0.15,
+                "censor_quantile": 0.1,
+                "two_phase_cheap_fraction": 0.4,
+                "two_phase_beta": 2.5,
+                "skip_logic_p_noise": 0.9,
+                "cold_start_fraction": 0.3,
+                "cold_start_gamma": 0.15,
             }
             self.prior = MissingnessPrior(
                 generator_type=missingness_generator_type,
                 missingness_type=missingness_type,
                 config=config,
                 batch_size=batch_size,
-                verbose=True
+                verbose=True,
             )
         else:
             raise ValueError(

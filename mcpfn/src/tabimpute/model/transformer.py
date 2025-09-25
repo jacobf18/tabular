@@ -654,7 +654,9 @@ class PerFeatureTransformer(nn.Module):
 
             # out: s b e
             train_encoder_out = encoder_out[:, :single_eval_pos_, -1].transpose(0, 1)
-            output_decoded["train_out"] = self.decoder_dict["standard"](train_encoder_out)
+            output_decoded["train_out"] = self.decoder_dict["standard"](
+                train_encoder_out
+            )
             # output_decoded["test_out"] = self.decoder_dict["standard"](test_encoder_out)
         return output_decoded["train_out"]
 
