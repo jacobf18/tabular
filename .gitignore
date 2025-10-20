@@ -2,6 +2,9 @@
 
 .venv/
 
+*.png
+*.pdf
+
 # Ignore Python bytecode files
 *.py[cod]
 # Ignore Jupyter Notebook checkpoints
@@ -17,3 +20,7 @@ __pycache__/
 *.log
 # Ignore coverage reports
 .coverage
+
+.vscode
+
+**/figures/
