@@ -126,6 +126,10 @@ class ImputePFN:
             X_imputed, X_full = self.get_imputation(X_normalized)
 
         torch.cuda.empty_cache()
+        
+        # Add back the means and stds
+        X_imputed = X_imputed * (stds + 1e-16) + means
+        X_full = X_full * (stds + 1e-16) + means
 
         if return_full:
             return X_imputed, X_full
