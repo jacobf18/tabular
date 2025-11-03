@@ -3,6 +3,13 @@
 # TODO: This module needs some tidying
 from __future__ import annotations
 
+import warnings
+
+warnings.filterwarnings(
+    "ignore",
+    message=".*The PyTorch API of nested tensors is in prototype stage.*",
+    category=UserWarning,
+)
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 from typing_extensions import override

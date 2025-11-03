@@ -12,6 +12,7 @@ from transformers import (
 
 import math
 from functools import partial
+import torch
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LambdaLR
 
@@ -138,3 +139,78 @@ def get_scheduler(config, optimizer):
         raise NotImplementedError
 
     return scheduler
+
+
+class GradNormMultiTask:
+    """
+    Implements GradNorm (Chen et al., ICML 2018) for multi-task loss balancing,
+    with optional EMA-smoothed loss tracking for stability.
+
+    Usage:
+        gradnorm = GradNormMultiTask(num_tasks=3, alpha=0.5, ema_beta=0.9, device='cuda')
+        ...
+        gradnorm.update_weights(losses, shared_params)
+        total_loss = sum(gradnorm.weights[i] * losses[i] for i in range(3))
+    """
+    def __init__(self, num_tasks, alpha=0.5, ema_beta=0.9, device='cuda', lr=0.025):
+        self.num_tasks = num_tasks
+        self.alpha = alpha
+        self.device = device
+        self.ema_beta = ema_beta
+
+        # task weights
+        self.weights = torch.ones(num_tasks, requires_grad=True, device=device)
+        self.opt = torch.optim.Adam([self.weights], lr=lr)
+
+        # initialize running loss EMA
+        self.loss_ema = torch.zeros(num_tasks, device=device)
+
+    @torch.no_grad()
+    def normalize_weights(self):
+        """Keep weights positive and normalized (sum = num_tasks)."""
+        self.weights.data = torch.clamp(self.weights.data, min=1e-8)
+        self.weights.data = self.weights.data * self.num_tasks / self.weights.data.sum()
+
+    def update_weights(self, losses, shared_params):
+        """
+        Compute GradNorm loss and update task weights.
+        Arguments:
+            losses: list of per-task scalar losses (torch.Tensors)
+            shared_params: iterable of shared model parameters (e.g., backbone)
+        Returns:
+            grad_norms (tensor): gradient norms per task
+            gradnorm_loss (float): GradNorm auxiliary loss value
+        """
+        assert len(losses) == self.num_tasks
+
+        # ---- Step 1: update EMA of losses ----
+        with torch.no_grad():
+            curr_losses = torch.tensor([l.item() for l in losses], device=self.device)
+            self.loss_ema = self.ema_beta * self.loss_ema + (1 - self.ema_beta) * curr_losses
+
+        # ---- Step 2: compute gradient norms for each task ----
+        grad_norms = []
+        for i, loss in enumerate(losses):
+            grads = torch.autograd.grad(self.weights[i] * loss, shared_params,
+                                        retain_graph=True, create_graph=False)
+            total_norm = torch.norm(torch.stack([g.norm() for g in grads if g is not None]))
+            grad_norms.append(total_norm.detach())
+
+        grad_norms = torch.stack(grad_norms)
+        mean_grad_norm = grad_norms.mean()
+
+        # ---- Step 3: compute target relative training rates ----
+        with torch.no_grad():
+            L_mean = self.loss_ema.mean()
+            loss_ratios = (self.loss_ema / (L_mean + 1e-8)) ** self.alpha
+
+        # ---- Step 4: GradNorm objective ----
+        gradnorm_loss = torch.sum(torch.abs(grad_norms - mean_grad_norm * loss_ratios))
+
+        # ---- Step 5: backprop through weights ----
+        self.opt.zero_grad()
+        gradnorm_loss.backward()
+        self.opt.step()
+        self.normalize_weights()
+
+        return grad_norms, gradnorm_loss.item()

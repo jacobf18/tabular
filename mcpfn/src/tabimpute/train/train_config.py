@@ -235,22 +235,10 @@ def build_parser():
         help="Missingness type: mcar, mar, mnar, mnar_rec_sys, mnar_panel, mnar_sequential, mnar_polarization, mnar_soft_polarization, mnar_latent_factor, mnar_positivity_violation, mnar_user_cascade, mnar_cluster_level, mnar_spatial_block, mnar_censoring, mnar_two_phase_subset, mnar_skip_logic, mnar_cold_start",
     )
     parser.add_argument(
-        "--mcar_prob",
-        type=float,
-        default=0.3,
-        help="Probability of MCAR missingness",
-    )
-    parser.add_argument(
-        "--mar_prob",
-        type=float,
-        default=0.6,
-        help="Probability of MAR missingness",
-    )
-    parser.add_argument(
-        "--mnar_prob",
-        type=float,
-        default=0.1,
-        help="Probability of MNAR missingness",
+        "--update_probs_every",
+        type=int,
+        default=50,
+        help="Update the missingness probabilities every n steps",
     )
     parser.add_argument(
         "--tabpfn_path",

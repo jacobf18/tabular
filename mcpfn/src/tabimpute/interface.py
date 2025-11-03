@@ -67,6 +67,7 @@ class ImputePFN:
         device: str = "cpu",
         nhead: int = 2,
         preprocessors: list[Preprocess] = None,
+        checkpoint_path: str = None
     ):
         self.device = device
 
@@ -77,7 +78,8 @@ class ImputePFN:
         with resources.files("tabimpute.data").joinpath("borders.pt").open("rb") as f:
             self.borders = torch.load(f, map_location=self.device)
 
-        checkpoint_path = get_model_from_huggingface()
+        if checkpoint_path is None:
+            checkpoint_path = get_model_from_huggingface()
 
         # Load model state dict
         checkpoint = torch.load(

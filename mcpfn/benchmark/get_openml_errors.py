@@ -4,31 +4,25 @@ import numpy as np
 import pandas as pd
 import torch
 from tqdm import tqdm
-import os
-
-os.environ["TABPFN_ALLOW_CPU_LARGE_DATASET"] = "1"
-
 from tabimpute.interface import ImputePFN, TabPFNImputer, TabPFNUnsupervisedModel, MCTabPFNEnsemble
+from tabimpute.prepreocess import (
+    RandomRowColumnPermutation, 
+    RandomRowPermutation, 
+    RandomColumnPermutation, 
+)
 from hyperimpute.plugins.imputers import Imputers
+from sklearn.impute import KNNImputer
+import time
 
 # Optional: ForestDiffusion (pip install ForestDiffusion)
 try:
     from ForestDiffusion import ForestDiffusionModel
     HAS_FORESTDIFFUSION = True
-except Exception:
+except ImportError:
     HAS_FORESTDIFFUSION = False
 
-from tabimpute.prepreocess import (
-    RandomRowColumnPermutation, 
-    PowerTransform, 
-    SequentialPreprocess, 
-    RandomRowPermutation, 
-    RandomColumnPermutation, 
-    StandardizeWhiten
-)
-from sklearn.impute import KNNImputer
 
-import time
+os.environ["TABPFN_ALLOW_CPU_LARGE_DATASET"] = "1"
 
 warnings.filterwarnings("ignore")
 
@@ -37,41 +31,41 @@ force_rerun = True
 # --- Choose which imputers to run ---
 imputers = set([
     "mcpfn",
-    "mcpfn_ensemble",
-    "knn",
-    "tabpfn",
-    "tabpfn_unsupervised",
-    "column_mean",
-    "softimpute",
-    "hyperimpute_ot", # Sinkhorn / Optimal Transport
-    "hyperimpute",
-    "hyperimpute_missforest",
-    "hyperimpute_ice",
-    "hyperimpute_mice",
-    # # # # # "hyperimpute_em", # doesn't work well
-    "hyperimpute_gain",
-    # # # # # # "hyperimpute_miracle",
-    "hyperimpute_miwae",
+    # "mcpfn_ensemble",
+    # "knn",
+    # "tabpfn",
+    # "tabpfn_unsupervised",
+    # "column_mean",
+    # "softimpute",
+    # "hyperimpute_ot", # Sinkhorn / Optimal Transport
+    # "hyperimpute",
+    # "hyperimpute_missforest",
+    # "hyperimpute_ice",
+    # "hyperimpute_mice",
+    # # # # # # "hyperimpute_em", # doesn't work well
+    # "hyperimpute_gain",
+    # # # # # # # "hyperimpute_miracle",
+    # "hyperimpute_miwae",
     # # # # # "forestdiffusion",
 ])
 
 patterns = {
-    # "MCAR",
-    # "MAR",
-    # "MAR_Neural",
-    # "MAR_BlockNeural",
-    # "MAR_Sequential",
-    # "MNAR",
-    # # "MAR_Diffusion",
+    "MCAR",
+    "MAR",
+    "MAR_Neural",
+    "MAR_BlockNeural",
+    "MAR_Sequential",
+    "MNAR",
+    # # # "MAR_Diffusion",
     # "MNARPanelPattern",
-    # # "MNARSequentialPattern",
+    # # # "MNARSequentialPattern",
     # "MNARPolarizationPattern",
     # "MNARSoftPolarizationPattern",
     # "MNARLatentFactorPattern",
     # # "MNARPositivityViolationPattern",
     # "MNARClusterLevelPattern",
     # "MNARTwoPhaseSubsetPattern",
-    "MNARCensoringPattern",
+    # "MNARCensoringPattern",
 }
 
 # --- Initialize classes once ---
@@ -86,14 +80,16 @@ if "mcpfn" in imputers:
     
     mcpfn = ImputePFN(
         device="cuda",
-        # checkpoint_path="/mnt/mcpfn_data/checkpoints/mixed_adaptive/step-125000.ckpt",
+        # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/mnar_fixed/step-10000.ckpt",
+        # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/mixed_mcar_mar_mnar/step-13500.ckpt",
+        checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/mixed_mcar_mar_mnar_reweighted/step-50000.ckpt",
         # checkpoint_path = "/mnt/mcpfn_data/checkpoints/mixed_nonlinear/step-7000.ckpt",
         # checkpoint_path = "/mnt/mcpfn_data/checkpoints/mar_batch_size_64/step-49900.ckpt",
-        # checkpoint_path="/mnt/mcpfn_data/checkpoints/mixed_adaptive_more_heads/step-100000.ckpt",
+        # checkpoint_path = "/mnt/mcpfn_data/checkpoints/mixed_adaptive_more_heads/step-100000.ckpt",
         nhead=2,
         preprocessors=preprocessors
     )
-    mcpfn_name = "mcpfn_mixed_adaptive"
+    mcpfn_name = "mcpfn_mixed_fixed"
     
 if "mcpfn_ensemble" in imputers:
     preprocessors = [
@@ -170,7 +166,7 @@ def run_forest_diffusion(X_missing: np.ndarray, n_t: int = 50,
 base_path = "datasets/openml"
 datasets = os.listdir(base_path)
 
-pbar = tqdm(datasets[21:])
+pbar = tqdm(datasets)
 for name in pbar:
     pbar.set_description(f"Running {name}")
     configs = os.listdir(f"{base_path}/{name}")
