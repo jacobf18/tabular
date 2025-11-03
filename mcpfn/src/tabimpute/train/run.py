@@ -4,48 +4,46 @@ import os
 import timeit
 import warnings
 
-# Set CUDA environment variables for debugging
-os.environ["TORCH_USE_CUDA_DSA"] = "1"
-os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+warnings.filterwarnings(
+    "ignore",
+)
+
 import functools
 from contextlib import nullcontext
 from typing import Optional
 
 import math
 import numpy as np
-import pickle
 import einops
-import json
 import torch
 from torch import nn
 from torch import optim
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
-from torch.multiprocessing import set_start_method
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 
 from tqdm import tqdm
 import wandb
 
-
 # from mcpfn import TabICL
-from ..model.mcpfn import MCPFN
-from ..prior.dataset import PriorDataset
-from ..prior.genload import LoadPriorDataset
-from .optim import get_scheduler
-from .train_config import build_parser
-from ..model.bar_distribution import FullSupportBarDistribution
-from ..model.encoders import torch_nanmean
-from ..model.mcpfn import TabPFNModel
-from ..prior.training_set_generation import ACTIVATION_FUNCTIONS, MissingnessPrior
+from tabimpute.model.mcpfn import MCPFN
+from tabimpute.prior.genload import LoadPriorDataset
+from tabimpute.train.optim import get_scheduler
+from tabimpute.train.train_config import build_parser
+from tabimpute.model.bar_distribution import FullSupportBarDistribution
+from tabimpute.model.encoders import torch_nanmean
+from tabimpute.prior.training_set_generation import MissingnessPrior
+
+# # Set CUDA environment variables for debugging
+# os.environ["TORCH_USE_CUDA_DSA"] = "1"
+# os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 warnings.filterwarnings(
     "ignore",
     message=".*The PyTorch API of nested tensors is in prototype stage.*",
     category=UserWarning,
 )
-
 
 class Timer:
     """Context manager for timing code execution."""
@@ -211,13 +209,13 @@ class Trainer:
             "norm_first": self.config.norm_first,
         }
 
-        model = MCPFN(encoder_path=self.config.encoder_path, nhead=6)
+        model = MCPFN(nhead=2)
         model.to(device=self.config.device)
 
-        print(f"Loading tabpfn model weights from {self.config.tabpfn_path}")
-        model.model.load_state_dict(
-            torch.load(self.config.tabpfn_path, weights_only=True)
-        )
+        # print(f"Loading tabpfn model weights from {self.config.tabpfn_path}")
+        # model.model.load_state_dict(
+        #     torch.load(self.config.tabpfn_path, weights_only=True)
+        # )
 
         # self.tabpfn_model = TabPFNModel(device=self.config.device)
 
@@ -295,16 +293,12 @@ class Trainer:
                 ),
             )
         else:
-            config = {
+            gen_config = {
                 "num_rows_low": self.config.min_seq_len,
                 "num_rows_high": self.config.max_seq_len,
                 "num_cols_low": self.config.min_features,
                 "num_cols_high": self.config.max_features,
                 "p_missing": 0.4,
-                # Mixed configs
-                "mcar_prob": self.config.mcar_prob,
-                "mar_prob": self.config.mar_prob,
-                "mnar_prob": self.config.mnar_prob,
                 # MNAR configs
                 "threshold_quantile": 0.25,
                 "n_core_items": 5,
@@ -347,28 +341,46 @@ class Trainer:
                 "cold_start_fraction": 0.3,
                 "cold_start_gamma": 0.15,
                 # MAR configs
-                "mar_config": {
+                'mar_config': {
                     "num_layers_upper": 3,
                     "hidden_lower": 1,
                     "hidden_upper": 100,
                     "activation": "relu",
-                    "N": 100,  # Row size of X (reduced for testing)
-                    "T": 50,  # Column size of X (reduced for testing)
-                    "row_neighbor_upper": 5,  # Upper bound of row neighbor (reduced for testing)
-                    "col_neighbor_upper": 5,  # Upper bound of column neighbor (reduced for testing)
+                    "N": 100, # Row size of X (reduced for testing)
+                    "T": 50, # Column size of X (reduced for testing)
+                    "row_neighbor_upper": 5, # Upper bound of row neighbor (reduced for testing)
+                    "col_neighbor_upper": 5, # Upper bound of column neighbor (reduced for testing)
                     "seed": 42,
-                    "neighbor_type": "random",
+                    "neighbor_type": "random"
                 },
+                # MAR Block configs
+                'mar_block_config': {
+                    "N": 100,
+                    "T": 50,
+                    "row_blocks": 10,
+                    "col_blocks": 10,
+                    "convolution_type": "mean"
+                },
+                # MAR Sequential Bandit configs
+                'mar_sequential_bandit_config': {
+                    'algorithm': 'epsilon_greedy',
+                    'pooling': False, 
+                    'epsilon': 0.4, 
+                    'epsilon_decay': 0.99, 
+                    'random_seed': 42
+                }
             }
             # Create data on the fly
             self.train_dataset = MissingnessPrior(
                 generator_type="latent_factor",
                 missingness_type=self.config.missingness_type,
-                config=config,
+                config=gen_config,
                 batch_size=self.config.batch_size,
                 verbose=False,
             )
             self.val_dataloader = None
+            self.probs = [1/len(self.train_dataset.missingness_inducer.patterns)] * len(self.train_dataset.missingness_inducer.patterns)
+            self.prob_names = self.train_dataset.missingness_inducer.pattern_names
         # Create dataloader for efficient loading and prefetching
         self.train_dataloader = DataLoader(
             self.train_dataset,
@@ -494,17 +506,17 @@ class Trainer:
             Filename for the checkpoint
         """
 
-        if self.ddp and self.ddp_local_rank == 0:
-            os.makedirs(self.config.checkpoint_dir, exist_ok=True)
-            checkpoint_path = os.path.join(self.config.checkpoint_dir, name)
-            checkpoint = {
-                "config": self.model_config,
-                "state_dict": self.raw_model.state_dict(),
-                "optimizer_state": self.optimizer.state_dict(),
-                "scheduler_state": self.scheduler.state_dict(),
-                "curr_step": self.curr_step,
-            }
-            torch.save(checkpoint, checkpoint_path)
+        # if self.ddp and self.ddp_local_rank == 0:
+        os.makedirs(self.config.checkpoint_dir, exist_ok=True)
+        checkpoint_path = os.path.join(self.config.checkpoint_dir, name)
+        checkpoint = {
+            "config": self.model_config,
+            "state_dict": self.raw_model.state_dict(),
+            "optimizer_state": self.optimizer.state_dict(),
+            "scheduler_state": self.scheduler.state_dict(),
+            "curr_step": self.curr_step,
+        }
+        torch.save(checkpoint, checkpoint_path)
 
     def manage_checkpoint(self):
         """
@@ -527,7 +539,8 @@ class Trainer:
                 # Consider a checkpoint temporary if its step is not divisible by save_perm_every
                 if step % self.config.save_perm_every != 0:
                     temp_checkpoints.append((step, ckpt))
-            except:
+            except Exception as e:
+                print(f"Error parsing checkpoint filenames: {e}")
                 continue  # Ignore files that don't match the format
 
         # Sort temporary checkpoints by step number (ascending)
@@ -554,39 +567,47 @@ class Trainer:
             step_progress = tqdm(
                 range(self.curr_step, self.config.max_steps), desc="Step", leave=True
             )
-            # step_progress = range(self.curr_step, self.config.max_steps)
+            # self.update_probs(batch_size=self.config.batch_size)
         else:
             step_progress = range(self.curr_step, self.config.max_steps)
+            
+        # if self.ddp:
+        #     # Use the default process group for barrier
+        #     torch.distributed.barrier()
+            
+        # Broadcast updated probabilities from master to all processes
+        # probs_tensor = torch.tensor(self.probs, device=self.config.device)
+        # torch.distributed.broadcast(probs_tensor, src=0)
+        # # self.probs = probs_tensor.cpu().tolist()
+        # self.probs = [round(prob, 3) for prob in self.probs]
+        # self.probs[0] = 1.0 - sum(self.probs[1:])
+        
+        # Update the missingness inducer probabilities on all processes
+        # self.train_dataset.missingness_inducer.probs = self.probs
 
         # train_dataloader = iter(self.train_dataloader)
-
+        
         if self.val_dataloader is not None:
             val_dataloader = iter(self.val_dataloader)
         else:
             val_dataloader = None
+            
 
         for step in step_progress:
             results = {
                 "ce": 0.0,
                 "mae": 0.0,
                 "missing_ce": 0.0,
-                "missing_mae": 0.0,
-                # "val_ce": 0.0,
-                # "val_mae": 0.0,
-                # "val_missing_ce": 0.0,
-                # "val_missing_mae": 0.0,
-                # "prior_time": 0.0,
-                # "train_time": 0.0,
-                # "lr": 0.0,
+                "missing_mae": 0.0
             }
-
+            
             # Get the next batch
             # batch = next(train_dataloader)
-            batch = self.train_dataset.get_batch(self.config.batch_size)
+            batch, pattern_weights = self.train_dataset.get_batch(self.config.batch_size)
 
             # Train the model on the batch
             with Timer() as train_timer:
-                results_batch = self.run_batch(batch, is_train=True)
+                results_batch = self.run_batch(batch, pattern_weights=pattern_weights, is_train=True)
                 results["ce"] += results_batch["ce"]
                 results["mae"] += results_batch["mae"]
                 results["missing_ce"] += results_batch["missing_ce"]
@@ -597,20 +618,13 @@ class Trainer:
             torch.cuda.empty_cache()
 
             self.curr_step = step + 1
+            
             if self.master_process:
-                # Add timing information to results
-                # results["prior_time"] += prior_time
-                # results["train_time"] += train_time
-                # results["lr"] = self.scheduler.get_last_lr()[0]
-
                 print_vals = {
-                    "ce": round(results["ce"], 3),
-                    "mae": round(results["mae"], 3),
-                    "missing_ce": round(results["missing_ce"], 3),
-                    "missing_mae": round(results["missing_mae"], 3),
-                    # 'val_ce': round(results["val_ce"], 3),
-                    # 'val_mae': round(results["val_mae"], 3),
-                    # 'val_missing_ce': round(results["val_missing_ce"], 3),
+                    'ce': round(results["ce"], 3),
+                    'mae': round(results["mae"], 3),
+                    'missing_ce': round(results["missing_ce"], 3),
+                    'missing_mae': round(results["missing_mae"], 3)
                 }
                 # Update progress bar with rounded values for cleaner display
                 if step_progress is not None:
@@ -631,7 +645,33 @@ class Trainer:
                         and self.config.max_checkpoints > 0
                     ):
                         self.manage_checkpoint()
-
+                
+            # if self.curr_step % self.config.update_probs_every == 0:
+            #     # With torch.no_grad(), update the missingness probabilities
+            #     # to upweight the missingness types that have worse loss
+            #     # and downweight the missingness types that have better loss
+            #     if self.master_process:
+            #         self.update_probs(batch_size=self.config.batch_size)
+                
+            #     # Synchronize all processes after probability update
+            #     # if self.ddp:
+            #     # Use the default process group for barrier
+            #     # torch.distributed.barrier()
+                
+            #     # Broadcast updated probabilities from master to all processes
+            #     # probs_tensor = torch.tensor(self.probs, device=self.config.device)
+            #     # torch.distributed.broadcast(probs_tensor, src=0)
+            #     # self.probs = probs_tensor.cpu().tolist()
+            #     self.probs = [round(prob, 3) for prob in self.probs]
+            #     self.probs[0] = 1.0 - sum(self.probs[1:])
+                
+            #     # Update the missingness inducer probabilities on all processes
+            #     # if hasattr(self.train_dataset.missingness_inducer, 'probs'):
+            #     self.train_dataset.missingness_inducer.probs = self.probs
+                        
+            # for i, prob_name in enumerate(self.prob_names):
+            #     results[prob_name] = self.probs[i]
+            
             # Logging to Weights & Biases
             if self.wandb_run is not None:
                 wandb.log(results, step=self.curr_step)
@@ -639,6 +679,39 @@ class Trainer:
         # Save last checkpoint
         ckpt_name = f"step-{self.curr_step}.ckpt"
         self.save_checkpoint(name=ckpt_name)
+        
+    def update_probs(self, batch_size=20):
+        """
+        Update the missingness probabilities to upweight the missingness types that have worse loss
+        and downweight the missingness types that have better loss
+        """
+        with torch.no_grad():
+            # Create a batch of datasets with fixed missingness proportions
+            pattern_losses = []
+            
+            # Store original probabilities
+            original_probs = self.train_dataset.missingness_inducer.probs
+            
+            for i, pattern in enumerate(self.train_dataset.missingness_inducer.patterns):
+                probs = [0.0] * len(self.train_dataset.missingness_inducer.patterns)
+                probs[i] = 1.0
+                
+                # Set temporary probabilities
+                self.train_dataset.missingness_inducer.probs = probs
+                
+                batch, pattern_weights = self.train_dataset.get_batch(batch_size)
+                sub_results = self.run_batch(batch, pattern_weights=pattern_weights, is_train=False)
+                pattern_losses.append(sub_results["missing_ce"])
+                
+            # Restore original probabilities
+            self.train_dataset.missingness_inducer.probs = original_probs
+            
+            # Update mixing probabilities using softmax of negative loss
+            if len(pattern_losses) > 1:  # Only update if we have multiple patterns
+                # Convert losses to probabilities using softmax of negative loss
+                negative_losses = torch.tensor([loss for loss in pattern_losses], device=self.config.device)
+                new_probs = F.softmax(negative_losses, dim=0)
+                self.probs = new_probs.cpu().tolist()
 
     def validate_micro_batch(self, micro_seq_len, micro_train_size):
         """
@@ -726,6 +799,7 @@ class Trainer:
     def run_micro_batch(
         self,
         micro_batch,
+        micro_pattern_weights,
         micro_batch_idx,
         num_micro_batches,
         is_train=True,
@@ -761,6 +835,8 @@ class Trainer:
         micro_y = micro_y.to(self.config.device)
         micro_d = micro_d.to(self.config.device)
         micro_train_size = micro_train_size.to(self.config.device)
+        
+        micro_pattern_weights = micro_pattern_weights.to(self.config.device)
 
         # Compute mean along dim=2 (last dimension), ignoring NaNs
         # mean_vals = torch.nanmean(micro_X, dim=2, keepdim=True)  # shape: [1, 2000, 1]
@@ -803,20 +879,27 @@ class Trainer:
                 pred = self.model(
                     micro_X, y_train, micro_d
                 )  # (B, test_size, max_classes)
-                pred = einops.rearrange(pred, "b t h -> t b h")
-                loss = self.bar_distribution(
-                    logits=pred, y=einops.rearrange(micro_y, "b t -> t b")
-                )
+                # pred = einops.rearrange(pred, "b t h -> t b h")
+                # loss = self.bar_distribution(
+                #     logits=pred, y=einops.rearrange(micro_y, "b t -> t b")
+                # )
+                loss = self.bar_distribution(logits=pred, y=micro_y)
+                loss = einops.rearrange(loss, "b t -> t b")
+                
                 # mean = self.bar_distribution.mean(pred)
 
                 # Get MSE loss
                 # loss = (mean - einops.rearrange(micro_y, "b t -> t b")).pow(2)
 
             # Scale loss for gradient accumulation and backpropagate
-            scaled_loss = loss.mean() / num_micro_batches
+            micro_pattern_weights = micro_pattern_weights.unsqueeze(0)
+            
+            loss = loss * micro_pattern_weights # reweight the loss by the pattern weights
+            
+            scaled_loss = (loss).mean() / num_micro_batches
             # self.scaler.scale(scaled_loss).backward()
-            missing_loss = loss[~mask_reshaped].mean() / num_micro_batches
-
+            missing_loss = (loss[~mask_reshaped]).mean() / num_micro_batches
+            
             self.scaler.scale(missing_loss).backward()
 
         else:  # val
@@ -830,10 +913,16 @@ class Trainer:
                         micro_X, y_train, micro_train_size
                     )  # (B, test_size, max_classes)
 
-                pred = einops.rearrange(pred, "b t h -> t b h")
-                loss = self.bar_distribution(
-                    logits=pred, y=einops.rearrange(micro_y, "b t -> t b")
-                )
+                # pred = einops.rearrange(pred, "b t h -> t b h")
+                # loss = self.bar_distribution(
+                #     logits=pred, y=einops.rearrange(micro_y, "b t -> t b")
+                # )
+                loss = self.bar_distribution(logits=pred, y=micro_y)
+                loss = einops.rearrange(loss, "b t -> t b")
+                
+                micro_pattern_weights = micro_pattern_weights.unsqueeze(0)
+                loss = loss * micro_pattern_weights # reweight the loss by the pattern weights
+                
                 scaled_loss = torch_nanmean(loss).mean() / num_micro_batches
                 missing_loss = (
                     torch_nanmean(loss[~mask_reshaped]).mean() / num_micro_batches
@@ -844,15 +933,19 @@ class Trainer:
             micro_results["ce"] = scaled_loss.item()
             micro_results["missing_ce"] = missing_loss.item()
             median = self.bar_distribution.median(logits=pred)
-            accuracy = (median - einops.rearrange(micro_y, "b t -> t b")).abs()  # mae
+            
+            accuracy = (median - micro_y).abs()  # mae
+            accuracy = einops.rearrange(accuracy, "b t -> t b")
+            
             micro_results["mae"] = torch_nanmean(accuracy).mean().item()
             micro_results["missing_mae"] = (
                 torch_nanmean(accuracy[~mask_reshaped]).mean().item()
             )
+            
 
         return micro_results
 
-    def run_batch(self, batch, is_train=True, is_tabpfn=False):
+    def run_batch(self, batch, pattern_weights, is_train=True, is_tabpfn=False):
         """
         Trains the model on a batch of datasets. Handles gradient accumulation by
         splitting the batch into micro-batches. Supports variable-sized datasets
@@ -892,14 +985,15 @@ class Trainer:
             torch.split(t, self.config.micro_batch_size, dim=0) for t in batch
         ]
         micro_batches = list(zip(*micro_batches))
+        micro_pattern_weights = torch.split(pattern_weights, self.config.micro_batch_size, dim=0)
 
         results = {"ce": 0.0, "mae": 0.0, "missing_ce": 0.0, "missing_mae": 0.0}
         failed_batches = 0
 
-        for idx, micro_batch in enumerate(micro_batches):
+        for idx, (micro_batch, micro_pattern_weights) in enumerate(zip(micro_batches, micro_pattern_weights)):
             try:
                 micro_results = self.run_micro_batch(
-                    micro_batch, idx, num_micro_batches, is_train, is_tabpfn
+                    micro_batch, micro_pattern_weights, idx, num_micro_batches, is_train, is_tabpfn
                 )
                 for k, v in micro_results.items():
                     results[k] += v
@@ -907,6 +1001,7 @@ class Trainer:
                 print(
                     f"Warning: OOM error in micro-batch {idx+1}/{num_micro_batches} at step {self.curr_step}. Skipping."
                 )
+                print(e)
                 torch.cuda.empty_cache()
                 failed_batches += 1
                 continue
@@ -944,26 +1039,18 @@ class Trainer:
 if __name__ == "__main__":
     parser = build_parser()
     config = parser.parse_args()
-
-    # try:
-    #     # Set the start method for subprocesses to 'spawn'
-    #     set_start_method("spawn")
-    # except RuntimeError:
-    #     pass  # Ignore the error if the context has already been set
-
-    # Create trainer and start training
-    # step_progress = tqdm(range(0,config.epochs), desc="Epoch")
+    
     trainer = Trainer(config)
-
-    # val_dataloader = iter(trainer.val_dataloader)
-
-    # for i in tqdm(range(trainer.len_val), desc="TabPFN Validation"):
-    #     batch = next(val_dataloader)
-    #     tabpfn_results_dict = trainer.run_batch(batch, is_train=False, is_tabpfn=True)
-
-    #     # output results to JSON file in the same directory as the prior data
-    #     with open(f"{trainer.config.prior_dir}/tabpfn_results_{i}.json", "w") as f:
-    #         json.dump(tabpfn_results_dict, f)
 
     trainer.curr_step = config.start_step
     trainer.train()
+    
+    # dummy_batch = (torch.randn(10, 20, 20), torch.randn(10, 20), torch.randn(10), torch.randn(10), torch.randn(10)) # (X, y, d, seq_len, train_size)
+    # dummy_batch = [t.to(trainer.config.device) for t in dummy_batch]
+    # model_output = trainer.model(dummy_batch[0], dummy_batch[1], dummy_batch[2])
+    
+    # print(model_output.shape)
+    
+    # loss = trainer.bar_distribution(logits=einops.rearrange(model_output, "b t h -> t b h"), y=einops.rearrange(dummy_batch[1], "b t -> t b"))
+    
+    # print(loss.shape)

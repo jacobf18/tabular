@@ -13,15 +13,15 @@ base_path = "datasets/openml"
 datasets = os.listdir(base_path)
 
 methods = [
-    # "softimpute", 
-    # "column_mean", 
+    "softimpute", 
+    "column_mean", 
     "hyperimpute",
     "ot_sinkhorn",
     "missforest",
-    # "ice",
-    # "mice",
-    # "gain",
-    # "miwae",
+    "ice",
+    "mice",
+    "gain",
+    "miwae",
     # "mcpfn_mixed_linear",
     # "mcpfn_mixed_random",
     # "mcpfn_mixed_linear_fixed",
@@ -31,7 +31,9 @@ methods = [
     # # "mixed_adaptive_permuted_3",
     # "mixed_perm_both_row_col",
     # "mixed_nonlinear",
-    # "mcpfn_mixed_adaptive",
+    # "mcpfn_mnar",
+    "mcpfn_mixed_fixed",
+    "mcpfn_mixed_adaptive",
     "mcpfn_ensemble",
     # "mixed_more_heads",
     # # # "mixed_perm_all_row_col_whiten",
@@ -39,8 +41,8 @@ methods = [
     # # # "mcpfn_mcar_linear",
     # "mcpfn_mar_linear",
     # "tabpfn",
-    # "tabpfn_impute",
-    # "knn",
+    "tabpfn_impute",
+    "knn",
     # "mcpfn_tabpfn_with_preprocessing",
     # "forestdiffusion",
 ]
@@ -52,7 +54,7 @@ patterns = {
     "MAR_BlockNeural",
     "MAR_Sequential",
     "MNAR",
-    # "MAR_Diffusion",
+    # # "MAR_Diffusion",
     # "MNARPanelPattern",
     # "MNARPolarizationPattern",
     # "MNARSoftPolarizationPattern",
@@ -65,6 +67,8 @@ patterns = {
 method_names = {
     "mixed_nonlinear": "TabImpute (Nonlinear FM)",
     "mcpfn_ensemble": "TabImpute+",
+    "mcpfn_mnar": "TabImpute (MNAR)",
+    "mcpfn_mixed_fixed": "TabImpute (Fixed)",
     "mcpfn_mixed_adaptive": "TabImpute",
     "mcpfn_mar_linear": "TabImpute (MCAR then MAR)",
     "mixed_more_heads": "TabImpute (More Heads)",
@@ -89,6 +93,8 @@ method_names = {
 method_colors = {
     "TabImpute+": "#2f88a8",  # Blue
     "TabImpute": "#2f88a8",  # Sea Green (distinct from GPU)
+    "TabImpute (MNAR)": "#2f88a8",  # Sea Green (distinct from GPU)
+    "TabImpute (Fixed)": "#2f88a8",  # Sea Green (distinct from GPU)
     "HyperImpute": "#ff7f0e",  # Orange
     "MissForest": "#2ca02c",   # Green
     "OT": "#591942",           # Red
@@ -138,7 +144,7 @@ for dataset in datasets:
             
 df = pd.Series(negative_rmse).unstack()
 
-plot_pattern = False
+plot_pattern = True
 
 # Plot for all patterns combined
 # Get dataframe for all patterns
@@ -169,10 +175,12 @@ if plot_pattern:
             data=df_long,
             x="method",
             y="score",
+            hue="method",
             order=sorted_methods,
             palette=method_colors,   # <- consistent colors
             capsize=0.2,
             err_kws={"color": "#999999"},
+            legend=False
         )
         
         # Remove x-axis labels
@@ -210,10 +218,12 @@ if plot_pattern:
         data=df_long,
         x="method",
         y="score",
+        hue="method",
         order=sorted_methods_all,
         palette=method_colors,   # <- consistent colors
         capsize=0.2,
         err_kws={"color": "#999999"},
+        legend=False
     )
 
     # Remove x-axis labels
@@ -236,8 +246,10 @@ if plot_pattern:
     
     fig.subplots_adjust(left=0.2, right=0.95, bottom=0.05, top=0.95)
     
-    plt.savefig(f"figures/negative_rmse_overall.pdf", dpi=300, bbox_inches=None)
+    plt.savefig(f"figures/negative_rmse_overall.png", dpi=300, bbox_inches=None)
     plt.close()
+    
+exit()
 # Generate LaTeX table for normalized negative RMSE
 print("Creating LaTeX table for normalized negative RMSE...")
 

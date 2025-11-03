@@ -4,11 +4,11 @@
 echo "Training model"
 
 # Set the save directory as an environment variable
-BASE_DIR="/root/checkpoints"
-# PRIOR_DIR="/mnt/volume_tor1_1754506427528/data"
-CHECKPOINT_DIR="${BASE_DIR}/mixed_tabpfn"
+CHECKPOINT_NAME="mixed_mcar_mar_mnar_reweighted"
+BASE_DIR="/home/jacobf18/mcpfn_data/checkpoints"
+CHECKPOINT_DIR="${BASE_DIR}/${CHECKPOINT_NAME}"
 
-IF_SAVE=False
+IF_SAVE=True
 if [ "$IF_SAVE" = True ]; then
     mkdir -p ${CHECKPOINT_DIR}
     # Create a unique id for the checkpoint in a wand_id.txt file
@@ -17,20 +17,20 @@ if [ "$IF_SAVE" = True ]; then
     # WAND_ID="wand1756777415eslpdsOhvq"
     echo ${WAND_ID} > ${CHECKPOINT_DIR}/wand_id.txt
 fi
-# python3 /root/tabular/mcpfn/src/mcpfn/train/run.py \
-python3 -m torch.distributed.run --nproc_per_node=1 /root/tabular/mcpfn/src/mcpfn/train/run.py \
+# python3 -m torch.distributed.run --nproc_per_node=1 /root/tabular/mcpfn/src/mcpfn/train/run.py \
+python /home/jacobf18/tabular/mcpfn/src/tabimpute/train/run.py \
             --wandb_log ${IF_SAVE} \
             --wandb_project MCPFN \
-            --wandb_name mixed_tabpfn \
-            --wandb_dir /root/tabular/mcpfn/wandb \
+            --wandb_name ${CHECKPOINT_NAME} \
+            --wandb_dir /home/jacobf18/tabular/mcpfn/wandb \
             --wandb_mode online \
             --device cuda \
             --dtype float32 \
             --np_seed 42 \
             --torch_seed 42 \
             --max_steps 50000 \
-            --start_step 0 \
-            --batch_size 128 \
+            --start_step 19001 \
+            --batch_size 64 \
             --micro_batch_size 16 \
             --lr ${1} \
             --scheduler cosine_warmup \
@@ -39,9 +39,6 @@ python3 -m torch.distributed.run --nproc_per_node=1 /root/tabular/mcpfn/src/mcpf
             --load_prior_start 0 \
             --delete_after_load False \
             --prior_device cpu \
-            --mcar_prob 0.7 \
-            --mar_prob 0.15 \
-            --mnar_prob 0.15 \
             --embed_dim 128 \
             --col_num_blocks 3 \
             --col_nhead 4 \
@@ -55,18 +52,19 @@ python3 -m torch.distributed.run --nproc_per_node=1 /root/tabular/mcpfn/src/mcpf
             --ff_factor 2 \
             --norm_first True \
             --checkpoint_dir ${CHECKPOINT_DIR} \
-            --save_temp_every 1000 \
-            --save_perm_every 10000 \
-            --encoder_path /root/tabular/mcpfn/src/mcpfn/model/encoder.pth \
-            --borders_path /root/tabular/mcpfn/borders.pt \
-            --tabpfn_path /root/tabular/mcpfn/src/mcpfn/model/tabpfn_model.pt \
+            --save_temp_every 500 \
+            --save_perm_every 5000 \
+            --encoder_path /home/jacobf18/tabular/mcpfn/src/tabimpute/data/encoder.pth \
+            --borders_path /home/jacobf18/tabular/mcpfn/src/tabimpute/data/borders.pt \
+            --tabpfn_path /home/jacobf18/tabular/mcpfn/src/tabimpute/model/tabpfn_model.pt \
             --model_name ${1}.ckpt \
             --save_every 15 \
             --min_seq_len 5 \
             --max_seq_len 30 \
             --min_features 5 \
             --max_features 30 \
-            --missingness_type mcar
-            # --checkpoint_path /root/checkpoints/checkpoints/mixed_random_2/step-101000.ckpt
+            --missingness_type mixed \
+            --update_probs_every 100 \
+            --checkpoint_path /home/jacobf18/mcpfn_data/checkpoints/${CHECKPOINT_NAME}/step-19000.ckpt
             # --prior_dir ${PRIOR_DIR} \
             

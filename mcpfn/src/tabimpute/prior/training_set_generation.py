@@ -9,9 +9,7 @@ Original file is located at
 
 import numpy as np
 import pandas as pd
-import xgboost as xgb
-import networkx as nx
-from scipy.stats import expon, beta
+from scipy.stats import beta
 from scipy.interpolate import CubicSpline
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.gaussian_process import GaussianProcessRegressor
@@ -20,25 +18,19 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 from torch.utils.data import IterableDataset
-from typing import Optional, Tuple, Dict
+from typing import Optional, Tuple
 import warnings
 from pathlib import Path
 from tqdm import tqdm
-from ..model.encoders import normalize_data
-from .scm_prior import SCMPrior
-from .utils import DisablePrinting
+from tabimpute.model.encoders import normalize_data
+from tabimpute.prior.scm_prior import SCMPrior
 import copy
-from .mar_missing import MAR_missingness
-from .mar_onesided_missing import MAR_onesided_missingness
-from .mar_block_missing import MAR_block_missingness
-from .mar_sequential_missing import UnifiedBandit
-from ..diffusion.mar_diffusion_row10_30_col10_30_mar0_3_marblock0_3_marbandit0_4_epoch100_bs32_samples30k_lr1e_3 import (
+from tabimpute.prior.mar_missing import MAR_missingness
+from tabimpute.prior.mar_onesided_missing import MAR_onesided_missingness
+from tabimpute.prior.mar_block_missing import MAR_block_missingness
+from tabimpute.prior.mar_sequential_missing import UnifiedBandit
+from tabimpute.diffusion.mar_diffusion_row10_30_col10_30_mar0_3_marblock0_3_marbandit0_4_epoch100_bs32_samples30k_lr1e_3 import (
     MARDiffusionModel,
-    FlexibleConvBlock,
-    FlexibleUpBlock,
-    ConvolutionalSelfAttention,
-    FullyConvolutionalX0Model,
-    D3PM,
     mar_diffusion_config,
 )
 
@@ -1181,26 +1173,38 @@ class MixedPattern(BaseMissingness):
     Induces missingness by randomly selcting a type of missingness pattern and then inducing missingness based on that pattern.
     This randomness is controlled by the config parameters 'mcar_prob', 'mar_prob', and 'mnar_prob'.
     """
-
     def __init__(self, config: dict):
         self.patterns = [
             MCARPattern(config),
-            MARNeuralNetwork(config),
+            # MARNeuralNetwork(config),
             MNARPattern(config),
+            # MARSequentialBandit(config),
+            # MARBlockNeuralNetwork(config),
+            MARPattern(config)
         ]
-        self.mcar_prob = config.get("mcar_prob", 0.5)
-        self.mar_prob = config.get("mar_prob", 0.25)
-        self.mnar_prob = config.get("mnar_prob", 0.25)
-
+        self.pattern_names = [
+            "mcar",
+            # "mar_neural",
+            "mnar",
+            # "mar_sequential",
+            # "mar_block",
+            "mar"
+        ]
+        self.weights = {
+            "mcar": 1.0,
+            "mnar": 0.02,
+            "mar": 1.0,
+        }
+        self.probs = [1/len(self.patterns)] * len(self.patterns) # uniformly mix all patterns
+        
         # check that the probabilities sum to 1
-        if np.abs(self.mcar_prob + self.mar_prob + self.mnar_prob - 1) > 1e-6:
-            raise ValueError("The sum of the probabilities must be 1")
-
+        if np.abs(sum(self.probs) - 1) > 1e-6:
+            raise ValueError('The sum of the probabilities must be 1')
+        
     def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
-        pattern = np.random.choice(
-            self.patterns, p=np.array([self.mcar_prob, self.mar_prob, self.mnar_prob])
-        )
-        return pattern._induce_missingness(X)
+        ind = np.random.choice(len(self.patterns), p=np.array(self.probs))
+        pattern = self.patterns[ind]
+        return pattern._induce_missingness(X), self.pattern_names[ind]
 
 
 # Main class
@@ -1312,7 +1316,8 @@ class MissingnessPrior(IterableDataset):
             )  # Ensure rank is not too high
 
             self.generator = self.generator_map[self.generator_type](new_config)
-
+            
+        pattern_weights = []
         while step < self.batch_size:
             # for i in tqdm(range(self.batch_size), desc="Generating batches"):
             # try:
@@ -1324,12 +1329,18 @@ class MissingnessPrior(IterableDataset):
                 complete_df = self.generator.generate_complete_matrix()
                 X = torch.tensor(complete_df.values, dtype=torch.float32)
 
-            # Normalize the data
-            X = torch.squeeze(normalize_data(torch.unsqueeze(X, 1)), 1)
-
             if X.numel() == 0:  # if the matrix is empty, skip
                 continue
-            X_missing = self.missingness_inducer._induce_missingness(X.clone())
+            X_missing, pattern_name = self.missingness_inducer._induce_missingness(X.clone())
+            pattern_weights.append(self.missingness_inducer.weights[pattern_name])
+            # Normalize the data after missingness is induced
+            # Use mean and std from observed values only
+            X_missing_normalized, (mean, std) = normalize_data(
+                torch.unsqueeze(X_missing, 1), return_scaling=True
+            )
+            X_missing = torch.squeeze(X_missing_normalized, 1)
+            X = torch.squeeze(normalize_data(torch.unsqueeze(X, 1), mean=mean, std=std), 1)
+            
             train_X, train_y, test_X, test_y = create_train_test_sets(
                 X_missing, X_full=X
             )
@@ -1356,7 +1367,7 @@ class MissingnessPrior(IterableDataset):
             [len(y) for y in y_list], device=self.device, dtype=torch.long
         )
         # train sizes is the part that is different
-        return X_full, y_full, d, seq_lens, train_sizes
+        return (X_full, y_full, d, seq_lens, train_sizes), torch.tensor(pattern_weights, device=self.device)
 
     @torch.no_grad()
     def get_pair(self, batch_size: Optional[int] = None):
@@ -1380,12 +1391,18 @@ class MissingnessPrior(IterableDataset):
                 complete_df = self.generator.generate_complete_matrix()
                 X = torch.tensor(complete_df.values, dtype=torch.float32)
 
-            # Normalize the data
-            X = torch.squeeze(normalize_data(torch.unsqueeze(X, 1)), 1)
-
             if X.numel() == 0:  # if the matrix is empty, skip
                 continue
             X_missing = self.missingness_inducer._induce_missingness(X.clone())
+            
+            # Normalize the data after missingness is induced
+            # Use mean and std from observed values only
+            X_missing_normalized, (mean, std) = normalize_data(
+                torch.unsqueeze(X_missing, 1), return_scaling=True
+            )
+            X_missing = torch.squeeze(X_missing_normalized, 1)
+            X = torch.squeeze(normalize_data(torch.unsqueeze(X, 1), mean=mean, std=std), 1)
+            
             masking = torch.logical_not(torch.isnan(X_missing)).float()
             X_list.append(X)
             masking_list.append(masking)
@@ -1491,41 +1508,24 @@ if __name__ == "__main__":
         verbose=False,
     )
 
-    # X_full, y_full, d, seq_lens, train_sizes = prior.get_batch()
+    X_full, y_full, d, seq_lens, train_sizes = prior.get_batch()
+    
+    print(X_full.shape, y_full.shape, d.shape, seq_lens.shape, train_sizes.shape)
 
-    mcpfn_errors = []
-    tabpfn_errors = []
+    # mcpfn_errors = []
+    # tabpfn_errors = []
 
-    import os
-    from mcpfn.interface import ImputePFN
+    # import os
+    # from tabimpute.interface import ImputePFN
 
-    for _ in tqdm(range(50)):
-        X, X_missing = prior.get_batch()
+    # imputer = ImputePFN(
+    #     device="cuda",
+    # )
 
-        os.environ["OMP_NUM_THREADS"] = "1"
-        os.environ["TABPFN_ALLOW_CPU_LARGE_DATASET"] = "1"
+    # X_missing_np = X_missing.numpy()
+    # X_np = X.numpy()
+    # imputed_X = imputer.impute(X_missing_np)
+    # missing_inds = np.where(np.isnan(X_missing_np))
+    # mcpfn_errors.append(np.abs(X_np[missing_inds] - imputed_X[missing_inds]).mean())
 
-        imputer = ImputePFN(
-            device="cpu",
-            encoder_path="/Users/jfeit/tabular/mcpfn/src/mcpfn/model/encoder.pth",
-            borders_path="/Users/jfeit/tabular/mcpfn/borders.pt",
-            checkpoint_path="/Users/jfeit/Downloads/small_data.ckpt",
-        )
-
-        X_missing_np = X_missing.numpy()
-        X_np = X.numpy()
-        imputed_X = imputer.impute(X_missing_np)
-        missing_inds = np.where(np.isnan(X_missing_np))
-        # print(f'Max: {X_np[missing_inds].max():.2f}, Min: {X_np[missing_inds].min():.2f}, Std: {X_np[missing_inds].std():.2f}')
-        # print(np.abs(X_np[missing_inds] - imputed_X[missing_inds]).mean())
-        mcpfn_errors.append(np.abs(X_np[missing_inds] - imputed_X[missing_inds]).mean())
-
-        train_X, train_y, test_X, test_y = create_train_test_sets(X_missing, X_full=X)
-
-    import pickle
-
-    # save errors to pickle
-    with open("mcpfn_errors.pkl", "wb") as f:
-        pickle.dump(mcpfn_errors, f)
-    with open("tabpfn_errors.pkl", "wb") as f:
-        pickle.dump(tabpfn_errors, f)
+    # train_X, train_y, test_X, test_y = create_train_test_sets(X_missing, X_full=X)
