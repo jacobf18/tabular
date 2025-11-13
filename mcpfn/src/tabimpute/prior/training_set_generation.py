@@ -1331,8 +1331,9 @@ class MissingnessPrior(IterableDataset):
 
             if X.numel() == 0:  # if the matrix is empty, skip
                 continue
-            X_missing, pattern_name = self.missingness_inducer._induce_missingness(X.clone())
-            pattern_weights.append(self.missingness_inducer.weights[pattern_name])
+            X_missing = self.missingness_inducer._induce_missingness(X.clone())
+            # pattern_weights.append(self.missingness_inducer.weights[pattern_name])
+            pattern_weights.append(1.0)
             # Normalize the data after missingness is induced
             # Use mean and std from observed values only
             X_missing_normalized, (mean, std) = normalize_data(

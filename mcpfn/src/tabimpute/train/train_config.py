@@ -101,6 +101,12 @@ def build_parser():
         "--gradient_clipping", type=float, default=1.0, help="If > 0, clip gradients."
     )
     parser.add_argument(
+        "--task_loss_ema_decay",
+        type=float,
+        default=0.99,
+        help="Exponential moving average decay factor for task loss normalization (0-1). Higher values give more weight to historical losses.",
+    )
+    parser.add_argument(
         "--weight_decay",
         type=float,
         default=0,

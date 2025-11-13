@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import torch
 from tqdm import tqdm
-from tabimpute.interface import ImputePFN, TabPFNImputer, TabPFNUnsupervisedModel, MCTabPFNEnsemble
+from tabimpute.interface import ImputePFN, TabPFNImputer, TabPFNUnsupervisedModel, MCTabPFNEnsemble, TabImputeEnsemble, TabImputeRouter
 from tabimpute.prepreocess import (
     RandomRowColumnPermutation, 
     RandomRowPermutation, 
@@ -30,8 +30,9 @@ force_rerun = True
 
 # --- Choose which imputers to run ---
 imputers = set([
-    "mcpfn",
+    # "mcpfn",
     # "mcpfn_ensemble",
+    "tabimpute_ensemble",
     # "knn",
     # "tabpfn",
     # "tabpfn_unsupervised",
@@ -52,20 +53,17 @@ imputers = set([
 patterns = {
     "MCAR",
     "MAR",
+    "MNAR",
     "MAR_Neural",
     "MAR_BlockNeural",
     "MAR_Sequential",
-    "MNAR",
-    # # # "MAR_Diffusion",
-    # "MNARPanelPattern",
-    # # # "MNARSequentialPattern",
-    # "MNARPolarizationPattern",
-    # "MNARSoftPolarizationPattern",
-    # "MNARLatentFactorPattern",
-    # # "MNARPositivityViolationPattern",
-    # "MNARClusterLevelPattern",
-    # "MNARTwoPhaseSubsetPattern",
-    # "MNARCensoringPattern",
+    "MNARPanelPattern",
+    "MNARPolarizationPattern",
+    "MNARSoftPolarizationPattern",
+    "MNARLatentFactorPattern",
+    "MNARClusterLevelPattern",
+    "MNARTwoPhaseSubsetPattern",
+    "MNARCensoringPattern",
 }
 
 # --- Initialize classes once ---
@@ -82,14 +80,33 @@ if "mcpfn" in imputers:
         device="cuda",
         # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/mnar_fixed/step-10000.ckpt",
         # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/mixed_mcar_mar_mnar/step-13500.ckpt",
-        checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/mixed_mcar_mar_mnar_reweighted/step-50000.ckpt",
+        # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/mixed_mcar_mar_mnar_reweighted_zscore/step-85000.ckpt",
+        # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/mixed_mcar_mar_mnar_gradnorm/step-41000.ckpt",
+        # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/masters/mcar/step-40000.ckpt",
+        # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/masters/mar/step-40000.ckpt",
+        checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/masters/mnar/step-40000.ckpt",
         # checkpoint_path = "/mnt/mcpfn_data/checkpoints/mixed_nonlinear/step-7000.ckpt",
         # checkpoint_path = "/mnt/mcpfn_data/checkpoints/mar_batch_size_64/step-49900.ckpt",
         # checkpoint_path = "/mnt/mcpfn_data/checkpoints/mixed_adaptive_more_heads/step-100000.ckpt",
         nhead=2,
         preprocessors=preprocessors
     )
-    mcpfn_name = "mcpfn_mixed_fixed"
+    mcpfn_name = "masters_mnar"
+    
+if "tabimpute_ensemble" in imputers:
+    preprocessors = [
+        RandomRowColumnPermutation(),
+        RandomRowColumnPermutation(),
+        RandomRowPermutation(),
+        RandomColumnPermutation(),
+        # StandardizeWhiten(whiten=True),
+    ]
+    tabimpute_ensemble = TabImputeRouter(device="cuda", preprocessors=preprocessors, checkpoint_paths=[
+        "/home/jacobf18/mcpfn_data/checkpoints/masters/mcar/step-60000.ckpt",
+        "/home/jacobf18/mcpfn_data/checkpoints/masters/mar/step-60000.ckpt",
+        "/home/jacobf18/mcpfn_data/checkpoints/masters/mnar/step-60000.ckpt",
+    ], nhead=2)
+    mcpfn_name = "tabimpute_ensemble_router"
     
 if "mcpfn_ensemble" in imputers:
     preprocessors = [
@@ -230,6 +247,18 @@ for name in pbar:
                 np.save(out_path, X_mcpfn_ensemble)
                 # save the imputation time
                 with open(f"{cfg_dir}/mcpfn_ensemble_cpu_imputation_time.txt", "a") as f:
+                    f.write(f"{end_time - start_time}\n")
+
+        if "tabimpute_ensemble" in imputers:
+            out_path = f"{cfg_dir}/tabimpute_ensemble.npy"
+            if not os.path.exists(out_path) or force_rerun:
+                start_time = time.time()
+                X_tabimpute_ensemble = tabimpute_ensemble.impute(X_missing.copy())
+                end_time = time.time()
+                print(f"TabImpute Ensemble imputation time: {end_time - start_time} seconds")
+                np.save(out_path, X_tabimpute_ensemble)
+                # save the imputation time
+                with open(f"{cfg_dir}/tabimpute_ensemble_imputation_time.txt", "a") as f:
                     f.write(f"{end_time - start_time}\n")
 
         # --- TabPFN ---

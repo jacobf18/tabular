@@ -4,18 +4,18 @@
 echo "Training model"
 
 # Set the save directory as an environment variable
-CHECKPOINT_NAME="masters/mcar"
+CHECKPOINT_NAME="masters/mar"
 BASE_DIR="/home/jacobf18/mcpfn_data/checkpoints"
 CHECKPOINT_DIR="${BASE_DIR}/${CHECKPOINT_NAME}"
 
-IF_SAVE=False
+IF_SAVE=True
 if [ "$IF_SAVE" = True ]; then
     mkdir -p ${CHECKPOINT_DIR}
     # Create a unique id for the checkpoint in a wand_id.txt file
     RANDOM_ID=$(cat /dev/random | tr -dc '[:alnum:]' | head -c 10)
-    WAND_ID=wand$(date +%s)${RANDOM_ID}
-    # WAND_ID="wand1756777415eslpdsOhvq"
-    echo ${WAND_ID} > ${CHECKPOINT_DIR}/wand_id.txt
+    # WAND_ID=wand$(date +%s)${RANDOM_ID}
+    WAND_ID="wand17628061231FOiqSPIbZ"
+    # echo ${WAND_ID} > ${CHECKPOINT_DIR}/wand_id.txt
 fi
 # python3 -m torch.distributed.run --nproc_per_node=1 /root/tabular/mcpfn/src/mcpfn/train/run.py \
 python /home/jacobf18/tabular/mcpfn/src/tabimpute/train/run.py \
@@ -28,8 +28,8 @@ python /home/jacobf18/tabular/mcpfn/src/tabimpute/train/run.py \
             --dtype float32 \
             --np_seed 42 \
             --torch_seed 42 \
-            --max_steps 20000 \
-            --start_step 0 \
+            --max_steps 60000 \
+            --start_step 40001 \
             --batch_size 16 \
             --micro_batch_size 16 \
             --lr ${1} \
@@ -63,8 +63,8 @@ python /home/jacobf18/tabular/mcpfn/src/tabimpute/train/run.py \
             --max_seq_len 30 \
             --min_features 5 \
             --max_features 30 \
-            --missingness_type mixed \
-            --update_probs_every 50
-            # --checkpoint_path /home/jacobf18/mcpfn_data/checkpoints/${CHECKPOINT_NAME}/step-38000.ckpt
+            --missingness_type mar \
+            --update_probs_every 50 \
+            --checkpoint_path /home/jacobf18/mcpfn_data/checkpoints/${CHECKPOINT_NAME}/step-40000.ckpt
             # --prior_dir ${PRIOR_DIR} \
             
