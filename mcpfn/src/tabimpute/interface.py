@@ -22,6 +22,7 @@ from sklearn.linear_model import LinearRegression
 from tabpfn_extensions import TabPFNClassifier, TabPFNRegressor, unsupervised
 import importlib.resources as resources
 from huggingface_hub import hf_hub_download
+from scipy.optimize import minimize
 
 
 def get_model_from_huggingface() -> str:
@@ -73,6 +74,8 @@ class ImputePFN:
 
         # Build model
         self.model = MCPFN(nhead=nhead).to(self.device)
+        self.model.eval()
+        torch.compile(self.model)
 
         # Load borders tensor for outputting continuous values
         with resources.files("tabimpute.data").joinpath("borders.pt").open("rb") as f:
@@ -271,7 +274,6 @@ class MCTabPFNEnsemble:
 
     def impute(self, X):
         missing_mask = np.isnan(X)
-        y_missing = X[missing_mask]
         y_observed = X[~missing_mask]
 
         X_tabpfn, X_full_tabpfn = self.tabpfn_imputer.impute(X, return_full=True)
@@ -304,6 +306,116 @@ class MCTabPFNEnsemble:
         w = numerator / denominator
         w = np.clip(w, 0, 1)  # enforce nonnegativity and sum-to-1
         return w, 1 - w
+    
+class TabImputeRouter:
+    def __init__(
+        self,
+        device: str = "cpu",
+        nhead: int = 2,
+        preprocessors: list[Preprocess] = None,
+        checkpoint_paths: list[str] = None,
+    ):
+        self.tabimpute_models = [
+            ImputePFN(device=device, nhead=nhead, preprocessors=preprocessors, checkpoint_path=checkpoint_path) for checkpoint_path in checkpoint_paths
+        ]
+        self.routing_models = [
+            ImputePFN(device=device, nhead=nhead, preprocessors=None, checkpoint_path=checkpoint_path) for checkpoint_path in checkpoint_paths
+        ]
+        self.device = device
+
+    def impute(self, X):
+        missing_mask = np.isnan(X)
+        y_observed = X[~missing_mask]
+        
+        X_full_list = []
+        X_imputed_list = []
+        best_model_mse = float('inf')
+        best_model_index = None
+        for i, model in enumerate(self.routing_models):
+            X_imputed, X_full = model.impute(X.copy(), return_full=True)
+            X_full_list.append(X_full)
+            X_imputed_list.append(X_imputed)
+            mse = np.mean((X_full[~missing_mask] - y_observed) ** 2)
+            if mse < best_model_mse:
+                best_model_mse = mse
+                best_model_index = i
+                
+        # Calculate the imputation for the best model
+        X_imputed = self.tabimpute_models[best_model_index].impute(X.copy())
+        
+        X[missing_mask] = X_imputed[missing_mask]
+        
+        return X
+    
+class TabImputeEnsemble:
+    def __init__(
+        self,
+        device: str = "cpu",
+        nhead: int = 2,
+        preprocessors: list[Preprocess] = None,
+        checkpoint_paths: list[str] = None,
+    ):
+        self.tabimpute_models = [
+            ImputePFN(device=device, nhead=nhead, preprocessors=preprocessors, checkpoint_path=checkpoint_path) for checkpoint_path in checkpoint_paths
+        ]
+        self.device = device
+
+    def impute(self, X):
+        missing_mask = np.isnan(X)
+        y_observed = X[~missing_mask]
+        
+        X_full_list = []
+        X_imputed_list = []
+        for model in self.tabimpute_models:
+            X_imputed, X_full = model.impute(X.copy(), return_full=True)
+            X_full_list.append(X_full)
+            X_imputed_list.append(X_imputed)
+        
+        # Create list of prediction values
+        y_pred_list = [X_full[~missing_mask] for X_full in X_full_list]
+        
+        w_optimal = self.find_optimal_weights(y_pred_list, y_observed)
+        
+        # Impute the missing values as a weighted sum of the imputed values
+        imputed_vals = np.zeros_like(X[missing_mask])
+        
+        for i, X_imputed in enumerate(X_imputed_list):
+            imputed_vals += w_optimal[i] * X_imputed[missing_mask]
+            
+        X[missing_mask] = imputed_vals
+        
+        return X
+
+    def find_optimal_weights(self, x_list: list[np.ndarray], y: np.ndarray):
+        """
+        Find optimal nonnegative weights that sum to 1 and minimize
+        the squared distance between the weighted sum of x_list and target y.
+        
+        Args:
+            x_list: list of numpy arrays (each shape (n,))
+            y: numpy array of shape (n,)
+        
+        Returns:
+            w_opt: numpy array of optimal weights (shape (m,))
+        """
+        m = len(x_list)
+        X = np.column_stack(x_list)  # shape: (n, m)
+
+        # # Objective: ||Xw - y||^2
+        # def objective(w):
+        #     return np.sum((X @ w - y)**2)
+
+        # # Constraints: sum(w) = 1, w >= 0
+        # constraints = [{'type': 'eq', 'fun': lambda w: np.sum(w) - 1}]
+        # bounds = [(0, None)] * m
+        # w0 = np.ones(m) / m
+
+        # Solve using SLSQP
+        # result = minimize(objective, w0, bounds=bounds, constraints=constraints)
+        # return result.x
+        reg = LinearRegression(fit_intercept=False).fit(X, y)
+        
+        return reg.coef_
 
 
 # How to use:

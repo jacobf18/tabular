@@ -32,15 +32,20 @@ methods = [
     # "mixed_perm_both_row_col",
     # "mixed_nonlinear",
     # "mcpfn_mnar",
-    "mcpfn_mixed_fixed",
+    # "mcpfn_mixed_fixed",
     "mcpfn_mixed_adaptive",
     "mcpfn_ensemble",
+    "masters_mcar",
+    "masters_mar",
+    "masters_mnar",
+    "tabimpute_ensemble",
+    "tabimpute_ensemble_router",
     # "mixed_more_heads",
     # # # "mixed_perm_all_row_col_whiten",
     # # # "mixed_adaptive_row_column_permutation_8",
     # # # "mcpfn_mcar_linear",
     # "mcpfn_mar_linear",
-    # "tabpfn",
+    "tabpfn",
     "tabpfn_impute",
     "knn",
     # "mcpfn_tabpfn_with_preprocessing",
@@ -50,11 +55,10 @@ methods = [
 patterns = {
     "MCAR",
     "MAR",
-    "MAR_Neural",
-    "MAR_BlockNeural",
-    "MAR_Sequential",
     "MNAR",
-    # # "MAR_Diffusion",
+    # "MAR_Neural",
+    # "MAR_BlockNeural",
+    # "MAR_Sequential",
     # "MNARPanelPattern",
     # "MNARPolarizationPattern",
     # "MNARSoftPolarizationPattern",
@@ -69,6 +73,11 @@ method_names = {
     "mcpfn_ensemble": "TabImpute+",
     "mcpfn_mnar": "TabImpute (MNAR)",
     "mcpfn_mixed_fixed": "TabImpute (Fixed)",
+    "masters_mcar": "TabImpute (MCAR)",
+    "masters_mar": "TabImpute (MAR)",
+    "masters_mnar": "TabImpute (MNAR)",
+    "tabimpute_ensemble": "TabImpute Ensemble",
+    "tabimpute_ensemble_router": "TabImpute Router",
     "mcpfn_mixed_adaptive": "TabImpute",
     "mcpfn_mar_linear": "TabImpute (MCAR then MAR)",
     "mixed_more_heads": "TabImpute (More Heads)",
@@ -93,8 +102,14 @@ method_names = {
 method_colors = {
     "TabImpute+": "#2f88a8",  # Blue
     "TabImpute": "#2f88a8",  # Sea Green (distinct from GPU)
+    "TabImpute Ensemble": "#2f88a8",  # Sea Green (distinct from GPU)
     "TabImpute (MNAR)": "#2f88a8",  # Sea Green (distinct from GPU)
     "TabImpute (Fixed)": "#2f88a8",  # Sea Green (distinct from GPU)
+    "TabImpute (MCAR)": "#2f88a8",  # Sea Green (distinct from GPU)
+    "TabImpute (MAR)": "#2f88a8",  # Sea Green (distinct from GPU)
+    "TabImpute (MNAR)": "#2f88a8",  # Sea Green (distinct from GPU)
+    "TabImpute Router": "#2f88a8",  # Sea Green (distinct from GPU)
+    "EWF-TabPFN": "#3e3b6e",  # 
     "HyperImpute": "#ff7f0e",  # Orange
     "MissForest": "#2ca02c",   # Green
     "OT": "#591942",           # Red

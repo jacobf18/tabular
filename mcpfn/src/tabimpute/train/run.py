@@ -29,7 +29,7 @@ import wandb
 # from mcpfn import TabICL
 from tabimpute.model.mcpfn import MCPFN
 from tabimpute.prior.genload import LoadPriorDataset
-from tabimpute.train.optim import get_scheduler
+from tabimpute.train.optim import get_scheduler, SharedGradNormWeighterEMA
 from tabimpute.train.train_config import build_parser
 from tabimpute.model.bar_distribution import FullSupportBarDistribution
 from tabimpute.model.encoders import torch_nanmean
@@ -100,8 +100,7 @@ class Trainer:
         self.configure_prior(self.config.prior_dir)
         self.configure_optimizer()
         self.configure_amp()
-        self.load_checkpoint()
-
+        
         borders = torch.load(self.config.borders_path).to(self.config.device)
         self.bar_distribution = FullSupportBarDistribution(borders=borders)
 
@@ -109,6 +108,17 @@ class Trainer:
 
         self.len_train = 8
         self.len_val = 2
+        
+        # Initialize running statistics trackers for task loss normalization
+        # Uses exponentially weighted mean and variance (similar to EMA but handles negative values)
+        # Default to 3 tasks: mcar, mar, mnar
+        # num_tasks = len(self.train_dataset.missingness_inducer.patterns) if hasattr(self.train_dataset, 'missingness_inducer') else 3
+        # self.task_loss_ema_decay = getattr(self.config, 'task_loss_ema_decay', 0.99)
+        # self.task_loss_means = torch.zeros(num_tasks, device=self.config.device, requires_grad=False)
+        # self.task_loss_vars = torch.ones(num_tasks, device=self.config.device, requires_grad=False)  # Initialize to 1 to avoid division issues
+        # self.task_loss_initialized = torch.zeros(num_tasks, dtype=torch.bool, device=self.config.device)
+        
+        self.load_checkpoint()
 
     def configure_ddp(self):
         """Set up distributed training and system configuration.
@@ -379,8 +389,8 @@ class Trainer:
                 verbose=False,
             )
             self.val_dataloader = None
-            self.probs = [1/len(self.train_dataset.missingness_inducer.patterns)] * len(self.train_dataset.missingness_inducer.patterns)
-            self.prob_names = self.train_dataset.missingness_inducer.pattern_names
+            # self.probs = [1/len(self.train_dataset.missingness_inducer.patterns)] * len(self.train_dataset.missingness_inducer.patterns)
+            # self.prob_names = self.train_dataset.missingness_inducer.pattern_names
         # Create dataloader for efficient loading and prefetching
         self.train_dataloader = DataLoader(
             self.train_dataset,
@@ -403,6 +413,15 @@ class Trainer:
             weight_decay=self.config.weight_decay,
         )
         self.scheduler = get_scheduler(config=self.config, optimizer=self.optimizer)
+        
+        # # initialize once
+        # self.weighter = SharedGradNormWeighterEMA(
+        #     num_tasks=len(self.train_dataset.missingness_inducer.patterns),
+        #     alpha=0.5,     # balancing strength
+        #     lr=0.025,      # step size for weight updates
+        #     beta=0.9,      # EMA smoothing
+        #     device=self.config.device
+        # )
 
     def configure_amp(self):
         """Configure automatic mixed precision (AMP) for training."""
@@ -492,10 +511,40 @@ class Trainer:
         if self.config.only_load_model:
             print("Only loading model weights")
         else:
-            # self.optimizer.load_state_dict(checkpoint["optimizer_state"])
-            # self.scheduler.load_state_dict(checkpoint["scheduler_state"])
+            self.optimizer.load_state_dict(checkpoint["optimizer_state"])
+            self.scheduler.load_state_dict(checkpoint["scheduler_state"])
             self.curr_step = checkpoint["curr_step"]
             print(f"Resuming training at step {self.curr_step}")
+            
+            # Load running statistics state if available (backward compatible with EMA checkpoints)
+            if "task_loss_means" in checkpoint and "task_loss_vars" in checkpoint:
+                if checkpoint["task_loss_means"].shape == self.task_loss_means.shape:
+                    self.task_loss_means = checkpoint["task_loss_means"].to(self.config.device)
+                    self.task_loss_means.requires_grad_(False)
+                    self.task_loss_vars = checkpoint["task_loss_vars"].to(self.config.device)
+                    self.task_loss_vars.requires_grad_(False)
+                    if "task_loss_initialized" in checkpoint:
+                        self.task_loss_initialized = checkpoint["task_loss_initialized"].to(self.config.device)
+                    else:
+                        # If initialized flag not present, assume all are initialized if means are non-zero
+                        self.task_loss_initialized = (self.task_loss_means != 0)
+                    print(f"Loaded task loss statistics - means: {self.task_loss_means.cpu().tolist()}, stds: {torch.sqrt(self.task_loss_vars).cpu().tolist()}")
+                else:
+                    print(f"Warning: Statistics shape mismatch. Expected {self.task_loss_means.shape}, got {checkpoint['task_loss_means'].shape}. Starting with fresh statistics.")
+            elif "task_loss_emas" in checkpoint:
+                # Backward compatibility: convert old EMA checkpoints to new format
+                if checkpoint["task_loss_emas"].shape == self.task_loss_means.shape:
+                    # Convert EMA to mean, assume initial variance of 1
+                    self.task_loss_means = checkpoint["task_loss_emas"].to(self.config.device)
+                    self.task_loss_means.requires_grad_(False)
+                    self.task_loss_vars = torch.ones_like(self.task_loss_means, device=self.config.device)
+                    if "task_loss_ema_initialized" in checkpoint:
+                        self.task_loss_initialized = checkpoint["task_loss_ema_initialized"].to(self.config.device)
+                    else:
+                        self.task_loss_initialized = (self.task_loss_means != 0)
+                    print(f"Converted old EMA checkpoint - means: {self.task_loss_means.cpu().tolist()}")
+                else:
+                    print(f"Warning: EMA shape mismatch. Expected {self.task_loss_means.shape}, got {checkpoint['task_loss_emas'].shape}. Starting with fresh statistics.")
 
     def save_checkpoint(self, name: str):
         """Save model and training state to checkpoint file.
@@ -515,6 +564,9 @@ class Trainer:
             "optimizer_state": self.optimizer.state_dict(),
             "scheduler_state": self.scheduler.state_dict(),
             "curr_step": self.curr_step,
+            # "task_loss_means": self.task_loss_means.cpu(),
+            # "task_loss_vars": self.task_loss_vars.cpu(),
+            # "task_loss_initialized": self.task_loss_initialized.cpu(),
         }
         torch.save(checkpoint, checkpoint_path)
 
@@ -587,13 +639,16 @@ class Trainer:
 
         # train_dataloader = iter(self.train_dataloader)
         
-        if self.val_dataloader is not None:
-            val_dataloader = iter(self.val_dataloader)
-        else:
-            val_dataloader = None
-            
+        # val_dataloader can be used for validation if needed
+        # if self.val_dataloader is not None:
+        #     val_dataloader = iter(self.val_dataloader)
+        
 
         for step in step_progress:
+            torch.cuda.empty_cache()
+            # Zero gradients at the start of each step
+            self.optimizer.zero_grad(set_to_none=True)
+            
             results = {
                 "ce": 0.0,
                 "mae": 0.0,
@@ -601,18 +656,73 @@ class Trainer:
                 "missing_mae": 0.0
             }
             
-            # Get the next batch
-            # batch = next(train_dataloader)
+            # Generate batches for all missingness patterns and compute losses
+            # original_probs = self.train_dataset.missingness_inducer.probs
+            # names = ['mcar', 'mar', 'mnar']
+            results_dict = {}
+            # task_losses = []
+            
+            # for i in range(len(self.train_dataset.missingness_inducer.patterns)):
+            #     self.train_dataset.missingness_inducer.probs = [0.0] * len(self.train_dataset.missingness_inducer.patterns)
+            #     self.train_dataset.missingness_inducer.probs[i] = 1.0
+            #     batch, pattern_weights = self.train_dataset.get_batch(self.config.batch_size)
+            #     self.train_dataset.missingness_inducer.probs[i] = 0.0
+            #     results_dict[names[i]] = self.run_batch(batch, pattern_weights=pattern_weights, is_train=True)
+            #     # Collect the loss tensor for this task
+            #     task_losses.append(results_dict[names[i]]["missing_ce_tensor"])
+            
+            # # Restore original probabilities
+            # self.train_dataset.missingness_inducer.probs = original_probs
+            
+            # # Update running statistics for task losses and normalize
+            # task_losses_tensor = torch.stack(task_losses)  # Shape: (num_tasks,)
+            
+            # if self.curr_step % self.config.update_probs_every == 0:
+            #     # GradNorm weight update (first-order safe)
+            #     shared_params = [p for p in self.raw_model.parameters() if p.requires_grad]
+            #     self.weighter.update(task_losses_tensor, shared_params)
+            
+            # Weighted loss for actual training
+            # total_loss = self.weighter.weighted_total_loss(task_losses_tensor)
             batch, pattern_weights = self.train_dataset.get_batch(self.config.batch_size)
+            results = self.run_batch(batch, pattern_weights=pattern_weights, is_train=True)
+            total_loss = results["missing_ce_tensor"]
+            self.optimizer.zero_grad()
+            total_loss.backward()
+            
+            # Gradient clipping if enabled
+            # if self.config.gradient_clipping > 0:
+            #     # if self.amp:
+            #     #     self.scaler.unscale_(self.optimizer)
+            #     nn.utils.clip_grad_norm_(
+            #         self.model.parameters(), self.config.gradient_clipping
+            #     )
+            
+            # # Update model parameters
+            # if self.amp:
+            #     self.scaler.step(self.optimizer)
+            #     self.scaler.update()
+            # else:
+            #     self.optimizer.step()
+            
+            self.optimizer.step()
+            
+            # Update learning rate
+            self.scheduler.step()
 
-            # Train the model on the batch
-            with Timer() as train_timer:
-                results_batch = self.run_batch(batch, pattern_weights=pattern_weights, is_train=True)
-                results["ce"] += results_batch["ce"]
-                results["mae"] += results_batch["mae"]
-                results["missing_ce"] += results_batch["missing_ce"]
-                results["missing_mae"] += results_batch["missing_mae"]
-            # train_time = train_timer.elapsed
+            # # Aggregate results for logging
+            # for name in names:
+            #     results["ce"] += results_dict[name]["ce"]
+            #     results["mae"] += results_dict[name]["mae"]
+            #     results["missing_ce"] += results_dict[name]["missing_ce"]
+            #     results["missing_mae"] += results_dict[name]["missing_mae"]
+            
+            # Average results
+            # # num_patterns = len(names)
+            # results["ce"] /= num_patterns
+            # results["mae"] /= num_patterns
+            # results["missing_ce"] /= num_patterns
+            # results["missing_mae"] /= num_patterns
 
             # Clear CUDA cache to free memory
             torch.cuda.empty_cache()
@@ -645,36 +755,14 @@ class Trainer:
                         and self.config.max_checkpoints > 0
                     ):
                         self.manage_checkpoint()
-                
-            # if self.curr_step % self.config.update_probs_every == 0:
-            #     # With torch.no_grad(), update the missingness probabilities
-            #     # to upweight the missingness types that have worse loss
-            #     # and downweight the missingness types that have better loss
-            #     if self.master_process:
-            #         self.update_probs(batch_size=self.config.batch_size)
-                
-            #     # Synchronize all processes after probability update
-            #     # if self.ddp:
-            #     # Use the default process group for barrier
-            #     # torch.distributed.barrier()
-                
-            #     # Broadcast updated probabilities from master to all processes
-            #     # probs_tensor = torch.tensor(self.probs, device=self.config.device)
-            #     # torch.distributed.broadcast(probs_tensor, src=0)
-            #     # self.probs = probs_tensor.cpu().tolist()
-            #     self.probs = [round(prob, 3) for prob in self.probs]
-            #     self.probs[0] = 1.0 - sum(self.probs[1:])
-                
-            #     # Update the missingness inducer probabilities on all processes
-            #     # if hasattr(self.train_dataset.missingness_inducer, 'probs'):
-            #     self.train_dataset.missingness_inducer.probs = self.probs
-                        
-            # for i, prob_name in enumerate(self.prob_names):
-            #     results[prob_name] = self.probs[i]
             
             # Logging to Weights & Biases
             if self.wandb_run is not None:
-                wandb.log(results, step=self.curr_step)
+                # for i, name in enumerate(names):
+                #     results[f"missing_ce_{name}"] = results_dict[name]["missing_ce"]
+                #     results[f"missing_mae_{name}"] = results_dict[name]["missing_mae"]
+                #     results[f"weight_{name}"] = self.weighter.weights[i].item()
+                wandb.log(print_vals, step=self.curr_step)
 
         # Save last checkpoint
         ckpt_name = f"step-{self.curr_step}.ckpt"
@@ -836,7 +924,7 @@ class Trainer:
         micro_d = micro_d.to(self.config.device)
         micro_train_size = micro_train_size.to(self.config.device)
         
-        micro_pattern_weights = micro_pattern_weights.to(self.config.device)
+        # micro_pattern_weights = micro_pattern_weights.to(self.config.device)
 
         # Compute mean along dim=2 (last dimension), ignoring NaNs
         # mean_vals = torch.nanmean(micro_X, dim=2, keepdim=True)  # shape: [1, 2000, 1]
@@ -865,9 +953,6 @@ class Trainer:
 
         mask_reshaped = einops.rearrange(mask, "b t -> t b")
 
-        # y_train = micro_y[:, :train_size]
-        # y_test = micro_y[:, train_size:]
-
         # Set DDP gradient sync for last micro batch only
         if self.ddp:
             self.model.require_backward_grad_sync = (
@@ -892,15 +977,15 @@ class Trainer:
                 # loss = (mean - einops.rearrange(micro_y, "b t -> t b")).pow(2)
 
             # Scale loss for gradient accumulation and backpropagate
-            micro_pattern_weights = micro_pattern_weights.unsqueeze(0)
+            # micro_pattern_weights = micro_pattern_weights.unsqueeze(0)
             
-            loss = loss * micro_pattern_weights # reweight the loss by the pattern weights
+            # loss = loss * micro_pattern_weights # reweight the loss by the pattern weights
             
             scaled_loss = (loss).mean() / num_micro_batches
             # self.scaler.scale(scaled_loss).backward()
             missing_loss = (loss[~mask_reshaped]).mean() / num_micro_batches
             
-            self.scaler.scale(missing_loss).backward()
+            # self.scaler.scale(missing_loss).backward()
 
         else:  # val
             with torch.no_grad():
@@ -928,21 +1013,21 @@ class Trainer:
                     torch_nanmean(loss[~mask_reshaped]).mean() / num_micro_batches
                 )
 
-        with torch.no_grad():
-            micro_results = {}
-            micro_results["ce"] = scaled_loss.item()
-            micro_results["missing_ce"] = missing_loss.item()
-            median = self.bar_distribution.median(logits=pred)
+        # with torch.no_grad():
+        micro_results = {}
+        micro_results["ce"] = scaled_loss.item()
+        micro_results["missing_ce"] = missing_loss.item()
+        micro_results["missing_ce_tensor"] = missing_loss
+        median = self.bar_distribution.median(logits=pred)
+        
+        accuracy = (median - micro_y).abs()  # mae
+        accuracy = einops.rearrange(accuracy, "b t -> t b")
+        
+        micro_results["mae"] = torch_nanmean(accuracy).mean().item()
+        micro_results["missing_mae"] = (
+            torch_nanmean(accuracy[~mask_reshaped]).mean().item()
+        )
             
-            accuracy = (median - micro_y).abs()  # mae
-            accuracy = einops.rearrange(accuracy, "b t -> t b")
-            
-            micro_results["mae"] = torch_nanmean(accuracy).mean().item()
-            micro_results["missing_mae"] = (
-                torch_nanmean(accuracy[~mask_reshaped]).mean().item()
-            )
-            
-
         return micro_results
 
     def run_batch(self, batch, pattern_weights, is_train=True, is_tabpfn=False):
@@ -970,7 +1055,7 @@ class Trainer:
         """
         if is_train:
             self.model.train()
-            self.optimizer.zero_grad(set_to_none=True)
+            # Note: optimizer.zero_grad() is called in the training loop before running batches
         else:
             self.model.eval()
 
@@ -988,6 +1073,7 @@ class Trainer:
         micro_pattern_weights = torch.split(pattern_weights, self.config.micro_batch_size, dim=0)
 
         results = {"ce": 0.0, "mae": 0.0, "missing_ce": 0.0, "missing_mae": 0.0}
+        missing_ce_tensors = []  # Collect loss tensors separately to preserve gradients
         failed_batches = 0
 
         for idx, (micro_batch, micro_pattern_weights) in enumerate(zip(micro_batches, micro_pattern_weights)):
@@ -996,7 +1082,10 @@ class Trainer:
                     micro_batch, micro_pattern_weights, idx, num_micro_batches, is_train, is_tabpfn
                 )
                 for k, v in micro_results.items():
-                    results[k] += v
+                    if k == "missing_ce_tensor":
+                        missing_ce_tensors.append(v)
+                    else:
+                        results[k] = results[k] + v # not in-place
             except Exception as e:
                 print(
                     f"Warning: OOM error in micro-batch {idx+1}/{num_micro_batches} at step {self.curr_step}. Skipping."
@@ -1005,33 +1094,29 @@ class Trainer:
                 torch.cuda.empty_cache()
                 failed_batches += 1
                 continue
-        results["ce"] /= len(micro_batches)
-        results["mae"] /= len(micro_batches)
-        results["missing_ce"] /= len(micro_batches)
-        results["missing_mae"] /= len(micro_batches)
-
+        
+        # Average scalar results
+        num_valid_batches = len(micro_batches) - failed_batches
+        if num_valid_batches > 0:
+            results["ce"] /= num_valid_batches
+            results["mae"] /= num_valid_batches
+            results["missing_ce"] /= num_valid_batches
+            results["missing_mae"] /= num_valid_batches
+            
+            # Average loss tensors while preserving computation graph
+            if missing_ce_tensors:
+                # Stack and average to preserve gradients
+                results["missing_ce_tensor"] = torch.stack(missing_ce_tensors).mean()
+            else:
+                results["missing_ce_tensor"] = torch.tensor(0.0, device=self.config.device, requires_grad=True)
+        else:
+            results["missing_ce_tensor"] = torch.tensor(0.0, device=self.config.device, requires_grad=True)
         failure_ratio = failed_batches / num_micro_batches
         if failure_ratio > 0.1:
             raise RuntimeError(
                 f"({failure_ratio:.1%}) of micro-batches failed due to OOM at step {self.curr_step}. "
                 f"Please check configuration to reduce memory consumption."
             )
-
-        if is_train:
-            # Clip the gradient
-            if self.config.gradient_clipping > 0:
-                self.scaler.unscale_(self.optimizer)
-                nn.utils.clip_grad_norm_(
-                    self.model.parameters(), self.config.gradient_clipping
-                )
-
-            # Update parameters
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
-
-            # Update the learning rate
-            self.optimizer.zero_grad(set_to_none=True)
-            self.scheduler.step()
 
         return results
 
