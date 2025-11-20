@@ -588,7 +588,7 @@ class FullSupportBarDistribution(BarDistribution):
         """
         p_cdf = torch.rand(*logits.shape[:-1])
         return torch.tensor(
-            [self.icdf(logits[i, :] / t, p) for i, p in enumerate(p_cdf.tolist())],
+            [self.icdf(logits[i, :] / t, p) for i, p in enumerate(p_cdf.tolist())], # we need to fix this
         )
 
     @override

@@ -24,6 +24,7 @@ import importlib.resources as resources
 from huggingface_hub import hf_hub_download
 from scipy.optimize import minimize
 
+import einops
 
 def get_model_from_huggingface() -> str:
     repo_id = "Tabimpute/TabImpute"
@@ -93,7 +94,7 @@ class ImputePFN:
 
         self.preprocessors = preprocessors
 
-    def impute(self, X: np.ndarray, return_full: bool = False) -> np.ndarray:
+    def impute(self, X: np.ndarray, return_full: bool = False, num_repeats: int = 1) -> np.ndarray:
         """Impute missing values in the input matrix.
         Imputes the missing values in place.
 
@@ -112,6 +113,12 @@ class ImputePFN:
         # Get means and stds per column
         means = np.nanmean(X, axis=0)
         stds = np.nanstd(X, axis=0)
+        
+        # set stds to 1 if they are nan
+        stds = np.where(np.isnan(stds), 1, stds)
+        
+        # set means to 0 if they are nan
+        means = np.where(np.isnan(means), 0, means)
 
         # Normalize the input matrix
         X_normalized = (X - means) / (stds + 1e-16)
@@ -120,28 +127,56 @@ class ImputePFN:
         # If any preprocessors, do ensemble of them
         X_imputed = np.zeros_like(X_normalized)
         X_full = np.zeros_like(X_normalized)
+        X_full_list = [np.zeros_like(X_normalized) for _ in range(num_repeats)]
+        X_imputed_list = [np.zeros_like(X_normalized) for _ in range(num_repeats)]
         if self.preprocessors is not None:
             for preprocessor in self.preprocessors:
                 X_preprocessed = preprocessor.fit_transform(X_normalized)
-                imput, X_full = self.get_imputation(X_preprocessed)
-                X_imputed += preprocessor.inverse_transform(imput)
-                X_full += preprocessor.inverse_transform(X_full)
-            X_imputed /= len(self.preprocessors)
+                imput, X_full = self.get_imputation(X_preprocessed, num_repeats=num_repeats)
+                if num_repeats > 1:
+                    for i in range(num_repeats):
+                        X_imputed_list[i] += preprocessor.inverse_transform(imput[i])
+                        X_full_list[i] += preprocessor.inverse_transform(X_full[i])
+                else:
+                    X_imputed += preprocessor.inverse_transform(imput)
+                    X_full += preprocessor.inverse_transform(X_full)
+            if num_repeats > 1:
+                for i in range(num_repeats):
+                    X_imputed_list[i] /= num_repeats
+                    X_full_list[i] /= num_repeats
+            else:
+                X_imputed /= len(self.preprocessors)
+                X_full /= len(self.preprocessors)
         else:
-            X_imputed, X_full = self.get_imputation(X_normalized)
-
+            imput, X_full_ = self.get_imputation(X_normalized, num_repeats=num_repeats)
+            if num_repeats > 1:
+                for i in range(num_repeats):
+                    X_imputed_list[i] += imput[i]
+                    X_full_list[i] += X_full_[i]
+            else:
+                X_imputed += imput
+                X_full += X_full_
         torch.cuda.empty_cache()
         
         # Add back the means and stds
-        X_imputed = X_imputed * (stds + 1e-16) + means
-        X_full = X_full * (stds + 1e-16) + means
+        if num_repeats > 1:
+            for i in range(num_repeats):
+                X_imputed_list[i] = X_imputed_list[i] * (stds + 1e-16) + means
+                X_full_list[i] = X_full_list[i] * (stds + 1e-16) + means
+            if return_full:
+                return X_imputed_list, X_full_list
+            else:
+                return X_imputed_list
+        else:
+            X_imputed = X_imputed * (stds + 1e-16) + means
+            X_full = X_full * (stds + 1e-16) + means
 
         if return_full:
             return X_imputed, X_full
         else:
             return X_imputed
 
-    def get_imputation(self, X_normalized: np.ndarray) -> np.ndarray:
+    def get_imputation(self, X_normalized: np.ndarray, num_repeats: int = 1) -> np.ndarray:
         X_normalized_tensor = torch.from_numpy(X_normalized).to(self.device)
 
         # Impute the missing values
@@ -184,7 +219,25 @@ class ImputePFN:
             bar_distribution = FullSupportBarDistribution(borders=borders)
 
             medians = bar_distribution.median(logits=preds).flatten()
-            stds = torch.sqrt(bar_distribution.variance(logits=preds).flatten())
+            
+            if num_repeats > 1:
+                out_full = []
+                out_normalized = []
+                
+                for _ in range(num_repeats):
+                    sample = bar_distribution.sample(logits=preds.squeeze(0))
+                    X_full = X_normalized.copy()
+                    X_imputed = X_normalized.copy()
+                    
+                    sampls_train = sample[:train_y.shape[0]]
+                    sampls_test = sample[train_y.shape[0]:]
+                    X_full[missing_indices] = sampls_test.cpu().detach().numpy()
+                    X_full[non_missing_indices] = sampls_train.cpu().detach().numpy()
+                    X_imputed[missing_indices] = sampls_test.cpu().detach().numpy()
+                    out_full.append(X_full)
+                    out_normalized.append(X_imputed)
+                
+                return out_normalized, out_full
 
         # Denormalize the predictions with train y mean and std
         # medians = medians * (train_y.std() + 1e-8) + train_y.mean()
@@ -315,12 +368,15 @@ class TabImputeRouter:
         preprocessors: list[Preprocess] = None,
         checkpoint_paths: list[str] = None,
     ):
-        self.tabimpute_models = [
-            ImputePFN(device=device, nhead=nhead, preprocessors=preprocessors, checkpoint_path=checkpoint_path) for checkpoint_path in checkpoint_paths
-        ]
-        self.routing_models = [
-            ImputePFN(device=device, nhead=nhead, preprocessors=None, checkpoint_path=checkpoint_path) for checkpoint_path in checkpoint_paths
-        ]
+        self.tabimpute_models = []
+        self.routing_models = []
+        for checkpoint_path in checkpoint_paths:
+            self.tabimpute_models.append(
+                ImputePFN(device=device, nhead=nhead, preprocessors=preprocessors, checkpoint_path=checkpoint_path)
+            )
+            self.routing_models.append(
+                ImputePFN(device=device, nhead=nhead, preprocessors=None, checkpoint_path=checkpoint_path)
+            )
         self.device = device
 
     def impute(self, X):
@@ -331,15 +387,21 @@ class TabImputeRouter:
         X_imputed_list = []
         best_model_mse = float('inf')
         best_model_index = None
+        
+        names = ['mcar', 'mar', 'mnar']
+        
         for i, model in enumerate(self.routing_models):
             X_imputed, X_full = model.impute(X.copy(), return_full=True)
             X_full_list.append(X_full)
             X_imputed_list.append(X_imputed)
             mse = np.mean((X_full[~missing_mask] - y_observed) ** 2)
+            mae = np.mean(np.abs(X_full[~missing_mask] - y_observed))
+            
             if mse < best_model_mse:
                 best_model_mse = mse
                 best_model_index = i
-                
+            print(f"Routing model {names[i]}: MSE: {mse}, MAE: {mae}, Best MSE: {best_model_mse}")
+            
         # Calculate the imputation for the best model
         X_imputed = self.tabimpute_models[best_model_index].impute(X.copy())
         
