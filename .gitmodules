@@ -1,0 +1,6 @@
+[submodule "mcpfn/benchmark/DiffPuter"]
+	path = mcpfn/benchmark/DiffPuter
+	url = git@github.com:hengruizhang98/DiffPuter.git
+[submodule "mcpfn/benchmark/remasker"]
+	path = mcpfn/benchmark/remasker
+	url = git@github.com:tydusky/remasker.git

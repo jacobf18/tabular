@@ -252,6 +252,12 @@ def build_parser():
         default="/root/tabular/mcpfn/src/mcpfn/model/tabpfn_model.pt",
         help="Path to the tabpfn model",
     )
+    parser.add_argument(
+        "--generator_type",
+        type=str,
+        default="latent_factor",
+        help="Type of generator to use: scm, latent_factor, nonlinear_factor, robust_pca",
+    )
 
     ###########################################################################
     ##### Model Architecture Config ###########################################

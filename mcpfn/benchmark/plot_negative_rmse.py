@@ -4,6 +4,7 @@ import numpy as np
 import os
 import pandas as pd
 import warnings
+from scipy import stats
 
 # --- Plotting ---
 sns.set(style="whitegrid")
@@ -33,49 +34,52 @@ methods = [
     # "mixed_nonlinear",
     # "mcpfn_mnar",
     # "mcpfn_mixed_fixed",
-    "mcpfn_mixed_adaptive",
-    "mcpfn_ensemble",
+    # "mcpfn_mixed_adaptive",
+    # "mcpfn_ensemble",
     "masters_mcar",
-    "masters_mar",
-    "masters_mnar",
-    "tabimpute_ensemble",
-    "tabimpute_ensemble_router",
+    # "masters_mar",
+    # "masters_mnar",
+    # "masters_mcar_nonlinear",
+    # "tabimpute_ensemble",
+    # "tabimpute_ensemble_router",
     # "mixed_more_heads",
-    # # # "mixed_perm_all_row_col_whiten",
-    # # # "mixed_adaptive_row_column_permutation_8",
-    # # # "mcpfn_mcar_linear",
+    # "mixed_perm_all_row_col_whiten",
+    # "mixed_adaptive_row_column_permutation_8",
+    # "mcpfn_mcar_linear",
     # "mcpfn_mar_linear",
     "tabpfn",
     "tabpfn_impute",
     "knn",
     # "mcpfn_tabpfn_with_preprocessing",
-    # "forestdiffusion",
+    "forestdiffusion",
+    "diffputer",
+    # "remasker",
 ]
 
 patterns = {
     "MCAR",
     "MAR",
     "MNAR",
-    # "MAR_Neural",
-    # "MAR_BlockNeural",
-    # "MAR_Sequential",
-    # "MNARPanelPattern",
-    # "MNARPolarizationPattern",
-    # "MNARSoftPolarizationPattern",
-    # "MNARLatentFactorPattern",
-    # "MNARClusterLevelPattern",
-    # "MNARTwoPhaseSubsetPattern",
-    # "MNARCensoringPattern",
+    "MAR_Neural",
+    "MAR_BlockNeural",
+    "MAR_Sequential",
+    "MNARPanelPattern",
+    "MNARPolarizationPattern",
+    "MNARSoftPolarizationPattern",
+    "MNARLatentFactorPattern",
+    "MNARClusterLevelPattern",
+    "MNARTwoPhaseSubsetPattern",
+    "MNARCensoringPattern",
 }
 
 method_names = {
     "mixed_nonlinear": "TabImpute (Nonlinear FM)",
     "mcpfn_ensemble": "TabImpute+",
-    "mcpfn_mnar": "TabImpute (MNAR)",
     "mcpfn_mixed_fixed": "TabImpute (Fixed)",
-    "masters_mcar": "TabImpute (MCAR)",
+    "masters_mcar": "TabImpute",
     "masters_mar": "TabImpute (MAR)",
-    "masters_mnar": "TabImpute (MNAR)",
+    "masters_mnar": "TabImpute (Self-Masking-MNAR)",
+    "masters_mcar_nonlinear": "TabImpute (Nonlinear)",
     "tabimpute_ensemble": "TabImpute Ensemble",
     "tabimpute_ensemble_router": "TabImpute Router",
     "mcpfn_mixed_adaptive": "TabImpute",
@@ -96,6 +100,8 @@ method_names = {
     "miwae": "MIWAE",
     "forestdiffusion": "ForestDiffusion",
     "knn": "K-Nearest Neighbors",
+    "diffputer": "DiffPuter",
+    "remasker": "ReMasker",
 }
 
 # Define consistent color mapping for methods (using display names as they appear in the DataFrame)
@@ -103,11 +109,12 @@ method_colors = {
     "TabImpute+": "#2f88a8",  # Blue
     "TabImpute": "#2f88a8",  # Sea Green (distinct from GPU)
     "TabImpute Ensemble": "#2f88a8",  # Sea Green (distinct from GPU)
-    "TabImpute (MNAR)": "#2f88a8",  # Sea Green (distinct from GPU)
+    "TabImpute (Self-Masking-MNAR)": "#2f88a8",  # Sea Green (distinct from GPU)
     "TabImpute (Fixed)": "#2f88a8",  # Sea Green (distinct from GPU)
     "TabImpute (MCAR)": "#2f88a8",  # Sea Green (distinct from GPU)
     "TabImpute (MAR)": "#2f88a8",  # Sea Green (distinct from GPU)
     "TabImpute (MNAR)": "#2f88a8",  # Sea Green (distinct from GPU)
+    "TabImpute (Nonlinear)": "#2f88a8",  # Sea Green (distinct from GPU)
     "TabImpute Router": "#2f88a8",  # Sea Green (distinct from GPU)
     "EWF-TabPFN": "#3e3b6e",  # 
     "HyperImpute": "#ff7f0e",  # Orange
@@ -121,10 +128,12 @@ method_colors = {
     "MIWAE": "#17becf",        # Cyan
     "TabPFN": "#3e3b6e",       # Blue
     "K-Nearest Neighbors": "#a36424",  # Orange
-    "ForestDiffusion": "#98df8a",      # Light Green
+    "ForestDiffusion": "#52b980",      # Medium Green
     "MCPFN": "#ff9896",        # Light Red
     "MCPFN (Linear Permuted)": "#c5b0d5",  # Light Purple
     "MCPFN (Nonlinear Permuted)": "#c49c94",  # Light Brown
+    "DiffPuter": "#d62728",  # Red
+    "ReMasker": "#f58231",  # Dark Orange
 }
 
 negative_rmse = {}
@@ -135,6 +144,8 @@ def compute_negative_rmse(X_true, X_imputed, mask):
 for dataset in datasets:
     configs = os.listdir(f"{base_path}/{dataset}")
     for config in configs:
+        if "repeats" in config:
+            continue
         config_split = config.split("_")
         p = config_split[-1]
         if p != str(0.4):
@@ -154,6 +165,7 @@ for dataset in datasets:
         
         for method in methods:
             X_imputed = np.load(f"{base_path}/{dataset}/{pattern_name}_{p}/{method}.npy")
+            # print(dataset, config, method, X_imputed.shape, X_true.shape, mask.shape)
             name = method_names[method]
             negative_rmse[(dataset, pattern_name, name)] = compute_negative_rmse(X_true, X_imputed, mask)
             
@@ -165,7 +177,6 @@ plot_pattern = True
 # Get dataframe for all patterns
 df_all = df.copy()
 df_norm_all = (df_all - df_all.min(axis=1).values[:, None]) / (df_all.max(axis=1) - df_all.min(axis=1)).values[:, None]
-
 
 if plot_pattern:
     for pattern_name in patterns:
@@ -261,35 +272,41 @@ if plot_pattern:
     
     fig.subplots_adjust(left=0.2, right=0.95, bottom=0.05, top=0.95)
     
-    plt.savefig(f"figures/negative_rmse_overall.png", dpi=300, bbox_inches=None)
+    plt.savefig(f"figures/negative_rmse_overall.pdf", dpi=300, bbox_inches=None)
     plt.close()
     
-exit()
+# Count how many times TabImpute is the best method
+# print(df_norm_all)
+# tabimpute_best = df_norm_all[df_norm_all.index.get_level_values(2) == "TabImpute"].mean(axis=0).sort_values(ascending=True).index
+# print(f"TabImpute is the best method {len(tabimpute_best)} times")
+
 # Generate LaTeX table for normalized negative RMSE
 print("Creating LaTeX table for normalized negative RMSE...")
 
 # Define methods to include in the table (subset of all methods)
 table_methods = [
-    "TabImpute+",
-    # "TabImpute",
+    # "TabImpute+",
+    "TabImpute",
+    # "TabImpute (MAR)",
+    # "TabImpute (Self-Masking-MNAR)",
     # "TabPFN Fine-Tuned No Preprocessing",
-    # "EWF-TabPFN",
+    "EWF-TabPFN",
     # "TabPFN",
     # "TabImpute (MCAR then MAR)",
     # "TabImpute (More Heads)",
-    # "TabImpute (Nonlinear FM)",
+    # "TabImpute (Nonlinear)",
     "HyperImpute",
     "MissForest",
     "OT",
-    # "Col Mean",
-    # "SoftImpute",
-    # "ICE",
-    # "MICE",
-    # "GAIN",
-    # "MIWAE",
-    # "TabPFN",
-    # "K-Nearest Neighbors",
-    # "TabPFN",
+    "Col Mean",
+    "SoftImpute",
+    "ICE",
+    "MICE",
+    "GAIN",
+    "MIWAE",
+    "K-Nearest Neighbors",
+    "DiffPuter",
+    # "ReMasker",
 ]
 
 # Calculate normalized negative RMSE for each pattern
@@ -347,15 +364,32 @@ all_patterns = ['MCAR',
                 'MAR', 
                 'MAR_BlockNeural', 
                 'MAR_Sequential', 
-                # "MNARPanelPattern",
-                # "MNARPolarizationPattern",
-                # "MNARSoftPolarizationPattern",
-                # "MNARLatentFactorPattern",
-                # "MNARClusterLevelPattern",
-                # "MNARTwoPhaseSubsetPattern",
-                # "MNARCensoringPattern",
+                "MNARPanelPattern",
+                "MNARPolarizationPattern",
+                "MNARSoftPolarizationPattern",
+                "MNARLatentFactorPattern",
+                "MNARClusterLevelPattern",
+                "MNARTwoPhaseSubsetPattern",
+                "MNARCensoringPattern",
                 'Overall'
                 ]
+
+patern_latex_names = {
+    "MCAR": "\\mcar",
+    "MAR_Neural": "\\nnmar",
+    "MNAR": "\\mnarself",
+    "MAR": "\\colmar",
+    "MAR_BlockNeural": "\\marblockneural",
+    "MAR_Sequential": "\\seqmar",
+    "MNARPanelPattern": "\\panelmnar",
+    "MNARPolarizationPattern": "\\polarmnar",
+    "MNARSoftPolarizationPattern": "\\softpolarmnar",
+    "MNARLatentFactorPattern": "\\latentmnar",
+    "MNARClusterLevelPattern": "\\clustermnar",
+    "MNARTwoPhaseSubsetPattern": "\\twophasemnar",
+    "MNARCensoringPattern": "\\censormnar",
+    "Overall": "Overall"
+}
 
 for pattern in all_patterns:
     if pattern in pattern_normalized_rmse:
@@ -385,7 +419,7 @@ if summary_data:
         all_methods = [method for _, method in sorted(zip(overall_means, all_methods), reverse=True)]
     
     # Generate LaTeX table with maximum 4 columns
-    max_cols = 4
+    max_cols = 5
     num_tables = (len(all_methods) + max_cols - 1) // max_cols
     
     for table_idx in range(num_tables):
@@ -419,7 +453,7 @@ if summary_data:
         
         # Data rows (patterns as rows)
         for i, pattern in enumerate(all_patterns):
-            row = pattern.replace('_', '\\_')  # Escape underscores in pattern names
+            row = patern_latex_names[pattern]  # Escape underscores in pattern names
             
             # Add midrule before Overall performance
             if pattern == 'Overall' and i > 0:
@@ -439,10 +473,10 @@ if summary_data:
                     std_val = summary_pivot.loc[pattern, f"{method}_std"]
                     if pd.notna(mean_val) and pd.notna(std_val):
                         # Bold if this is the maximum mean value for this pattern
-                        if abs(mean_val - max_mean) < 1e-6:  # Use small epsilon for float comparison
-                            row += f" & \\textbf{{{mean_val:.3f} ± {std_val:.3f}}}"
-                        else:
-                            row += f" & {mean_val:.3f} ± {std_val:.3f}"
+                        # if abs(mean_val - max_mean) < 1e-6:  # Use small epsilon for float comparison
+                        #     row += f" & \\textbf{{{mean_val:.3f} ± {std_val:.3f}}}"
+                        # else:
+                        row += f" & {mean_val:.3f} ± {std_val:.3f}"
                     else:
                         row += " & --"
             row += " \\\\\n"
@@ -668,3 +702,78 @@ if not mcar_data.empty:
         print("No methods from table_methods found in MCAR data")
 else:
     print("No MCAR data found")
+    
+    
+    
+# Calculate p values for comparison of TabImpute and HyperImpute
+print("\n" + "="*60)
+print("Statistical comparison: TabImpute vs HyperImpute")
+print("="*60)
+
+# Get normalized RMSE values for both methods
+# df_all_norm has MultiIndex (dataset, pattern) and columns are methods
+tabimpute_values = []
+hyperimpute_values = []
+
+# Extract paired values (same dataset-pattern combination)
+for idx in df_all_norm.index:
+    if 'TabImpute' in df_all_norm.columns and 'HyperImpute' in df_all_norm.columns:
+        tabimpute_val = df_all_norm.loc[idx, 'TabImpute']
+        hyperimpute_val = df_all_norm.loc[idx, 'HyperImpute']
+        
+        # Only include pairs where both values are not NaN
+        if pd.notna(tabimpute_val) and pd.notna(hyperimpute_val):
+            tabimpute_values.append(tabimpute_val)
+            hyperimpute_values.append(hyperimpute_val)
+
+tabimpute_values = np.array(tabimpute_values)
+hyperimpute_values = np.array(hyperimpute_values)
+
+if len(tabimpute_values) > 0:
+    print(f"\nNumber of valid comparisons: {len(tabimpute_values)}")
+    print(f"TabImpute mean normalized negative RMSE: {np.mean(tabimpute_values):.4f} ± {np.std(tabimpute_values):.4f}")
+    print(f"HyperImpute mean normalized negative RMSE: {np.mean(hyperimpute_values):.4f} ± {np.std(hyperimpute_values):.4f}")
+    
+    # Calculate differences (TabImpute - HyperImpute)
+    # Higher normalized negative RMSE is better, so positive difference means TabImpute is better
+    differences = tabimpute_values - hyperimpute_values
+    print(f"\nMean difference (TabImpute - HyperImpute): {np.mean(differences):.4f}")
+    print(f"  (Positive values indicate TabImpute is better)")
+    
+    # Paired t-test (parametric)
+    # H0: mean difference = 0 (no difference)
+    # H1: mean difference > 0 (TabImpute is better)
+    t_stat, p_value_ttest = stats.ttest_rel(tabimpute_values, hyperimpute_values, alternative='greater')
+    print(f"\nPaired t-test (one-sided, TabImpute > HyperImpute):")
+    print(f"  t-statistic: {t_stat:.8f}")
+    print(f"  p-value: {p_value_ttest:.8f}")
+    
+    # Wilcoxon signed-rank test (non-parametric)
+    # H0: median difference = 0 (no difference)
+    # H1: median difference > 0 (TabImpute is better)
+    try:
+        wilcoxon_stat, p_value_wilcoxon = stats.wilcoxon(
+            tabimpute_values, hyperimpute_values, 
+            alternative='greater', 
+            zero_method='pratt'  # Handle zero differences
+        )
+        print(f"\nWilcoxon signed-rank test (one-sided, TabImpute > HyperImpute):")
+        print(f"  statistic: {wilcoxon_stat:.8f}")
+        print(f"  p-value: {p_value_wilcoxon:.8f}")
+    except Exception as e:
+        print(f"\nWilcoxon test could not be computed: {e}")
+    
+    # Summary
+    print(f"\n{'='*60}")
+    if p_value_ttest < 0.001:
+        print("Result: TabImpute is significantly better than HyperImpute (p < 0.001)")
+    elif p_value_ttest < 0.01:
+        print("Result: TabImpute is significantly better than HyperImpute (p < 0.01)")
+    elif p_value_ttest < 0.05:
+        print("Result: TabImpute is significantly better than HyperImpute (p < 0.05)")
+    else:
+        print("Result: No significant difference between TabImpute and HyperImpute")
+    print("="*60 + "\n")
+else:
+    print("No valid paired comparisons found between TabImpute and HyperImpute")
+

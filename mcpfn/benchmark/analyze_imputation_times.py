@@ -90,54 +90,78 @@ def find_imputation_times(base_path):
     return imputation_data
 
 method_names = {
-    "mcpfn_ensemble": "TabImpute+ (GPU)",
+    "mixed_nonlinear": "TabImpute (Nonlinear FM)",
+    "mcpfn_ensemble": "TabImpute+",
+    "mcpfn_mnar": "TabImpute (MNAR)",
+    "mcpfn_mixed_fixed": "TabImpute (Fixed)",
     "mcpfn": "TabImpute (GPU)",
-    "mixed_perm_both_row_col": "MCPFN (Linear Permuted)",
-    "tabpfn": "TabPFN-Impute",
-    "tabpfn_impute": "TabPFN (GPU)",
+    "masters_mar": "TabImpute (MAR)",
+    "masters_mnar": "TabImpute (MNAR)",
+    "mcpfn_cpu": "TabImpute (CPU)",
+    "tabimpute_ensemble": "TabImpute Ensemble",
+    "tabimpute_ensemble_router": "TabImpute Router",
+    "mcpfn_mixed_adaptive": "TabImpute",
+    "mcpfn_mar_linear": "TabImpute (MCAR then MAR)",
+    "mixed_more_heads": "TabImpute (More Heads)",
+    "tabpfn_no_proprocessing": "TabPFN Fine-Tuned No Preprocessing",
+    # "mixed_perm_both_row_col": "TabImpute",
     "tabpfn_unsupervised": "TabPFN (GPU)",
+    "tabpfn": "EWF-TabPFN (GPU)",
     "column_mean": "Col Mean",
-    "hyperimpute_hyperimpute": "HyperImpute",
-    "hyperimpute_hyperimpute_ot_sinkhorn": "OT",
-    "hyperimpute_hyperimpute_missforest": "MissForest",
     "softimpute": "SoftImpute",
+    "hyperimpute_hyperimpute": "HyperImpute (GPU)",
     "hyperimpute_ot_sinkhorn": "OT",
+    "hyperimpute_hyperimpute_missforest": "MissForest",
     "hyperimpute_hyperimpute_ice": "ICE",
     "hyperimpute_hyperimpute_mice": "MICE",
-    "hyperimpute_hyperimpute_gain": "GAIN",
-    "hyperimpute_hyperimpute_miwae": "MIWAE",
-    "mcpfn_ensemble_cpu": "TabImpute+ (CPU)",
+    "hyperimpute_hyperimpute_gain": "GAIN (GPU)",
+    "hyperimpute_hyperimpute_miwae": "MIWAE (GPU)",
+    "forestdiffusion": "ForestDiffusion",
     "knn": "K-Nearest Neighbors",
+    "diffputer": "DiffPuter (GPU)",
 }
 
 # Define consistent color mapping for methods (using display names as they appear in the DataFrame)
 method_colors = {
-    "TabImpute+ (GPU)": "#2f88a8",  # Blue
-    "TabImpute+ (CPU)": "#2e8b57",  # Sea Green (distinct from GPU)
+    "TabImpute+": "#2f88a8",  # Blue
+    "TabImpute": "#2f88a8",  # Sea Green (distinct from GPU)
+    "TabImpute Ensemble": "#2f88a8",  # Sea Green (distinct from GPU)
+    "TabImpute (MNAR)": "#2f88a8",  # Sea Green (distinct from GPU)
+    "TabImpute (Fixed)": "#2f88a8",  # Sea Green (distinct from GPU)
     "TabImpute (GPU)": "#2f88a8",  # Sea Green (distinct from GPU)
-    "HyperImpute": "#ff7f0e",  # Orange
+    "TabImpute (CPU)": "#2f88a8",  # Sea Green (distinct from GPU)
+    "TabImpute (MCAR)": "#2f88a8",  # Sea Green (distinct from GPU)
+    "TabImpute (MAR)": "#2f88a8",  # Sea Green (distinct from GPU)
+    "TabImpute (MNAR)": "#2f88a8",  # Sea Green (distinct from GPU)
+    "TabImpute Router": "#2f88a8",  # Sea Green (distinct from GPU)
+    "EWF-TabPFN (GPU)": "#3e3b6e",  # 
+    "HyperImpute (GPU)": "#ff7f0e",  # Orange
     "MissForest": "#2ca02c",   # Green
     "OT": "#591942",           # Red
     "Col Mean": "#9467bd",     # Purple
     "SoftImpute": "#8c564b",   # Brown
     "ICE": "#a14d88",          # Pink
     "MICE": "#7f7f7f",         # Gray
-    "GAIN": "#286b33",         # Dark Green
-    "MIWAE": "#17becf",        # Cyan
+    "GAIN (GPU)": "#286b33",         # Dark Green
+    "MIWAE (GPU)": "#17becf",        # Cyan
     "TabPFN (GPU)": "#3e3b6e",       # Blue
     "K-Nearest Neighbors": "#a36424",  # Orange
-    "ForestDiffusion": "#98df8a",      # Light Green
+    "ForestDiffusion": "#52b980",      # Medium Green
     "MCPFN": "#ff9896",        # Light Red
     "MCPFN (Linear Permuted)": "#c5b0d5",  # Light Purple
     "MCPFN (Nonlinear Permuted)": "#c49c94",  # Light Brown
+    "DiffPuter (GPU)": "#d62728",  # Red
 }
 
 include_methods = [
     "mcpfn",
-    "mcpfn_ensemble",
-    "mcpfn_ensemble_cpu",
+    "mcpfn_cpu",
+    # "mcpfn_ensemble",
+    # "mcpfn_ensemble_cpu",
     "tabpfn_unsupervised",
-    "tabpfn_impute",
+    # "masters_mcar",
+    # "tabpfn",
+    # "tabpfn_impute",
     "hyperimpute_hyperimpute",
     "hyperimpute_hyperimpute_missforest",
     "hyperimpute_ot_sinkhorn",
@@ -148,6 +172,8 @@ include_methods = [
     "column_mean",
     "knn",
     "softimpute",
+    "forestdiffusion",
+    "diffputer",
 ]
 
 def create_plots(imputation_data, dataset_info):
@@ -258,7 +284,7 @@ def create_plots(imputation_data, dataset_info):
     plt.grid(True, alpha=0.3, axis='y')
     
     # plt.tight_layout()
-    plt.savefig('/root/tabular/mcpfn/benchmark/imputation_efficiency_barplot.pdf', 
+    plt.savefig('/home/jacobf18/tabular/mcpfn/benchmark/imputation_efficiency_barplot.pdf', 
                 dpi=300, bbox_inches=None)
     plt.show()
     
@@ -283,15 +309,15 @@ def create_plots(imputation_data, dataset_info):
     print(summary_stats)
     
     # Save summary to file
-    # summary_stats.to_csv('/root/tabular/mcpfn/benchmark/imputation_times_summary.csv')
+    # summary_stats.to_csv('/home/jacobf18/tabular/mcpfn/benchmark/imputation_times_summary.csv')
     
     return df
 
 def main():
     """Main function to run the analysis."""
     # Paths
-    base_path = "/root/tabular/mcpfn/benchmark/datasets"
-    dataset_sizes_file = "/root/tabular/mcpfn/benchmark/dataset_sizes.txt"
+    base_path = "/home/jacobf18/tabular/mcpfn/benchmark/datasets"
+    dataset_sizes_file = "/home/jacobf18/tabular/mcpfn/benchmark/dataset_sizes.txt"
     
     print("Parsing dataset sizes...")
     dataset_info = parse_dataset_sizes(dataset_sizes_file)
@@ -305,7 +331,7 @@ def main():
     df = create_plots(imputation_data, dataset_info)
     
     print(f"\nAnalysis complete! Results saved to:")
-    print("- /root/tabular/mcpfn/benchmark/imputation_efficiency_barplot.pdf")
+    print("- /home/jacobf18/tabular/mcpfn/benchmark/imputation_efficiency_barplot.pdf")
 
 if __name__ == "__main__":
     main()

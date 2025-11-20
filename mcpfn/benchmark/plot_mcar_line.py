@@ -22,12 +22,13 @@ methods = [
     # "mice",
     # "gain",
     # "miwae",
-    "mcpfn_ensemble",
+    # "mcpfn_ensemble",
+    "masters_mcar",
     # # "tabpfn_impute",
 ]
 
 method_names = {
-    "mcpfn_ensemble": "TabImpute++",
+    "masters_mcar": "TabImpute",
     "tabpfn_impute": "TabPFN",
     "column_mean": "Col Mean",
     "hyperimpute": "HyperImpute",
@@ -109,7 +110,7 @@ df["value_norm"] = df.groupby(["dataset"])["value"].transform(
     lambda x: (x - x.min()) / (x.max() - x.min())
 )
 print(df)
-include_methods = ["TabImpute++", "HyperImpute", "Col Mean", "MissForest"]
+include_methods = ["TabImpute", "HyperImpute", "Col Mean", "MissForest"]
 
 # Plot the values with a separate line for each method
 plt.figure(figsize=(10, 6))
@@ -120,3 +121,5 @@ plt.xlabel("Fraction of Missing Values")
 plt.legend(title="")
 plt.savefig('figures/mcar_normalized_performance_vs_p.pdf', dpi=300)
 plt.close()
+
+print(f"Saved figure to figures/mcar_normalized_performance_vs_p.pdf")

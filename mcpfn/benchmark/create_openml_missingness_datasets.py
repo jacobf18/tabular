@@ -1,13 +1,12 @@
 import torch
 import numpy as np
-from mcpfn.prior.training_set_generation import (
+from tabimpute.prior.training_set_generation import (
     MCARPattern, 
     MARPattern, 
     MNARPattern, 
     MARNeuralNetwork,
     MARBlockNeuralNetwork,
     MARSequentialBandit,
-    MARDiffusion,
     MNARPanelPattern,
     MNARSequentialPattern,
     MNARPolarizationPattern,
@@ -21,12 +20,12 @@ from mcpfn.prior.training_set_generation import (
     MNARSkipLogicPattern
 )
 from download_openml import fetch_clean_openml_datasets
-from mcpfn.model.encoders import normalize_data
+from tabimpute.model.encoders import normalize_data
 import os
 import shutil
 
 # --- Fetch datasets ---
-datasets = fetch_clean_openml_datasets(num_datasets=100, verbose=False)
+# datasets = fetch_clean_openml_datasets(num_datasets=100, verbose=False)
 
 # --- Define missingness patterns ---
 p_mcar = 0.4
@@ -67,14 +66,14 @@ patterns = {
     #         'random_seed': 42
     #     }
     # }),
-    # 'MNARPanelPattern': MNARPanelPattern(config={}),
+    'MNARPanelPattern': MNARPanelPattern(config={}),
     # 'MNARSequentialPattern': MNARSequentialPattern(config={'n_policies': 2}),
     # 'MNARPolarizationPattern': MNARPolarizationPattern(config={'threshold_quantile': 0.25}),
     # 'MNARSoftPolarizationPattern': MNARSoftPolarizationPattern(config={'soft_polarization_alpha': 2.5, 'soft_polarization_epsilon': 0.05}),
     # 'MNARLatentFactorPattern': MNARLatentFactorPattern(config={'latent_rank_low': 1, 'latent_rank_high': 5}),
     # 'MNARPositivityViolationPattern': MNARPositivityViolationPattern(config={}),
     # 'MNARClusterLevelPattern': MNARClusterLevelPattern(config={'cluster_level_n_row_clusters': 5, 'cluster_level_n_col_clusters': 4}),
-    'MNARCensoringPattern': MNARCensoringPattern(config={'censor_quantile': 0.25}),
+    # 'MNARCensoringPattern': MNARCensoringPattern(config={'censor_quantile': 0.25}),
     # 'MNARTwoPhaseSubsetPattern': MNARTwoPhaseSubsetPattern(config={'two_phase_cheap_fraction': 0.4}),
     # "MAR_Diffusion": MARDiffusion(config={
     #     'missingness_type': 'bandit',
@@ -86,16 +85,17 @@ patterns = {
 
 base_path = "datasets/openml"
 
-# outpu  out dataset sizes
-for X, name, did in datasets:
-    print(f"{name} | {X.shape[0]} \\times {X.shape[1]}")
-    with open("dataset_sizes.txt", "a") as f:
-        f.write(f"{name} | {X.shape[0]} \\times {X.shape[1]}\n")
+# # outpu  out dataset sizes
+# for X, name, did in datasets:
+#     print(f"{name} | {X.shape[0]} \\times {X.shape[1]}")
+#     with open("dataset_sizes.txt", "a") as f:
+#         f.write(f"{name} | {X.shape[0]} \\times {X.shape[1]}\n")
 
 max_attempts = 10
-print(datasets)
+# print(datasets)
 # --- Run benchmark ---
-for X, name, did in datasets:
+# for X, name, did in datasets:
+for name in os.listdir(base_path):
     # If dataset folder does not exist, skip it
     if not os.path.exists(f"{base_path}/{name}"):
         continue
@@ -105,29 +105,32 @@ for X, name, did in datasets:
         while num_attempts < max_attempts:
             num_attempts += 1
             # print(f"Running {name} | {pattern_name}")
-            torch.cuda.empty_cache()
-            X_missing = pattern._induce_missingness(X.clone())
+            # torch.cuda.empty_cache()
+            # X_missing = pattern._induce_missingness(X.clone())
             
-            # Normalize the data (after inducing missingness)
-            X_missing, (mean, std) = normalize_data(X_missing, return_scaling=True)
-            if X_missing.shape[0] == 0:
-                continue
+            # # Normalize the data (after inducing missingness)
+            # X_missing, (mean, std) = normalize_data(X_missing, return_scaling=True)
+            # if X_missing.shape[0] == 0:
+            #     continue
             
             # std is set to 1 if all values are the same
-            X_normalized = (X - mean) / std
+            # X_normalized = (X - mean) / std
             
             p = p_mcar if pattern_name == "MCAR" else p_mar if pattern_name == "MAR" else p_mnar
             # p = pattern.config['p_missing']
             
             # Create the directory if it doesn't exist
-            print(f"{base_path}/{name}/{pattern_name}_{p}")
-            os.makedirs(f"{base_path}/{name}/{pattern_name}_{p}", exist_ok=True)
+            # print(f"{base_path}/{name}/{pattern_name}_{p}")
+            # os.makedirs(f"{base_path}/{name}/{pattern_name}_{p}", exist_ok=True)
+            
+            X_normalized = np.load(f"{base_path}/{name}/{pattern_name}_{p}/true.npy")
+            X_missing = pattern._induce_missingness(torch.from_numpy(X_normalized).clone())
             
             # Save the missingness dataset
             np.save(f"{base_path}/{name}/{pattern_name}_{p}/missing.npy", X_missing.numpy())
-            np.save(f"{base_path}/{name}/{pattern_name}_{p}/true.npy", X_normalized.numpy())
+            # np.save(f"{base_path}/{name}/{pattern_name}_{p}/true.npy", X_normalized.numpy())
             
             # Save the mean and std
-            np.save(f"{base_path}/{name}/{pattern_name}_{p}/mean.npy", mean)
-            np.save(f"{base_path}/{name}/{pattern_name}_{p}/std.npy", std)
+            # np.save(f"{base_path}/{name}/{pattern_name}_{p}/mean.npy", mean)
+            # np.save(f"{base_path}/{name}/{pattern_name}_{p}/std.npy", std)
             break

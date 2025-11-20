@@ -382,7 +382,7 @@ class Trainer:
             }
             # Create data on the fly
             self.train_dataset = MissingnessPrior(
-                generator_type="latent_factor",
+                generator_type=self.config.generator_type,
                 missingness_type=self.config.missingness_type,
                 config=gen_config,
                 batch_size=self.config.batch_size,

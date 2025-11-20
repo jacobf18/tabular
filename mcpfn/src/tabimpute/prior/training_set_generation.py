@@ -88,174 +88,6 @@ class RandomFourierFeatureFunction:
         return np.dot(phi_x, z)
 
 
-# Data Generation Classes
-
-# class SCMPrior:
-#     """Generates a complete data matrix from a Structural Causal Model."""
-
-#     def __init__(self, config: dict):
-#         self.config = config
-
-#     def _generate_mlp_dropout_dag(
-#         self, num_nodes: int, num_layers: int, edge_dropout_prob: float = 0.2
-#     ) -> nx.DiGraph:
-#         G = nx.DiGraph()
-#         nodes_per_layer_base = np.zeros(num_layers, dtype=int) + 1
-#         nodes_remaining = num_nodes - num_layers
-#         if nodes_remaining > 0:
-#             splits = np.sort(
-#                 np.random.choice(
-#                     nodes_remaining + num_layers - 1, num_layers - 1, replace=False
-#                 )
-#             )
-#             layer_sizes = (
-#                 np.diff(
-#                     np.concatenate(([0], splits, [nodes_remaining + num_layers - 1]))
-#                 )
-#                 - 1
-#             )
-#             nodes_per_layer_base += layer_sizes
-#         node_indices = np.arange(num_nodes)
-#         nodes_per_layer = np.split(node_indices, np.cumsum(nodes_per_layer_base)[:-1])
-#         for i, layer_nodes in enumerate(nodes_per_layer):
-#             for node in layer_nodes:
-#                 G.add_node(node, layer=i)
-#         for i in range(num_layers - 1):
-#             for u in nodes_per_layer[i]:
-#                 for v in nodes_per_layer[i + 1]:
-#                     if np.random.rand() > edge_dropout_prob:
-#                         G.add_edge(u, v)
-#         return G
-
-#     def _generate_scale_free_dag(self, num_nodes: int, m_edges: int = 2) -> nx.DiGraph:
-#         undirected_G = nx.barabasi_albert_graph(n=num_nodes, m=m_edges)
-#         G = nx.DiGraph()
-#         G.add_nodes_from(undirected_G.nodes())
-#         for u, v in undirected_G.edges():
-#             if u < v:
-#                 G.add_edge(u, v)
-#             else:
-#                 G.add_edge(v, u)
-#         return G
-
-#     def _sample_dag_structure(self) -> nx.DiGraph:
-#         graph_type = np.random.choice(self.config["graph_generation_method"])
-#         num_nodes = int(
-#             sample_log_uniform(
-#                 self.config["num_nodes_low"], self.config["num_nodes_high"]
-#             )[0]
-#         )
-#         if graph_type == "MLP-Dropout":
-#             return self._generate_mlp_dropout_dag(
-#                 num_nodes=num_nodes, num_layers=np.random.randint(2, 8)
-#             )
-#         elif graph_type == "Scale-Free":
-#             return self._generate_scale_free_dag(
-#                 num_nodes=num_nodes, m_edges=np.random.randint(1, 5)
-#             )
-
-#     def _assign_functional_mechanisms(self, dag: nx.DiGraph):
-#         for node in dag.nodes():
-#             parents = list(dag.predecessors(node))
-#             if not parents:
-#                 continue
-#             choice = np.random.choice(
-#                 ["scm", "tree", "random_fourier"], p=[0.6, 0.2, 0.2]
-#             )
-#             if choice == "scm":
-#                 func_name = np.random.choice(self.config["scm_activation_functions"])
-#                 dag.nodes[node].update(
-#                     {
-#                         "type": "scm",
-#                         "function": ACTIVATION_FUNCTIONS[func_name],
-#                         "weights": np.random.randn(len(parents)),
-#                         "bias": np.random.randn(),
-#                     }
-#                 )
-#             elif choice == "random_fourier":
-#                 dag.nodes[node].update(
-#                     {
-#                         "type": "random_fourier",
-#                         "function": RandomFourierFeatureFunction(),
-#                         "parent_selector": np.random.randint(len(parents)),
-#                     }
-#                 )
-#             else:  # Tree-based
-#                 params = {
-#                     "n_estimators": sample_exponential(
-#                         self.config["xgb_n_estimators_exp_scale"], 1
-#                     )[0],
-#                     "max_depth": sample_exponential(
-#                         self.config["xgb_max_depth_exp_scale"], 2
-#                     )[0],
-#                     "n_jobs": 1,
-#                 }
-#                 dag.nodes[node].update(
-#                     {"type": "tree", "function": xgb.XGBRegressor(**params)}
-#                 )
-
-#     def generate_complete_matrix(self) -> pd.DataFrame:
-#         dag = self._sample_dag_structure()
-#         self._assign_functional_mechanisms(dag)
-#         n_rows = int(
-#             sample_log_uniform(
-#                 self.config["num_rows_low"], self.config["num_rows_high"]
-#             )[0]
-#         )
-#         node_data = {node: np.zeros(n_rows) for node in nx.topological_sort(dag)}
-#         for node in nx.topological_sort(dag):
-#             parents = list(dag.predecessors(node))
-#             node_info = dag.nodes[node]
-#             if not parents:
-#                 node_data[node] = (
-#                     np.random.randn(n_rows)
-#                     if np.random.choice(self.config["root_node_noise_dist"]) == "Normal"
-#                     else np.random.uniform(-1, 1, n_rows)
-#                 )
-#             else:
-#                 parent_values = np.vstack([node_data[p] for p in parents]).T
-#                 if node_info.get("type") == "scm":
-#                     node_data[node] = node_info["function"](
-#                         np.dot(parent_values, node_info["weights"]) + node_info["bias"]
-#                     )
-#                 elif node_info.get("type") == "random_fourier":
-#                     node_data[node] = node_info["function"](
-#                         parent_values[:, node_info["parent_selector"]]
-#                     )
-#                 elif node_info.get("type") == "tree":
-#                     node_info["function"].fit(parent_values, np.random.randn(n_rows))
-#                     node_data[node] = node_info["function"].predict(parent_values)
-#         num_scm_nodes = dag.number_of_nodes()
-#         m_cols = np.random.randint(
-#             self.config["num_cols_low"],
-#             min(num_scm_nodes + 1, self.config["num_cols_high"]),
-#         )
-#         final_cols = np.random.choice(list(node_data.keys()), m_cols, replace=False)
-#         matrix = pd.DataFrame(
-#             {f"feature_{i}": node_data[col] for i, col in enumerate(final_cols)}
-#         )
-#         if np.random.rand() < self.config["apply_feature_warping_prob"]:
-#             scaler = MinMaxScaler()
-#             for col in matrix.columns:
-#                 col_data = scaler.fit_transform(matrix[[col]])
-#                 a, b = np.random.rand() * 5 + 0.5, np.random.rand() * 5 + 0.5
-#                 matrix[col] = scaler.inverse_transform(
-#                     beta.ppf(np.clip(col_data, 1e-10, 1 - 1e-10), a, b).reshape(-1, 1)
-#                 ).flatten()
-#         if np.random.rand() < self.config["apply_quantization_prob"]:
-#             col_to_quantize = np.random.choice(matrix.columns)
-#             try:
-#                 matrix[col_to_quantize] = pd.qcut(
-#                     matrix[col_to_quantize],
-#                     q=np.random.randint(2, 20),
-#                     labels=False,
-#                     duplicates="drop",
-#                 )
-#             except (ValueError, IndexError):
-#                 pass
-#         return matrix
-
-
 class LatentFactorPrior:
     """Generates a complete data matrix using the Latent-Factor Families approach."""
 
@@ -343,7 +175,7 @@ class NonLinearFactorPrior(LatentFactorPrior):
             "sigmoid",
             "tanh",
             "relu_squared",
-            "spline",
+            # "spline",
             "gp_draw",
             "random_fourier",
         ]
@@ -519,7 +351,7 @@ class MNARPanelPattern(BaseMissingness):
         n_users, n_timesteps = X.shape
         if n_timesteps <= 1:
             return X
-        treatment_times = torch.randint(1, n_timesteps, (n_users,))
+        treatment_times = torch.randint(1, n_timesteps+1, (n_users,))
         for i in range(n_users):
             X[i, treatment_times[i] :] = torch.nan
         return X
