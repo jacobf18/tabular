@@ -23,6 +23,7 @@ from tabpfn_extensions import TabPFNClassifier, TabPFNRegressor, unsupervised
 import importlib.resources as resources
 from huggingface_hub import hf_hub_download
 from scipy.optimize import minimize
+from scipy.special import softmax
 
 import einops
 
@@ -478,6 +479,138 @@ class TabImputeEnsemble:
         reg = LinearRegression(fit_intercept=False).fit(X, y)
         
         return reg.coef_
+    
+    
+    
+class TabImputeCategorical:
+    def __init__(self, 
+                 device: str = "cuda",
+                 nhead: int = 2,
+                 preprocessors: list[Preprocess] = None,
+                 checkpoint_path: str = None):
+        self.device = device
+        self.imputer = ImputePFN(device=device, nhead=nhead, preprocessors=preprocessors, checkpoint_path=checkpoint_path)
+        
+        
+    def impute(self, X, categorical_columns: list[int] | None = None, ordered_categorical_columns: list[int] | None = None):
+        """
+        Impute missing values in a matrix with categorical columns.
+        
+        Args:
+            X: Input matrix of shape (n_samples, n_features)
+            categorical_columns: List of column indices that are categorical.
+                                If None, treats all columns as numerical.
+        
+        Returns:
+            Imputed matrix of shape (n_samples, n_features) with categorical
+            values restored from one-hot encodings.
+        """
+        def _isnan_or_none(x):
+            if isinstance(x, float) and np.isnan(x):
+                return True
+            elif x is None:
+                return True
+            else:
+                return False
+
+        my_isnan = np.vectorize(_isnan_or_none)
+        
+        if categorical_columns is None:
+            categorical_columns = []
+        if ordered_categorical_columns is None:
+            ordered_categorical_columns = []
+        X = X.copy()
+        n_samples, n_features = X.shape
+        
+        # Track mappings for categorical columns
+        cat_mappings = {}  # col_idx -> (categories, one_hot_start_idx, one_hot_end_idx)
+        # Track mappings for numerical columns
+        num_mappings = {}  # col_idx -> one_hot_col_idx
+        X_onehot_list = []
+        current_col_idx = 0
+        
+        # Convert categorical columns to one-hot encodings
+        for col_idx in range(n_features):
+            if col_idx in categorical_columns:
+                # Get unique categories from non-NaN values
+                col_data = X[:, col_idx]
+                # non_nan_mask = ~np.isnan(col_data)
+                non_nan_mask = ~my_isnan(col_data)
+                
+                if not np.all(my_isnan(col_data)):
+                    unique_cats = np.unique(col_data[non_nan_mask])
+                    n_categories = len(unique_cats)
+                    
+                    # Create one-hot encoding
+                    onehot = np.zeros((n_samples, n_categories))
+                    for i, cat_val in enumerate(unique_cats):
+                        onehot[col_data == cat_val, i] = 1.0
+                    
+                    # Set NaN values to NaN in all one-hot columns
+                    nan_mask = my_isnan(col_data)
+                    onehot[nan_mask, :] = np.nan
+                    
+                    # Store mapping
+                    onehot_start = current_col_idx
+                    onehot_end = current_col_idx + n_categories
+                    cat_mappings[col_idx] = (unique_cats, onehot_start, onehot_end)
+                    
+                    # Add one-hot columns
+                    X_onehot_list.append(onehot)
+                    current_col_idx += n_categories
+                else:
+                    # All values are NaN, create a single column with all NaN
+                    onehot = np.full((n_samples, 1), np.nan)
+                    onehot_start = current_col_idx
+                    onehot_end = current_col_idx + 1
+                    cat_mappings[col_idx] = (np.array([]), onehot_start, onehot_end)
+                    X_onehot_list.append(onehot)
+                    current_col_idx += 1
+            else:
+                # Numerical column, keep as is
+                num_mappings[col_idx] = current_col_idx
+                X_onehot_list.append(X[:, col_idx:col_idx+1])
+                current_col_idx += 1
+        
+        # Combine all columns into one matrix
+        X_onehot = np.hstack(X_onehot_list).astype(np.float32)
+        
+        # Run imputation on the one-hot encoded matrix
+        X_onehot_imputed = self.imputer.impute(X_onehot)
+        
+        # Convert back to original format
+        X_imputed = np.zeros_like(X)
+        
+        for col_idx in range(n_features):
+            if col_idx in categorical_columns:
+                # Extract one-hot columns for this categorical column
+                unique_cats, onehot_start, onehot_end = cat_mappings[col_idx]
+                
+                if len(unique_cats) > 0:
+                    # Extract the one-hot columns
+                    onehot_cols = X_onehot_imputed[:, onehot_start:onehot_end]
+                    
+                    # Apply softmax to get probabilities
+                    # Handle NaN values: set them to 0 before softmax, then normalize
+                    onehot_cols_clean = np.where(my_isnan(onehot_cols), 0.0, onehot_cols)
+                    
+                    # Softmax: numerically stable implementation from scipy
+                    probs = softmax(onehot_cols_clean, axis=1)
+                    
+                    # Choose the class with highest probability
+                    predicted_indices = np.argmax(probs, axis=1)
+                    
+                    # Convert back to original categorical values
+                    X_imputed[:, col_idx] = unique_cats[predicted_indices]
+                else:
+                    # No categories found, keep as NaN
+                    X_imputed[:, col_idx] = np.nan
+            else:
+                # Numerical column, copy directly using the mapping
+                onehot_col_idx = num_mappings[col_idx]
+                X_imputed[:, col_idx] = X_onehot_imputed[:, onehot_col_idx]
+        
+        return X_imputed
 
 
 # How to use:
