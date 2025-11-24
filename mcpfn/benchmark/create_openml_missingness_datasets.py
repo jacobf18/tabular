@@ -25,7 +25,7 @@ import os
 import shutil
 
 # --- Fetch datasets ---
-# datasets = fetch_clean_openml_datasets(num_datasets=100, verbose=False)
+datasets = fetch_clean_openml_datasets(num_datasets=100, verbose=False)
 
 # --- Define missingness patterns ---
 p_mcar = 0.4
