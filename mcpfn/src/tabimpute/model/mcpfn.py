@@ -89,13 +89,6 @@ class MCPFN(nn.Module):
             For inference mode:
               Raw logits or probabilities for test samples of shape (B, T-train_size, num_classes).
         """
-
-        # This code is written from TabICL, which uses a different order of dimensions
-        # than the one used in TabPFN. So, we need to rearrange the dimensions to match
-        # the order used in TabPFN and then rearrange the dimensions back to the order
-        # used in TabICL.
-        train_size = y_train.shape[1]
-
         X = einops.rearrange(X, "b t h -> t b h")
         y_train = einops.rearrange(y_train, "b t -> t b")
 

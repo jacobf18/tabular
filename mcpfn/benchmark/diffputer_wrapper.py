@@ -170,45 +170,44 @@ class DiffPuterImputer:
                 else:
                     patience += 1
                     if patience >= self.early_stop_patience:
-                        # print(f'Early stopping at epoch {epoch}')
+                        print(f'Early stopping at epoch {epoch}')
                         break
                 
                 if epoch % 500 == 0:
-                    pass
-                    # print(f'  Epoch {epoch}, Loss: {curr_loss:.6f}')
+                    print(f'  Epoch {epoch}, Loss: {curr_loss:.6f}')
             
-            # Load best model
-            model.load_state_dict({k: v.to(self.device) for k, v in best_model_state.items()})
+        # Load best model
+        model.load_state_dict({k: v.to(self.device) for k, v in best_model_state.items()})
+        
+        # E-Step: Impute missing values
+        model.eval()
+        rec_Xs = []
+        
+        for trial in range(self.num_trials):
+            X_miss = ((1 - mask_tensor) * X_tensor).to(self.device)
             
-            # E-Step: Impute missing values
-            model.eval()
-            rec_Xs = []
+            with torch.no_grad():
+                rec_X = impute_mask(
+                    model.denoise_fn_D,
+                    X_miss,
+                    mask_tensor,
+                    X_tensor.shape[0],
+                    X_tensor.shape[1],
+                    self.num_steps,
+                    self.device
+                )
             
-            for trial in range(self.num_trials):
-                X_miss = ((1 - mask_tensor) * X_tensor).to(self.device)
-                
-                with torch.no_grad():
-                    rec_X = impute_mask(
-                        model.denoise_fn_D,
-                        X_miss,
-                        mask_tensor,
-                        X_tensor.shape[0],
-                        X_tensor.shape[1],
-                        self.num_steps,
-                        self.device
-                    )
-                
-                # Keep observed values
-                mask_device = mask_tensor.to(self.device)
-                rec_X = rec_X * mask_device + X_miss * (1 - mask_device)
-                rec_Xs.append(rec_X.cpu())
-            
-            # Average over trials
-            X_imputed = torch.stack(rec_Xs, dim=0).mean(0)
-            
-            # Clean up
-            del model, denoise_fn, optimizer, scheduler
-            torch.cuda.empty_cache()
+            # Keep observed values
+            mask_device = mask_tensor.to(self.device)
+            rec_X = rec_X * mask_device + X_miss * (1 - mask_device)
+            rec_Xs.append(rec_X.cpu())
+        
+        # Average over trials
+        X_imputed = torch.stack(rec_Xs, dim=0).mean(0)
+        
+        # Clean up
+        del model, denoise_fn, optimizer, scheduler
+        torch.cuda.empty_cache()
         
         # Denormalize
         X_imputed = X_imputed.numpy() * 2
@@ -232,7 +231,7 @@ def impute_diffputer(X_missing: np.ndarray, **kwargs) -> np.ndarray:
     return imputer.fit_transform(X_missing)
 
 if __name__ == "__main__":
-    X = np.random.rand(5, 5)
+    X = np.random.rand(1000, 5)
     X[0,:] = np.nan
     print(X)
     imputer = DiffPuterImputer()

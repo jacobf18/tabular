@@ -2,6 +2,7 @@ import numpy as np
 import os
 import pandas as pd
 from collections import defaultdict
+from scipy.stats import sem
 
 base_path = "datasets/openml"
 
@@ -161,15 +162,18 @@ for method_name in method_mads.keys():
     
     if len(mads) > 0:
         avg_mad = np.mean(mads)
-        std_mad = np.std(mads)
+        # std_mad = np.std(mads)
+        std_mad = sem(mads)
         
         # Average minimum RMSE across all samples
         avg_min_rmse = np.mean(min_rmses)
-        std_min_rmse = np.std(min_rmses)
+        # std_min_rmse = np.std(min_rmses)
+        std_min_rmse = sem(min_rmses)
         
         # Average of average RMSE across all samples
         avg_avg_rmse = np.mean(avg_rmses)
-        std_avg_rmse = np.std(avg_rmses)
+        # std_avg_rmse = np.std(avg_rmses)
+        std_avg_rmse = sem(avg_rmses)
         
         num_entries = len(mads)
         results.append({
