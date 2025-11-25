@@ -23,34 +23,13 @@ methods = [
     "mice",
     "gain",
     "miwae",
-    # "mcpfn_mixed_linear",
-    # "mcpfn_mixed_random",
-    # "mcpfn_mixed_linear_fixed",
-    # "mcpfn_mixed_adaptive",
-    # "tabpfn_no_proprocessing",
-    # # "mixed_adaptive_more_heads",
-    # # "mixed_adaptive_permuted_3",
-    # "mixed_perm_both_row_col",
-    # "mixed_nonlinear",
-    # "mcpfn_mnar",
-    # "mcpfn_mixed_fixed",
-    # "mcpfn_mixed_adaptive",
-    # "mcpfn_ensemble",
     "masters_mcar",
     # "masters_mar",
     # "masters_mnar",
-    # "masters_mcar_nonlinear",
-    # "tabimpute_ensemble",
-    # "tabimpute_ensemble_router",
-    # "mixed_more_heads",
-    # "mixed_perm_all_row_col_whiten",
-    # "mixed_adaptive_row_column_permutation_8",
-    # "mcpfn_mcar_linear",
-    # "mcpfn_mar_linear",
+    "masters_mcar_nonlinear",
     "tabpfn",
     "tabpfn_impute",
     "knn",
-    # "mcpfn_tabpfn_with_preprocessing",
     "forestdiffusion",
     "diffputer",
     # "remasker",
@@ -171,7 +150,7 @@ for dataset in datasets:
             
 df = pd.Series(negative_rmse).unstack()
 
-plot_pattern = True
+plot_pattern = False
 
 # Plot for all patterns combined
 # Get dataframe for all patterns
@@ -238,6 +217,7 @@ if plot_pattern:
 
     # Melt into long format
     df_long = df_norm_all.melt(var_name="method", value_name="score")
+    print(df_long)
 
     # Use your method_colors dictionary for consistent mapping
     ax = sns.barplot(
@@ -274,7 +254,7 @@ if plot_pattern:
     
     plt.savefig(f"figures/negative_rmse_overall.pdf", dpi=300, bbox_inches=None)
     plt.close()
-    
+
 # Count how many times TabImpute is the best method
 # print(df_norm_all)
 # tabimpute_best = df_norm_all[df_norm_all.index.get_level_values(2) == "TabImpute"].mean(axis=0).sort_values(ascending=True).index
@@ -285,27 +265,26 @@ print("Creating LaTeX table for normalized negative RMSE...")
 
 # Define methods to include in the table (subset of all methods)
 table_methods = [
-    # "TabImpute+",
     "TabImpute",
     # "TabImpute (MAR)",
     # "TabImpute (Self-Masking-MNAR)",
     # "TabPFN Fine-Tuned No Preprocessing",
-    "EWF-TabPFN",
+    # "EWF-TabPFN",
     # "TabPFN",
     # "TabImpute (MCAR then MAR)",
     # "TabImpute (More Heads)",
-    # "TabImpute (Nonlinear)",
+    "TabImpute (Nonlinear)",
     "HyperImpute",
     "MissForest",
-    "OT",
-    "Col Mean",
-    "SoftImpute",
-    "ICE",
-    "MICE",
-    "GAIN",
-    "MIWAE",
-    "K-Nearest Neighbors",
-    "DiffPuter",
+    # "OT",
+    # "Col Mean",
+    # "SoftImpute",
+    # "ICE",
+    # "MICE",
+    # "GAIN",
+    # "MIWAE",
+    # "K-Nearest Neighbors",
+    # "DiffPuter",
     # "ReMasker",
 ]
 
@@ -325,7 +304,8 @@ for pattern_name in patterns:
     
     # Calculate mean and std for each method across datasets
     pattern_means = df_norm.mean(axis=0)
-    pattern_stds = df_norm.std(axis=0)
+    # pattern_stds = df_norm.std(axis=0)
+    pattern_stds = df_norm.sem(axis=0)
     
     # Create summary data for this pattern
     pattern_data = []
@@ -342,7 +322,8 @@ for pattern_name in patterns:
 # Calculate overall normalized negative RMSE
 df_all_norm = (df_all - df_all.min(axis=1).values[:, None]) / (df_all.max(axis=1) - df_all.min(axis=1)).values[:, None]
 overall_means = df_all_norm.mean(axis=0)
-overall_stds = df_all_norm.std(axis=0)
+# overall_stds = df_all_norm.std(axis=0)
+overall_stds = df_all_norm.sem(axis=0)
 
 # Create summary data for overall
 overall_data = []
@@ -473,10 +454,10 @@ if summary_data:
                     std_val = summary_pivot.loc[pattern, f"{method}_std"]
                     if pd.notna(mean_val) and pd.notna(std_val):
                         # Bold if this is the maximum mean value for this pattern
-                        # if abs(mean_val - max_mean) < 1e-6:  # Use small epsilon for float comparison
-                        #     row += f" & \\textbf{{{mean_val:.3f} ± {std_val:.3f}}}"
-                        # else:
-                        row += f" & {mean_val:.3f} ± {std_val:.3f}"
+                        if abs(mean_val - max_mean) < 1e-6:  # Use small epsilon for float comparison
+                            row += f" & \\textbf{{{mean_val:.3f} ± {std_val:.3f}}}"
+                        else:
+                            row += f" & {mean_val:.3f} ± {std_val:.3f}"
                     else:
                         row += " & --"
             row += " \\\\\n"
