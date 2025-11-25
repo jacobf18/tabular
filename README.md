@@ -12,10 +12,10 @@ pip install -e .
 ## Usage
 
 ```python
-from tabimpute.interface import ImputePFN
+from tabimpute.interface import TabImpute
 import numpy as np
 
-imputer = ImputePFN(device='cpu') # cuda if available
+imputer = TabImpute(device='cpu') # cuda if available
 
 X = np.random.rand(5, 5)
 print("Original X:")

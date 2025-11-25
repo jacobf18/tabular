@@ -255,6 +255,16 @@ class ImputePFN:
         X_full[non_missing_indices] = medians_train.cpu().detach().numpy()
 
         return X_normalized, X_full
+    
+class TabImpute(ImputePFN):
+    def __init__(self, device: str = "cpu", nhead: int = 2, preprocessors: list[Preprocess] = None, checkpoint_path: str = None):
+        super().__init__(device=device, nhead=nhead, preprocessors=preprocessors, checkpoint_path=checkpoint_path)
+        
+    def impute(self, X: np.ndarray, return_full: bool = False, num_repeats: int = 1) -> np.ndarray:
+        """Impute missing values in the input matrix.
+        Imputes the missing values in place.
+        """
+        return super().impute(X, return_full=return_full, num_repeats=num_repeats)
 
 
 class TabPFNImputer:
