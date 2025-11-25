@@ -41,6 +41,10 @@ dependencies = [
     "tqdm>=4.64.0",
     "huggingface-hub",
     "tabpfn",
+    "huggingface_hub",
+    "tabpfn_extensions",
+    "einops",
+    "scipy"
 ]
 
 [build-system]
