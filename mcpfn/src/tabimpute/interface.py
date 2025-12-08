@@ -70,7 +70,8 @@ class ImputePFN:
         device: str = "cpu",
         nhead: int = 2,
         preprocessors: list[Preprocess] = None,
-        checkpoint_path: str = None
+        checkpoint_path: str = None,
+        max_num_rows: int = None,
     ):
         self.device = device
 
@@ -94,6 +95,11 @@ class ImputePFN:
         # self.model.model.load_state_dict(torch.load('/root/tabular/mcpfn/data/tabpfn_model.pt', weights_only=True))
 
         self.preprocessors = preprocessors
+        self.max_num_rows = max_num_rows
+        
+        # Get the median predictions
+        borders = self.borders.to(self.device)
+        self.bar_distribution = FullSupportBarDistribution(borders=borders)
 
     def impute(self, X: np.ndarray, return_full: bool = False, num_repeats: int = 1) -> np.ndarray:
         """Impute missing values in the input matrix.
@@ -176,57 +182,120 @@ class ImputePFN:
             return X_imputed, X_full
         else:
             return X_imputed
+        
+    def get_imputation(self, X_normalized: np.ndarray, num_repeats: int = 1, max_num_rows: int = None) -> np.ndarray:
+        """Get the imputation for the input matrix.
+        If max_num_rows is not None, the input matrix is split into chunks of max_num_rows rows, 
+        and the imputation is performed on each chunk.
 
-    def get_imputation(self, X_normalized: np.ndarray, num_repeats: int = 1) -> np.ndarray:
-        X_normalized_tensor = torch.from_numpy(X_normalized).to(self.device)
+        Args:
+            X_normalized (np.ndarray): Input matrix of shape (T, H) where:
+             - T is the number of samples (rows)
+             - H is the number of features (columns)
+            num_repeats (int, optional): Number of times to repeat the imputation. Defaults to 1.
+            max_num_rows (int, optional): Maximum number of rows to impute at once. Defaults to None.
 
-        # Impute the missing values
+        Returns:
+            np.ndarray: Imputed matrix of shape (T, H)
+        """
+        if max_num_rows is not None:
+            return self._get_imputation_chunk(X_normalized.copy(), num_repeats=num_repeats)
+        else:
+            return self._get_imputation_single(X_normalized.copy(), num_repeats=num_repeats)
+        
+    def _get_input_tensors(self, X_normalized: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Get the input tensors for the input matrix.
+        Args:
+            X_normalized (torch.Tensor): Input matrix of shape (T, H) where:
+             - T is the number of samples (rows) to impute
+             - H is the number of features (columns)
+        Returns:
+            tuple[torch.Tensor, torch.Tensor, np.ndarray, np.ndarray]: Input tensors, input y, missing indices, non-missing indices.
+        """
         train_X, train_y, test_X, test_y = create_train_test_sets(
-            X_normalized_tensor, X_normalized_tensor
+            X_normalized, X_normalized
         )
-
-        # Normalize the train_y and test_y
-        # train_y = (train_y - train_y.mean()) / (train_y.std() + 1e-8)
-        # train_y, mean, std = standardize_excluding_outliers_torch(train_y)
-
+        
         input_y = torch.cat(
             (train_y, torch.full_like(test_y, torch.nan, device=self.device)), dim=0
         )
-
+        
         missing_indices = np.where(
             np.isnan(X_normalized)
         )  # This will always be the same order as the calculated train_X and test_X
         non_missing_indices = np.where(~np.isnan(X_normalized))
-
+        
         # Move tensors to device
         train_X = train_X.to(self.device)
         input_y = input_y.to(self.device)
         test_X = test_X.to(self.device)
-
-        # batch = (train_X.unsqueeze(0), train_y.unsqueeze(0), test_X.unsqueeze(0), None)
-
-        # Impute missing entries with means
+        
         X_input = torch.cat((train_X, test_X), dim=0)
-        X_input = X_input.unsqueeze(0)
-
+        
         X_input = X_input.float()
         input_y = input_y.float()
+        
+        train_size = train_y.shape[0]
+            
+        return X_input, input_y, missing_indices, non_missing_indices, train_size
+    
+    def _get_imputation_chunk(self, X_normalized: np.ndarray, num_repeats: int = 1) -> np.ndarray:
+        """Get the imputation for a chunk of the input matrix.
+        Args:
+            X_normalized (np.ndarray): Input matrix of shape (T, H) where:
+             - T is the number of samples (rows)
+             - H is the number of features (columns)
+            num_repeats (int, optional): Number of times to repeat the imputation. Defaults to 1.
+        Returns:
+            np.ndarray: Imputed matrix of shape (T, H)
+        """
+        row_chunks = np.array_split(X_normalized, X_normalized.shape[0] // self.max_num_rows)
+        row_chunks_normalized = []
+        means = []
+        stds = []
+        X_input_list = []
+        input_y_list = []
+        missing_indices_list = []
+        non_missing_indices_list = []
+        train_size_list = []
+        for chunk in row_chunks:
+            means.append(np.mean(chunk, axis=0))
+            stds.append(np.std(chunk, axis=0))
+            row_chunks_normalized.append((chunk - means[-1]) / (stds[-1] + 1e-16))
+            
+            X_input, input_y, missing_indices, non_missing_indices, train_size = self._get_input_tensors(torch.from_numpy(chunk).to(self.device))
+            
+            X_input_list.append(X_input)
+            input_y_list.append(input_y)
+            missing_indices_list.append(missing_indices)
+            non_missing_indices_list.append(non_missing_indices)
+            train_size_list.append(train_size)
+        
+        # parallelize the imputation with batching
+        with torch.no_grad():
+            preds = self.model(torch.cat(X_input_list, dim=0), torch.cat(input_y_list, dim=0))
+            # Get the median predictions
+            medians = self.bar_distribution.median(logits=preds)
+
+    def _get_imputation_single(self, X_normalized: np.ndarray, num_repeats: int = 1) -> np.ndarray:
+        X_normalized_tensor = torch.from_numpy(X_normalized).to(self.device)
+        
+        X_input, input_y, missing_indices, non_missing_indices, train_size = self._get_input_tensors(X_normalized_tensor)
+        
+        X_input = X_input.unsqueeze(0) # batch size 1
+        input_y = input_y.unsqueeze(0) # batch size 1
 
         with torch.no_grad():
-            preds = self.model(X_input, input_y.unsqueeze(0))
+            preds = self.model(X_input, input_y)
 
-            # Get the median predictions
-            borders = self.borders.to(self.device)
-            bar_distribution = FullSupportBarDistribution(borders=borders)
-
-            medians = bar_distribution.median(logits=preds).flatten()
+            medians = self.bar_distribution.median(logits=preds).flatten()
             
             if num_repeats > 1:
                 out_full = []
                 out_normalized = []
                 
                 for _ in range(num_repeats):
-                    sample = bar_distribution.sample(logits=preds.squeeze(0))
+                    sample = self.bar_distribution.sample(logits=preds.squeeze(0))
                     X_full = X_normalized.copy()
                     X_imputed = X_normalized.copy()
                     
@@ -245,8 +314,8 @@ class ImputePFN:
 
         X_full = X_normalized.copy()
 
-        medians_train = medians[: train_y.shape[0]]
-        medians_test = medians[train_y.shape[0] :]
+        medians_train = medians[: train_size]
+        medians_test = medians[train_size :]
 
         # Impute the missing values with the median predictions
         X_normalized[missing_indices] = medians_test.cpu().detach().numpy()

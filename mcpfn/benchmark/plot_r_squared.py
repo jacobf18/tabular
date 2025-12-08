@@ -5,6 +5,7 @@ import os
 import pandas as pd
 import warnings
 from scipy import stats
+from sklearn.metrics import r2_score
 
 # --- Plotting ---
 sns.set(style="whitegrid")
@@ -26,12 +27,12 @@ methods = [
     "masters_mcar",
     # "masters_mar",
     # "masters_mnar",
-    # "masters_mcar_nonlinear",
+    "masters_mcar_nonlinear",
     "tabpfn",
     "tabpfn_impute",
     "knn",
     "forestdiffusion",
-    # "diffputer",
+    "diffputer",
     # "remasker",
 ]
 
@@ -115,10 +116,34 @@ method_colors = {
     "ReMasker": "#f58231",  # Dark Orange
 }
 
-negative_rmse = {}
+r_squared = {}
 
-def compute_negative_rmse(X_true, X_imputed, mask):
-    return -np.sqrt(np.mean((X_true[mask] - X_imputed[mask]) ** 2))
+def compute_r_squared(X_true, X_imputed, mask):
+    # loop over columns and calculate the R^2 score
+    r_squared = []
+    for col in range(X_true.shape[1]):
+        if mask[:, col].sum() < 2:
+            continue
+        if np.isnan(X_true[:, col][mask[:, col]]).any() or np.isnan(X_imputed[:, col][mask[:, col]]).any():
+            continue
+        predicted = X_imputed[:, col][mask[:, col]]
+        true = X_true[:, col][mask[:, col]]
+        if np.isnan(predicted).any() or np.isnan(true).any():
+            continue
+        if np.isclose(np.std(predicted), 0, atol=1e-3) or np.isclose(np.std(true), 0, atol=1e-3):
+            r2 = 0.0
+        else:
+            r2 = np.corrcoef(
+                predicted,
+                true
+                )[0, 1]
+            r2 **= 2
+            if np.isnan(r2):
+                r2 = 0.0
+        r_squared.append(r2)
+    if len(r_squared) == 0:
+        return 0.0
+    return np.mean(r_squared)
 
 for dataset in datasets:
     configs = os.listdir(f"{base_path}/{dataset}")
@@ -140,17 +165,21 @@ for dataset in datasets:
         X_missing = np.load(f"{base_path}/{dataset}/{pattern_name}_{p}/missing.npy")
         X_true = np.load(f"{base_path}/{dataset}/{pattern_name}_{p}/true.npy")
         
+        if np.isnan(X_true).any():
+            print(f"NaN values found in {dataset}/{pattern_name}_{p}/true.npy or {dataset}/{pattern_name}_{p}/missing.npy")
+            continue
+        
         mask = np.isnan(X_missing)
         
         for method in methods:
             X_imputed = np.load(f"{base_path}/{dataset}/{pattern_name}_{p}/{method}.npy")
             # print(dataset, config, method, X_imputed.shape, X_true.shape, mask.shape)
             name = method_names[method]
-            negative_rmse[(dataset, pattern_name, name)] = compute_negative_rmse(X_true, X_imputed, mask)
+            r_squared[(dataset, pattern_name, name)] = compute_r_squared(X_true, X_imputed, mask)
             
-df = pd.Series(negative_rmse).unstack()
+df = pd.Series(r_squared).unstack()
 
-plot_pattern = True
+plot_pattern = False
 
 # Plot for all patterns combined
 # Get dataframe for all patterns
@@ -203,11 +232,11 @@ if plot_pattern:
                 fontsize=15.0, rotation=90, color='white', weight='bold',
                 bbox=dict(boxstyle='round,pad=0.1', facecolor='black', alpha=0.0))
 
-        plt.ylabel("Normalized Negative RMSE (0–1)", fontsize=15)
+        plt.ylabel("Column-wise R^2", fontsize=15)
         # plt.title(f"Comparison of Imputation Algorithms | {pattern_name}")
         plt.ylim(0, 1.0)
         plt.tight_layout()
-        plt.savefig(f"figures/negative_rmse_{pattern_name}.png", dpi=300)
+        plt.savefig(f"figures/r_squared_{pattern_name}.png", dpi=300)
         plt.close()
 
     # Average across datasets and patterns
@@ -245,25 +274,23 @@ if plot_pattern:
                 fontsize=15.0, rotation=90, color='white', weight='bold',
                 bbox=dict(boxstyle='round,pad=0.1', facecolor='black', alpha=0.0))
 
-    plt.ylabel("1 - Normalized RMSE (0–1)", fontsize=18)
+    plt.ylabel("Column-wise R^2", fontsize=18)
     # plt.title("Comparison of Imputation Algorithms | All Patterns")
     plt.ylim(0, 1.0)
     # plt.tight_layout()
     
     fig.subplots_adjust(left=0.2, right=0.95, bottom=0.05, top=0.95)
     
-    plt.savefig(f"figures/negative_rmse_overall.pdf", dpi=300, bbox_inches=None)
+    plt.savefig(f"figures/r_squared_overall.pdf", dpi=300, bbox_inches=None)
     plt.close()
 
-
-exit()
 # Count how many times TabImpute is the best method
 # print(df_norm_all)
 # tabimpute_best = df_norm_all[df_norm_all.index.get_level_values(2) == "TabImpute"].mean(axis=0).sort_values(ascending=True).index
 # print(f"TabImpute is the best method {len(tabimpute_best)} times")
 
-# Generate LaTeX table for normalized negative RMSE
-print("Creating LaTeX table for normalized negative RMSE...")
+# Generate LaTeX table for column-wise R^2
+print("Creating LaTeX table for column-wise R^2...")
 
 # Define methods to include in the table (subset of all methods)
 table_methods = [
@@ -291,8 +318,8 @@ table_methods = [
     # "ReMasker",
 ]
 
-# Calculate normalized negative RMSE for each pattern
-pattern_normalized_rmse = {}
+# Calculate column-wise R^2 for each pattern
+pattern_r_squared = {}
 
 for pattern_name in patterns:
     # Get dataframe for this pattern
@@ -302,8 +329,8 @@ for pattern_name in patterns:
         print(f"No data found for pattern: {pattern_name}")
         continue
     
-    # Normalize negative RMSE for this pattern
-    df_norm = (df_pattern - df_pattern.min(axis=1).values[:, None]) / (df_pattern.max(axis=1) - df_pattern.min(axis=1)).values[:, None]
+    # Normalize column-wise R^2 for this pattern
+    df_norm = df_pattern
     
     # Calculate mean and std for each method across datasets
     pattern_means = df_norm.mean(axis=0)
@@ -320,13 +347,12 @@ for pattern_name in patterns:
             'Pattern': pattern_name
         })
     
-    pattern_normalized_rmse[pattern_name] = pd.DataFrame(pattern_data)
+    pattern_r_squared[pattern_name] = pd.DataFrame(pattern_data)
 
-# Calculate overall normalized negative RMSE
-df_all_norm = (df_all - df_all.min(axis=1).values[:, None]) / (df_all.max(axis=1) - df_all.min(axis=1)).values[:, None]
-overall_means = df_all_norm.mean(axis=0)
-# overall_stds = df_all_norm.std(axis=0)
-overall_stds = df_all_norm.sem(axis=0)
+# Calculate overall column-wise R^2
+overall_means = df_all.mean(axis=0)
+# overall_stds = df_all.std(axis=0)
+overall_stds = df_all.sem(axis=0)
 
 # Create summary data for overall
 overall_data = []
@@ -338,7 +364,7 @@ for method in overall_means.index:
         'Pattern': 'Overall'
     })
 
-pattern_normalized_rmse['Overall'] = pd.DataFrame(overall_data)
+pattern_r_squared['Overall'] = pd.DataFrame(overall_data)
 
 # Create summary data for LaTeX table
 summary_data = []
@@ -376,8 +402,8 @@ patern_latex_names = {
 }
 
 for pattern in all_patterns:
-    if pattern in pattern_normalized_rmse:
-        pattern_df = pattern_normalized_rmse[pattern]
+    if pattern in pattern_r_squared:
+        pattern_df = pattern_r_squared[pattern]
         # Filter to only include methods in table_methods
         filtered_pattern_df = pattern_df[pattern_df['Method'].isin(table_methods)]
         summary_data.append(filtered_pattern_df)
@@ -397,7 +423,7 @@ if summary_data:
         if f"{method}_mean" in summary_pivot.columns:
             all_methods.append(method)
     
-    # Sort methods by overall performance (higher normalized negative RMSE is better)
+    # Sort methods by overall performance (higher column-wise R^2 is better)
     if 'Overall' in summary_pivot.index:
         overall_means = summary_pivot.loc['Overall', [f"{method}_mean" for method in all_methods]]
         all_methods = [method for _, method in sorted(zip(overall_means, all_methods), reverse=True)]
@@ -414,10 +440,10 @@ if summary_data:
         latex_content = "\\begin{table}[h]\n"
         latex_content += "\\centering\n"
         if num_tables > 1:
-            latex_content += f"\\caption{{Mean Normalized Negative RMSE ± Standard Deviation by Missingness Pattern (Table {table_idx + 1}/{num_tables})}}\n"
+            latex_content += f"\\caption{{Mean Column-wise R^2 ± Standard Deviation by Missingness Pattern (Table {table_idx + 1}/{num_tables})}}\n"
         else:
-            latex_content += "\\caption{Mean Normalized Negative RMSE ± Standard Deviation by Missingness Pattern}\n"
-        latex_content += f"\\label{{tab:normalized_negative_rmse_by_pattern_{table_idx + 1}}}\n"
+            latex_content += "\\caption{Mean Column-wise R^2 ± Standard Deviation by Missingness Pattern}\n"
+        latex_content += f"\\label{{tab:r_squared_by_pattern_{table_idx + 1}}}\n"
         
         # Create column specification
         num_methods_table = len(table_methods)
@@ -471,7 +497,7 @@ if summary_data:
         latex_content += "\\end{table}\n"
         
         # Save each table to a separate file
-        filename = f"figures/normalized_negative_rmse_table_{table_idx + 1}.txt" if num_tables > 1 else "figures/normalized_negative_rmse_table.txt"
+        filename = f"figures/r_squared_table_{table_idx + 1}.txt" if num_tables > 1 else "figures/r_squared_table.txt"
         with open(filename, "w") as f:
             f.write(latex_content)
         
@@ -485,8 +511,8 @@ transposed_summary_data = []
 for method in all_methods:
     method_data = {'Method': method}
     for pattern in all_patterns:
-        if pattern in pattern_normalized_rmse:
-            pattern_df = pattern_normalized_rmse[pattern]
+        if pattern in pattern_r_squared:
+            pattern_df = pattern_r_squared[pattern]
             method_row = pattern_df[pattern_df['Method'] == method]
             if not method_row.empty:
                 method_data[f"{pattern}_mean"] = method_row.iloc[0]['mean']
@@ -525,10 +551,10 @@ for table_idx in range(num_tables_transposed):
     latex_content_transposed = "\\begin{table}[h]\n"
     latex_content_transposed += "\\centering\n"
     if num_tables_transposed > 1:
-        latex_content_transposed += f"\\caption{{Mean Normalized Negative RMSE ± Standard Deviation by Method (Transposed, Table {table_idx + 1}/{num_tables_transposed})}}\n"
+        latex_content_transposed += f"\\caption{{Mean Column-wise R^2 ± Standard Deviation by Method (Transposed, Table {table_idx + 1}/{num_tables_transposed})}}\n"
     else:
-        latex_content_transposed += "\\caption{Mean Normalized Negative RMSE ± Standard Deviation by Method (Transposed)}\n"
-    latex_content_transposed += f"\\label{{tab:normalized_negative_rmse_by_method_transposed_{table_idx + 1}}}\n"
+        latex_content_transposed += "\\caption{Mean Column-wise R^2 ± Standard Deviation by Method (Transposed)}\n"
+    latex_content_transposed += f"\\label{{tab:r_squared_by_method_transposed_{table_idx + 1}}}\n"
     
     # Create column specification
     num_patterns_table = len(table_patterns)
@@ -582,14 +608,14 @@ for table_idx in range(num_tables_transposed):
     latex_content_transposed += "\\end{table}\n"
     
     # Save each transposed table to a separate file
-    transposed_filename = f"figures/normalized_negative_rmse_table_transposed_{table_idx + 1}.txt" if num_tables_transposed > 1 else "figures/normalized_negative_rmse_table_transposed.txt"
+    transposed_filename = f"figures/r_squared_table_transposed_{table_idx + 1}.txt" if num_tables_transposed > 1 else "figures/r_squared_table_transposed.txt"
     with open(transposed_filename, "w") as f:
         f.write(latex_content_transposed)
     
     print(f"Transposed LaTeX table {table_idx + 1} saved to {transposed_filename}")
 
-# Generate LaTeX table for non-normalized RMSE values for MCAR with datasets as rows
-print("Creating LaTeX table for non-normalized RMSE values (MCAR, datasets as rows)...")
+# Generate LaTeX table for column-wise R^2 values for MCAR with datasets as rows
+print("Creating LaTeX table for column-wise R^2 values (MCAR, datasets as rows)...")
 
 # Get data for MCAR pattern only
 mcar_data = df[df.index.get_level_values(1) == 'MCAR']
@@ -605,13 +631,12 @@ if not mcar_data.empty:
             dataset_data = {'Dataset': dataset}
             for method in available_methods:
                 if method in mcar_data.columns:
-                    # Get the negative RMSE value and convert to positive RMSE
+                    # Get the column-wise R^2 value
                     # Use .iloc[0] to get the scalar value from the Series
                     try:
-                        neg_rmse = mcar_data.loc[dataset, method].iloc[0]
-                        if pd.notna(neg_rmse):
-                            rmse = -neg_rmse  # Convert from negative RMSE to positive RMSE
-                            dataset_data[method] = rmse
+                        r_squared = mcar_data.loc[dataset, method].iloc[0]
+                        if pd.notna(r_squared):
+                            dataset_data[method] = r_squared
                         else:
                             dataset_data[method] = None
                     except (IndexError, KeyError):
@@ -625,8 +650,8 @@ if not mcar_data.empty:
         # Generate LaTeX table
         latex_content_mcar = "\\begin{table}[h]\n"
         latex_content_mcar += "\\centering\n"
-        latex_content_mcar += "\\caption{Non-normalized RMSE Values for MCAR Pattern by Dataset}\n"
-        latex_content_mcar += "\\label{tab:rmse_mcar_by_dataset}\n"
+        latex_content_mcar += "\\caption{Column-wise R^2 Values for MCAR Pattern by Dataset}\n"
+        latex_content_mcar += "\\label{tab:r_squared_mcar_by_dataset}\n"
         
         # Create column specification
         num_methods = len(available_methods)
@@ -649,23 +674,23 @@ if not mcar_data.empty:
             dataset_name = row_data['Dataset'].replace('_', '\\_')  # Escape underscores
             row = dataset_name
             
-            # Find the minimum (best) RMSE value for this row
-            valid_rmse_values = []
+            # Find the minimum (best) column-wise R^2 value for this row
+            valid_r_squared_values = []
             for method in available_methods:
-                rmse_val = row_data[method]
-                if pd.notna(rmse_val):
-                    valid_rmse_values.append(rmse_val)
+                r_squared_val = row_data[method]
+                if pd.notna(r_squared_val):
+                    valid_r_squared_values.append(r_squared_val)
             
-            min_rmse = min(valid_rmse_values) if valid_rmse_values else None
+            min_r_squared = min(valid_r_squared_values) if valid_r_squared_values else None
             
             for method in available_methods:
-                rmse_val = row_data[method]
-                if pd.notna(rmse_val):
-                    # Bold if this is the minimum (best) RMSE value for this row
-                    if abs(rmse_val - min_rmse) < 1e-6:  # Use small epsilon for float comparison
-                        row += f" & \\textbf{{{rmse_val:.3f}}}"
+                r_squared_val = row_data[method]
+                if pd.notna(r_squared_val):
+                    # Bold if this is the minimum (best) column-wise R^2 value for this row
+                    if abs(r_squared_val - min_r_squared) < 1e-6:  # Use small epsilon for float comparison
+                        row += f" & \\textbf{{{r_squared_val:.3f}}}"
                     else:
-                        row += f" & {rmse_val:.3f}"
+                        row += f" & {r_squared_val:.3f}"
                 else:
                     row += " & --"
             
@@ -677,87 +702,12 @@ if not mcar_data.empty:
         latex_content_mcar += "\\end{table}\n"
         
         # Save MCAR table to file
-        mcar_filename = "figures/rmse_mcar_by_dataset.txt"
+        mcar_filename = "figures/r_squared_mcar_by_dataset.txt"
         with open(mcar_filename, "w") as f:
             f.write(latex_content_mcar)
         
-        print(f"MCAR RMSE table saved to {mcar_filename}")
+        print(f"MCAR R^2 table saved to {mcar_filename}")
     else:
         print("No methods from table_methods found in MCAR data")
 else:
     print("No MCAR data found")
-    
-    
-    
-# Calculate p values for comparison of TabImpute and HyperImpute
-print("\n" + "="*60)
-print("Statistical comparison: TabImpute vs HyperImpute")
-print("="*60)
-
-# Get normalized RMSE values for both methods
-# df_all_norm has MultiIndex (dataset, pattern) and columns are methods
-tabimpute_values = []
-hyperimpute_values = []
-
-# Extract paired values (same dataset-pattern combination)
-for idx in df_all_norm.index:
-    if 'TabImpute' in df_all_norm.columns and 'HyperImpute' in df_all_norm.columns:
-        tabimpute_val = df_all_norm.loc[idx, 'TabImpute']
-        hyperimpute_val = df_all_norm.loc[idx, 'HyperImpute']
-        
-        # Only include pairs where both values are not NaN
-        if pd.notna(tabimpute_val) and pd.notna(hyperimpute_val):
-            tabimpute_values.append(tabimpute_val)
-            hyperimpute_values.append(hyperimpute_val)
-
-tabimpute_values = np.array(tabimpute_values)
-hyperimpute_values = np.array(hyperimpute_values)
-
-if len(tabimpute_values) > 0:
-    print(f"\nNumber of valid comparisons: {len(tabimpute_values)}")
-    print(f"TabImpute mean normalized negative RMSE: {np.mean(tabimpute_values):.4f} ± {np.std(tabimpute_values):.4f}")
-    print(f"HyperImpute mean normalized negative RMSE: {np.mean(hyperimpute_values):.4f} ± {np.std(hyperimpute_values):.4f}")
-    
-    # Calculate differences (TabImpute - HyperImpute)
-    # Higher normalized negative RMSE is better, so positive difference means TabImpute is better
-    differences = tabimpute_values - hyperimpute_values
-    print(f"\nMean difference (TabImpute - HyperImpute): {np.mean(differences):.4f}")
-    print(f"  (Positive values indicate TabImpute is better)")
-    
-    # Paired t-test (parametric)
-    # H0: mean difference = 0 (no difference)
-    # H1: mean difference > 0 (TabImpute is better)
-    t_stat, p_value_ttest = stats.ttest_rel(tabimpute_values, hyperimpute_values, alternative='greater')
-    print(f"\nPaired t-test (one-sided, TabImpute > HyperImpute):")
-    print(f"  t-statistic: {t_stat:.8f}")
-    print(f"  p-value: {p_value_ttest:.8f}")
-    
-    # Wilcoxon signed-rank test (non-parametric)
-    # H0: median difference = 0 (no difference)
-    # H1: median difference > 0 (TabImpute is better)
-    try:
-        wilcoxon_stat, p_value_wilcoxon = stats.wilcoxon(
-            tabimpute_values, hyperimpute_values, 
-            alternative='greater', 
-            zero_method='pratt'  # Handle zero differences
-        )
-        print(f"\nWilcoxon signed-rank test (one-sided, TabImpute > HyperImpute):")
-        print(f"  statistic: {wilcoxon_stat:.8f}")
-        print(f"  p-value: {p_value_wilcoxon:.8f}")
-    except Exception as e:
-        print(f"\nWilcoxon test could not be computed: {e}")
-    
-    # Summary
-    print(f"\n{'='*60}")
-    if p_value_ttest < 0.001:
-        print("Result: TabImpute is significantly better than HyperImpute (p < 0.001)")
-    elif p_value_ttest < 0.01:
-        print("Result: TabImpute is significantly better than HyperImpute (p < 0.01)")
-    elif p_value_ttest < 0.05:
-        print("Result: TabImpute is significantly better than HyperImpute (p < 0.05)")
-    else:
-        print("Result: No significant difference between TabImpute and HyperImpute")
-    print("="*60 + "\n")
-else:
-    print("No valid paired comparisons found between TabImpute and HyperImpute")
-

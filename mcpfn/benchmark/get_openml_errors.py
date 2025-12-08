@@ -23,7 +23,7 @@ except ImportError:
 import shutil
 from diffputer_wrapper import DiffPuterImputer
 from remasker_wrapper import ReMaskerImputer
-
+from cacti_wrapper import CACTIImputer
 
 repeats = 1
 
@@ -52,23 +52,24 @@ imputers = set([
     # "hyperimpute_miwae",
     # "forestdiffusion",
     # "diffputer",
-    "remasker",
+    # "remasker",
+    "cacti",
 ])
 
 patterns = {
-    "MCAR",
-    # "MAR",
-    # "MNAR",
-    # "MAR_Neural",
-    # "MAR_BlockNeural",
-    # "MAR_Sequential",
-    # "MNARPanelPattern",
-    # "MNARPolarizationPattern",
-    # "MNARSoftPolarizationPattern",
-    # "MNARLatentFactorPattern",
-    # "MNARClusterLevelPattern",
-    # "MNARTwoPhaseSubsetPattern",
-    # "MNARCensoringPattern",
+    # "MCAR",
+    "MAR",
+    "MNAR",
+    "MAR_Neural",
+    "MAR_BlockNeural",
+    "MAR_Sequential",
+    "MNARPanelPattern",
+    "MNARPolarizationPattern",
+    "MNARSoftPolarizationPattern",
+    "MNARLatentFactorPattern",
+    "MNARClusterLevelPattern",
+    "MNARTwoPhaseSubsetPattern",
+    "MNARCensoringPattern",
 }
 
 # --- Initialize classes once ---
@@ -200,7 +201,7 @@ def run_forest_diffusion(X_missing: np.ndarray, n_t: int = 50,
 base_path = "datasets/openml"
 datasets = os.listdir(base_path)
 
-pbar = tqdm(datasets)
+pbar = tqdm(datasets[35:36])
 for name in pbar:
     pbar.set_description(f"Running {name}")
     configs = os.listdir(f"{base_path}/{name}")
@@ -443,5 +444,21 @@ for name in pbar:
                         f.write(f"{end_time - start_time}\n")
                     np.save(out_path, X_remasker)
 
+            # --- CACTI ---
+            if "cacti" in imputers:
+                cacti = CACTIImputer(device="cuda", model="CMAE", mask_ratio=0.9, epochs=300)
+                out_path = f"{cfg_dir}/cacti.npy"
+                if not os.path.exists(out_path) or force_rerun:
+                    try:
+                        start_time = time.time()
+                        X_cacti = cacti.fit_transform(fill_all_nan_columns(X_missing.copy()))
+                        end_time = time.time()
+                        print(f"CACTI imputation time: {end_time - start_time} seconds")
+                        np.save(out_path, X_cacti)
+                        # save the imputation time
+                        with open(f"{cfg_dir}/cacti_imputation_time.txt", "a") as f:
+                            f.write(f"{end_time - start_time}\n")
+                    except Exception as e:
+                        print(f"Error running CACTI: {e}")
             # GPU housekeeping (for MCPFN/TabPFN)
             torch.cuda.empty_cache()

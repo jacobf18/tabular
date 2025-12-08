@@ -118,7 +118,7 @@ method_names = {
     "hyperimpute_hyperimpute_miwae": "MIWAE (GPU)",
     "forestdiffusion": "ForestDiffusion",
     "knn": "K-Nearest Neighbors",
-    "diffputer": "DiffPuter (GPU)",
+    # "diffputer": "DiffPuter (GPU)",
 }
 
 # Define consistent color mapping for methods (using display names as they appear in the DataFrame)
@@ -160,7 +160,7 @@ include_methods = [
     # "mcpfn_ensemble_cpu",
     "tabpfn_unsupervised",
     # "masters_mcar",
-    # "tabpfn",
+    "tabpfn",
     # "tabpfn_impute",
     "hyperimpute_hyperimpute",
     "hyperimpute_hyperimpute_missforest",
@@ -173,7 +173,7 @@ include_methods = [
     "knn",
     "softimpute",
     "forestdiffusion",
-    "diffputer",
+    # "diffputer",
 ]
 
 def create_plots(imputation_data, dataset_info):

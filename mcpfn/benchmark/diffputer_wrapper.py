@@ -30,7 +30,7 @@ class DiffPuterImputer:
     def __init__(
         self,
         hid_dim=1024,
-        max_iter=3,  # Reduced from 10 for faster benchmarking
+        max_iter=1,  # Reduced from 10 for faster benchmarking
         num_trials=10,  # Reduced from 20 for faster benchmarking
         num_steps=50,
         num_epochs=3000,  # Reduced from 10000 for faster benchmarking
@@ -203,7 +203,8 @@ class DiffPuterImputer:
             rec_Xs.append(rec_X.cpu())
         
         # Average over trials
-        X_imputed = torch.stack(rec_Xs, dim=0).mean(0)
+        X_imputed = torch.stack(rec_Xs, dim=-1).mean(dim=-1)
+        print(X_imputed)
         
         # Clean up
         del model, denoise_fn, optimizer, scheduler
@@ -231,8 +232,8 @@ def impute_diffputer(X_missing: np.ndarray, **kwargs) -> np.ndarray:
     return imputer.fit_transform(X_missing)
 
 if __name__ == "__main__":
-    X = np.random.rand(1000, 5)
-    X[0,:] = np.nan
+    X = np.random.rand(5, 5)
+    X[np.random.rand(5) < 0.5] = np.nan
     print(X)
     imputer = DiffPuterImputer()
     X_imputed = imputer.fit_transform(X)

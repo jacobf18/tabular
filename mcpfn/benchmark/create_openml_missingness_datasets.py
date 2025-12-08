@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+import pandas as pd
 from tabimpute.prior.training_set_generation import (
     MCARPattern, 
     MARPattern, 
@@ -25,7 +26,7 @@ import os
 import shutil
 
 # --- Fetch datasets ---
-datasets = fetch_clean_openml_datasets(num_datasets=100, verbose=False)
+# datasets = fetch_clean_openml_datasets(num_datasets=100, verbose=False)
 
 # --- Define missingness patterns ---
 p_mcar = 0.4
@@ -33,7 +34,7 @@ p_mar = 0.4
 p_mnar = 0.4
 
 patterns = {
-    # "MCAR": MCARPattern(config={"p_missing": p_mcar}),
+    "MCAR": MCARPattern(config={"p_missing": p_mcar}),
     # "MAR": MARPattern(config={"p_missing": p_mar}),
     # "MNAR": MNARPattern(config={"p_missing": p_mnar}),
     # "MAR_Neural": MARNeuralNetwork(config={
@@ -66,7 +67,7 @@ patterns = {
     #         'random_seed': 42
     #     }
     # }),
-    'MNARPanelPattern': MNARPanelPattern(config={}),
+    # 'MNARPanelPattern': MNARPanelPattern(config={}),
     # 'MNARSequentialPattern': MNARSequentialPattern(config={'n_policies': 2}),
     # 'MNARPolarizationPattern': MNARPolarizationPattern(config={'threshold_quantile': 0.25}),
     # 'MNARSoftPolarizationPattern': MNARSoftPolarizationPattern(config={'soft_polarization_alpha': 2.5, 'soft_polarization_epsilon': 0.05}),
@@ -83,7 +84,7 @@ patterns = {
     # }),
 }
 
-base_path = "datasets/openml"
+base_path = "datasets/uci"
 
 # # outpu  out dataset sizes
 # for X, name, did in datasets:
@@ -121,14 +122,22 @@ for name in os.listdir(base_path):
             
             # Create the directory if it doesn't exist
             # print(f"{base_path}/{name}/{pattern_name}_{p}")
-            # os.makedirs(f"{base_path}/{name}/{pattern_name}_{p}", exist_ok=True)
+            os.makedirs(f"{base_path}/{name}/{pattern_name}_{p}", exist_ok=True)
             
-            X_normalized = np.load(f"{base_path}/{name}/{pattern_name}_{p}/true.npy")
-            X_missing = pattern._induce_missingness(torch.from_numpy(X_normalized).clone())
+            df = pd.read_pickle(f"{base_path}/{name}/dataset.pkl")
+            X_npy = df.to_numpy()
+            X_npy = X_npy.astype(np.float32)
+            
+            X_tensor = torch.from_numpy(X_npy).clone()
+            
+            X_missing = pattern._induce_missingness(X_tensor)
+            
+            # X_normalized = np.load(f"{base_path}/{name}/{pattern_name}_{p}/true.npy")
+            # X_missing = pattern._induce_missingness(torch.from_numpy(X_normalized).clone())
             
             # Save the missingness dataset
             np.save(f"{base_path}/{name}/{pattern_name}_{p}/missing.npy", X_missing.numpy())
-            # np.save(f"{base_path}/{name}/{pattern_name}_{p}/true.npy", X_normalized.numpy())
+            np.save(f"{base_path}/{name}/{pattern_name}_{p}/true.npy", X_npy)
             
             # Save the mean and std
             # np.save(f"{base_path}/{name}/{pattern_name}_{p}/mean.npy", mean)

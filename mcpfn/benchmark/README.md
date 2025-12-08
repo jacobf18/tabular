@@ -9,3 +9,21 @@ The code is organized as follows:
 - `plot_negative_rmse.py`: This script is used to plot the negative RMSE of the imputers on the OpenML datasets.
 
 The datasets are stored in the `datasets` folder. The figures are stored in the `figures` folder.
+
+## UCI Datasets
+
+We test on the same datasets as in the HyperImpute paper:
+
+- Airfoil Self-Noise
+- Blood Transfusion
+- California Housing
+- Concrete Compression
+- Diabetes
+- Ionosphere
+- Iris
+- Letter Recognition
+- Libras Movement
+- Spam Base
+- Wine Quality (Red)
+- Wine Quality (White)
+
