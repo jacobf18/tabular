@@ -29,9 +29,7 @@ import shutil
 # datasets = fetch_clean_openml_datasets(num_datasets=100, verbose=False)
 
 # --- Define missingness patterns ---
-p_mcar = 0.4
-p_mar = 0.4
-p_mnar = 0.4
+p_mcar = 0.5
 
 patterns = {
     "MCAR": MCARPattern(config={"p_missing": p_mcar}),
@@ -84,45 +82,15 @@ patterns = {
     # }),
 }
 
-base_path = "datasets/openml"
+base_path = "datasets/uci"
+num_repeats = 10
 
-# # outpu  out dataset sizes
-# for X, name, did in datasets:
-#     print(f"{name} | {X.shape[0]} \\times {X.shape[1]}")
-#     with open("dataset_sizes.txt", "a") as f:
-#         f.write(f"{name} | {X.shape[0]} \\times {X.shape[1]}\n")
-
-max_attempts = 10
-# print(datasets)
-# --- Run benchmark ---
-# for X, name, did in datasets:
 for name in os.listdir(base_path):
-    # If dataset folder does not exist, skip it
-    if not os.path.exists(f"{base_path}/{name}"):
-        continue
-    
-    for pattern_name, pattern in patterns.items():
-        num_attempts = 0
-        while num_attempts < max_attempts:
-            num_attempts += 1
-            # print(f"Running {name} | {pattern_name}")
-            # torch.cuda.empty_cache()
-            # X_missing = pattern._induce_missingness(X.clone())
-            
-            # # Normalize the data (after inducing missingness)
-            # X_missing, (mean, std) = normalize_data(X_missing, return_scaling=True)
-            # if X_missing.shape[0] == 0:
-            #     continue
-            
-            # std is set to 1 if all values are the same
-            # X_normalized = (X - mean) / std
-            
-            p = p_mcar if pattern_name == "MCAR" else p_mar if pattern_name == "MAR" else p_mnar
-            # p = pattern.config['p_missing']
-            
-            # Create the directory if it doesn't exist
-            # print(f"{base_path}/{name}/{pattern_name}_{p}")
-            os.makedirs(f"{base_path}/{name}/{pattern_name}_{p}", exist_ok=True)
+    for p in [0.1, 0.2, 0.3, 0.4, 0.5]:
+        pattern = MCARPattern(config={"p_missing": p})
+        for repeat in range(num_repeats):
+            path = f"{base_path}/{name}/MCAR/missingness-{p}/repeat-{repeat}"
+            os.makedirs(path, exist_ok=True)
             
             df = pd.read_pickle(f"{base_path}/{name}/dataset.pkl")
             X_npy = df.to_numpy()
@@ -132,14 +100,6 @@ for name in os.listdir(base_path):
             
             X_missing = pattern._induce_missingness(X_tensor)
             
-            # X_normalized = np.load(f"{base_path}/{name}/{pattern_name}_{p}/true.npy")
-            # X_missing = pattern._induce_missingness(torch.from_numpy(X_normalized).clone())
-            
             # Save the missingness dataset
-            np.save(f"{base_path}/{name}/{pattern_name}_{p}/missing.npy", X_missing.numpy())
-            np.save(f"{base_path}/{name}/{pattern_name}_{p}/true.npy", X_npy)
-            
-            # Save the mean and std
-            # np.save(f"{base_path}/{name}/{pattern_name}_{p}/mean.npy", mean)
-            # np.save(f"{base_path}/{name}/{pattern_name}_{p}/std.npy", std)
-            break
+            np.save(f"{path}/missing.npy", X_missing.numpy())
+            np.save(f"{path}/true.npy", X_npy)

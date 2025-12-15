@@ -13,6 +13,7 @@ from tabimpute.prepreocess import (
 from hyperimpute.plugins.imputers import Imputers
 from sklearn.impute import KNNImputer
 import time
+import itertools
 
 # Optional: ForestDiffusion (pip install ForestDiffusion)
 try:
@@ -25,8 +26,6 @@ from diffputer_wrapper import DiffPuterImputer
 from remasker_wrapper import ReMaskerImputer
 from cacti_wrapper import CACTIImputer
 
-repeats = 1
-
 os.environ["TABPFN_ALLOW_CPU_LARGE_DATASET"] = "1"
 
 warnings.filterwarnings("ignore")
@@ -35,7 +34,7 @@ force_rerun = True
 
 # --- Choose which imputers to run ---
 imputers = set([
-    # "mcpfn",
+    "mcpfn",
     # "mcpfn_ensemble",
     # "tabimpute_ensemble",
     # "knn",
@@ -53,24 +52,32 @@ imputers = set([
     # "forestdiffusion",
     # "diffputer",
     # "remasker",
-    "cacti",
+    # "cacti",
 ])
 
 patterns = {
-    # "MCAR",
-    "MAR",
-    "MNAR",
-    "MAR_Neural",
-    "MAR_BlockNeural",
-    "MAR_Sequential",
-    "MNARPanelPattern",
-    "MNARPolarizationPattern",
-    "MNARSoftPolarizationPattern",
-    "MNARLatentFactorPattern",
-    "MNARClusterLevelPattern",
-    "MNARTwoPhaseSubsetPattern",
-    "MNARCensoringPattern",
+    "MCAR",
+    # "MAR",
+    # "MNAR",
+    # "MAR_Neural",
+    # "MAR_BlockNeural",
+    # "MAR_Sequential",
+    # "MNARPanelPattern",
+    # "MNARPolarizationPattern",
+    # "MNARSoftPolarizationPattern",
+    # "MNARLatentFactorPattern",
+    # "MNARClusterLevelPattern",
+    # "MNARTwoPhaseSubsetPattern",
+    # "MNARCensoringPattern",
 }
+
+missingness_levels = [
+    # 0.1, 0.2, 
+    0.3, 
+    # 0.4, 0.5
+]
+
+num_repeats = 10
 
 # --- Initialize classes once ---
 if "mcpfn" in imputers:
@@ -83,12 +90,12 @@ if "mcpfn" in imputers:
     ]
     
     mcpfn = ImputePFN(
-        device="cpu",
+        device="cuda",
         # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/mnar_fixed/step-10000.ckpt",
         # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/mixed_mcar_mar_mnar/step-13500.ckpt",
         # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/mixed_mcar_mar_mnar_reweighted_zscore/step-85000.ckpt",
         # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/mixed_mcar_mar_mnar_gradnorm/step-41000.ckpt",
-        checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/masters/mcar/step-116500.ckpt",
+        checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/masters/mcar/step-117000.ckpt",
         # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/masters/mcar_nonlinear/step-100000.ckpt",
         # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/masters/mar/step-40000.ckpt",
         # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/masters/mnar/step-40000.ckpt",
@@ -96,7 +103,9 @@ if "mcpfn" in imputers:
         # checkpoint_path = "/mnt/mcpfn_data/checkpoints/mar_batch_size_64/step-49900.ckpt",
         # checkpoint_path = "/mnt/mcpfn_data/checkpoints/mixed_adaptive_more_heads/step-100000.ckpt",
         nhead=2,
-        preprocessors=preprocessors
+        preprocessors=preprocessors,
+        max_num_rows=300,
+        max_num_chunks=8,
     )
     mcpfn_name = "masters_mcar"
     
@@ -198,29 +207,18 @@ def run_forest_diffusion(X_missing: np.ndarray, n_t: int = 50,
     return model.impute(k=num_repeats)
 
 # --- Run benchmark ---
-base_path = "datasets/openml"
+base_path = "datasets/uci"
 datasets = os.listdir(base_path)
+repeats = 1
 
-pbar = tqdm(datasets[35:36])
+pbar = tqdm(datasets)
 for name in pbar:
     pbar.set_description(f"Running {name}")
-    configs = os.listdir(f"{base_path}/{name}")
-    for config in configs:
-        cfg_dir = f"{base_path}/{name}/{config}"
-        config_split = config.split("_")
-        p = config_split[-1]
-        
-        if float(p) != 0.4:
-            continue
-        
-        # remove p from config_split
-        config_split = config_split[:-1]
-        pattern_name = "_".join(config_split)
-        
-        if pattern_name not in patterns:
-            continue
-        
-        print(config)
+    
+    configs = itertools.product(patterns, missingness_levels, range(num_repeats))
+    
+    for pattern, missingness_level, r in configs:
+        cfg_dir = f"{base_path}/{name}/{pattern}/missingness-{missingness_level}/repeat-{r}"
 
         X_missing = np.load(f"{cfg_dir}/missing.npy")
         X_true = np.load(f"{cfg_dir}/true.npy")  # normalized/ground truth
@@ -393,7 +391,7 @@ for name in pbar:
                                 out = np.zeros_like(X_missing)
                             np.save(out_path, out)
 
-                
+            
             # --- ForestDiffusion (separate package) ---
             if "forestdiffusion" in imputers:
                 out_path = f"{cfg_dir}/forestdiffusion.npy"
