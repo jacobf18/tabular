@@ -1089,6 +1089,7 @@ class MissingnessPrior(IterableDataset):
         batch_size: int = 10,
         device: str = "cpu",
         verbose: bool = False,
+        entry_wise_features: bool = True,
     ):
         self.config = config
         self.verbose = verbose
@@ -1109,6 +1110,7 @@ class MissingnessPrior(IterableDataset):
         self.missingness_type = missingness_type
         self.num_missing = num_missing
         self.device = device
+        self.entry_wise_features = entry_wise_features
 
     @torch.no_grad()
     def get_batch(self, batch_size: Optional[int] = None):
@@ -1174,14 +1176,19 @@ class MissingnessPrior(IterableDataset):
             X_missing = torch.squeeze(X_missing_normalized, 1)
             X = torch.squeeze(normalize_data(torch.unsqueeze(X, 1), mean=mean, std=std), 1)
             
-            train_X, train_y, test_X, test_y = create_train_test_sets(
-                X_missing, X_full=X
-            )
-            # if train_X.shape[0] != train_X.shape[0] + test_X.shape[0] - self.num_missing:
-            #     raise ValueError('train_sizes[i] != train_X.shape[0] + test_X.shape[0] - self.num_missing')
-            X_list.append(torch.cat((train_X, test_X)))
-            y_list.append(torch.cat((train_y, test_y)))
-            train_sizes[step] = train_X.shape[0]
+            if self.entry_wise_features:
+                train_X, train_y, test_X, test_y = create_train_test_sets(
+                    X_missing, X_full=X
+                )
+                # if train_X.shape[0] != train_X.shape[0] + test_X.shape[0] - self.num_missing:
+                #     raise ValueError('train_sizes[i] != train_X.shape[0] + test_X.shape[0] - self.num_missing')
+                X_list.append(torch.cat((train_X, test_X)))
+                y_list.append(torch.cat((train_y, test_y)))
+                train_sizes[step] = train_X.shape[0]
+            else:
+                X_list.append(X_missing)
+                y_list.append(X)
+                train_sizes[step] = X.shape[0]
             step += 1
             if self.verbose:
                 pbar.update(1)
@@ -1337,28 +1344,14 @@ if __name__ == "__main__":
         missingness_type="mcar",
         num_missing=10,
         config=config,
-        batch_size=1,
+        batch_size=3,
         verbose=False,
+        entry_wise_features=False,
     )
 
-    X_full, y_full, d, seq_lens, train_sizes = prior.get_batch()
+    (X_full, y_full, d, seq_lens, train_sizes), _ = prior.get_batch()
     
     print(X_full.shape, y_full.shape, d.shape, seq_lens.shape, train_sizes.shape)
-
-    # mcpfn_errors = []
-    # tabpfn_errors = []
-
-    # import os
-    # from tabimpute.interface import ImputePFN
-
-    # imputer = ImputePFN(
-    #     device="cuda",
-    # )
-
-    # X_missing_np = X_missing.numpy()
-    # X_np = X.numpy()
-    # imputed_X = imputer.impute(X_missing_np)
-    # missing_inds = np.where(np.isnan(X_missing_np))
-    # mcpfn_errors.append(np.abs(X_np[missing_inds] - imputed_X[missing_inds]).mean())
-
-    # train_X, train_y, test_X, test_y = create_train_test_sets(X_missing, X_full=X)
+    
+    print(X_full[0])
+    print(y_full[0])

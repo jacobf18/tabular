@@ -30,25 +30,25 @@ os.environ["TABPFN_ALLOW_CPU_LARGE_DATASET"] = "1"
 
 warnings.filterwarnings("ignore")
 
-force_rerun = True
+force_rerun = False
 
 # --- Choose which imputers to run ---
 imputers = set([
-    "mcpfn",
+    # "mcpfn",
     # "mcpfn_ensemble",
     # "tabimpute_ensemble",
     # "knn",
     # "tabpfn",
     # "tabpfn_unsupervised",
     # "hyperimpute_mean",
-    # "softimpute",
+    "softimpute",
     # "hyperimpute_ot", # Sinkhorn / Optimal Transport
-    # "hyperimpute",
-    # "hyperimpute_missforest",
-    # "hyperimpute_ice",
-    # "hyperimpute_mice",
-    # "hyperimpute_gain",
-    # "hyperimpute_miwae",
+    "hyperimpute",
+    "hyperimpute_missforest",
+    "hyperimpute_ice",
+    "hyperimpute_mice",
+    "hyperimpute_gain",
+    "hyperimpute_miwae",
     # "forestdiffusion",
     # "diffputer",
     # "remasker",
@@ -72,9 +72,10 @@ patterns = {
 }
 
 missingness_levels = [
-    # 0.1, 0.2, 
+    0.1, 0.2, 
     0.3, 
-    # 0.4, 0.5
+    # 0.4, 
+    0.5
 ]
 
 num_repeats = 10
@@ -104,8 +105,8 @@ if "mcpfn" in imputers:
         # checkpoint_path = "/mnt/mcpfn_data/checkpoints/mixed_adaptive_more_heads/step-100000.ckpt",
         nhead=2,
         preprocessors=preprocessors,
-        max_num_rows=300,
-        max_num_chunks=8,
+        max_num_rows=100,
+        max_num_chunks=2,
     )
     mcpfn_name = "masters_mcar"
     
@@ -236,7 +237,6 @@ for name in pbar:
             # create the directory if it doesn't exist
             if not os.path.exists(cfg_dir):
                 os.makedirs(cfg_dir)
-            print(f"Repeat {repeat + 1} of {repeats}")
             # --- MCPFN ---
             if "mcpfn" in imputers:
                 out_path = f"{cfg_dir}/{mcpfn_name}.npy"
@@ -246,7 +246,7 @@ for name in pbar:
                         start_time = time.time()
                         X_mcpfn_list = mcpfn.impute(X_missing.copy(), num_repeats=repeats)
                         end_time = time.time()
-                        print(f"MCPFN imputation time: {end_time - start_time} seconds")
+                        print(f"MCPFN imputation time: {end_time - start_time} seconds for {cfg_dir}")
                         # save the imputation time
                         for i in range(repeats):
                             cfg_dir = f"{original_cfg_dir}/repeats/{i}/"
@@ -259,10 +259,10 @@ for name in pbar:
                         start_time = time.time()
                         X_mcpfn = mcpfn.impute(X_missing.copy())
                         end_time = time.time()
-                        # np.save(out_path, X_mcpfn)
-                        print(f"MCPFN imputation time: {end_time - start_time} seconds")
+                        np.save(out_path, X_mcpfn)
+                        print(f"MCPFN imputation time: {end_time - start_time} seconds for {cfg_dir}")
                         # save the imputation time
-                        with open(f"{cfg_dir}/mcpfn_cpu_imputation_time.txt", "a") as f:
+                        with open(f"{cfg_dir}/mcpfn_imputation_time.txt", "a") as f:
                             f.write(f"{end_time - start_time}\n")
             
             # --- KNN ---
