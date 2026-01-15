@@ -25,8 +25,9 @@ from huggingface_hub import hf_hub_download
 from scipy.optimize import minimize
 from scipy.special import softmax
 from tabimpute.model.encoders import normalize_data
+from tabimpute.model.model import TabImputeModel
 
-import einops
+import matplotlib.pyplot as plt
 
 def get_model_from_huggingface() -> str:
     repo_id = "Tabimpute/TabImpute"
@@ -75,11 +76,25 @@ class ImputePFN:
         max_num_rows: int = None,
         max_num_chunks: int = None,
         verbose: bool = False,
+        entry_wise_features: bool = True,
     ):
         self.device = device
 
         # Build model
-        self.model = MCPFN(nhead=nhead).to(self.device)
+        if entry_wise_features:
+            self.model = MCPFN(nhead=nhead).to(self.device).to(torch.bfloat16)
+        else:
+            num_attention_heads = 32
+            embedding_size = 32 * num_attention_heads
+            mlp_hidden_size = 1024
+            num_cls = 8
+            num_layers = 12
+            self.model = TabImputeModel(embedding_size=embedding_size, 
+                                        num_attention_heads=num_attention_heads, 
+                                        mlp_hidden_size=mlp_hidden_size, 
+                                        num_layers=num_layers,
+                                        num_cls=num_cls,
+                                        num_outputs=5000).to(self.device).to(torch.bfloat16)
         self.model.eval()
         torch.compile(self.model)
 
@@ -87,15 +102,18 @@ class ImputePFN:
         with resources.files("tabimpute.data").joinpath("borders.pt").open("rb") as f:
             self.borders = torch.load(f, map_location=self.device)
 
-        if checkpoint_path is None:
-            checkpoint_path = get_model_from_huggingface()
+        if entry_wise_features:
+            if checkpoint_path is None:
+                checkpoint_path = get_model_from_huggingface()
 
-        # Load model state dict
-        checkpoint = torch.load(
-            checkpoint_path, map_location=self.device, weights_only=True
-        )
-        self.model.load_state_dict(checkpoint["state_dict"])
-        # self.model.model.load_state_dict(torch.load('/root/tabular/mcpfn/data/tabpfn_model.pt', weights_only=True))
+            # Load model state dict
+            checkpoint = torch.load(
+                checkpoint_path, map_location=self.device, weights_only=True
+            )
+            self.model.load_state_dict(checkpoint["state_dict"])
+        else:
+            checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=True)
+            self.model.load_state_dict(checkpoint['model'], strict=False)
 
         self.preprocessors = preprocessors
         self.max_num_rows = max_num_rows
@@ -106,6 +124,7 @@ class ImputePFN:
         borders = self.borders.to(self.device)
         self.bar_distribution = FullSupportBarDistribution(borders=borders)
         self.verbose = verbose
+        self.entry_wise_features = entry_wise_features
         
     def impute(self, X: np.ndarray, return_full: bool = False, num_repeats: int = 1) -> np.ndarray:
         """Impute missing values in the input matrix.
@@ -254,8 +273,10 @@ class ImputePFN:
         
         X_input = torch.cat((train_X, test_X), dim=0)
         
-        X_input = X_input.float()
-        input_y = input_y.float()
+        # X_input = X_input.float()
+        # input_y = input_y.float()
+        X_input = X_input.to(torch.bfloat16)
+        input_y = input_y.to(torch.bfloat16)
         
         train_size = train_y.shape[0]
         
@@ -379,50 +400,67 @@ class ImputePFN:
     def _get_imputation_single(self, X_normalized: np.ndarray, num_repeats: int = 1) -> np.ndarray:
         X_normalized_tensor = torch.from_numpy(X_normalized).to(self.device)
         
-        X_input, input_y, missing_indices, non_missing_indices, train_size = self._get_input_tensors(X_normalized_tensor)
-        
-        X_input = X_input.unsqueeze(0) # batch size 1
-        input_y = input_y.unsqueeze(0) # batch size 1
-
-        with torch.no_grad():
-            preds = self.model(X_input, input_y)
-
-            medians = self.bar_distribution.median(logits=preds).flatten()
+        if self.entry_wise_features:
+            X_input, input_y, missing_indices, non_missing_indices, train_size = self._get_input_tensors(X_normalized_tensor)
             
-            if num_repeats > 1:
-                out_full = []
-                out_normalized = []
+            X_input = X_input.unsqueeze(0) # batch size 1
+            input_y = input_y.unsqueeze(0) # batch size 1
+
+            with torch.no_grad():
+                preds = self.model(X_input, input_y)
+
+                medians = self.bar_distribution.median(logits=preds).flatten()
                 
-                for _ in range(num_repeats):
-                    sample = self.bar_distribution.sample(logits=preds.squeeze(0))
-                    X_full = X_normalized.copy()
-                    X_imputed = X_normalized.copy()
+                if num_repeats > 1:
+                    out_full = []
+                    out_normalized = []
                     
-                    sampls_train = sample[:train_y.shape[0]]
-                    sampls_test = sample[train_y.shape[0]:]
-                    X_full[missing_indices] = sampls_test.cpu().detach().numpy()
-                    X_full[non_missing_indices] = sampls_train.cpu().detach().numpy()
-                    X_imputed[missing_indices] = sampls_test.cpu().detach().numpy()
-                    out_full.append(X_full)
-                    out_normalized.append(X_imputed)
-                
-                return out_normalized, out_full
+                    for _ in range(num_repeats):
+                        sample = self.bar_distribution.sample(logits=preds.squeeze(0))
+                        X_full = X_normalized.copy()
+                        X_imputed = X_normalized.copy()
+                        
+                        sampls_train = sample[:train_y.shape[0]]
+                        sampls_test = sample[train_y.shape[0]:]
+                        X_full[missing_indices] = sampls_test.cpu().detach().numpy()
+                        X_full[non_missing_indices] = sampls_train.cpu().detach().numpy()
+                        X_imputed[missing_indices] = sampls_test.cpu().detach().numpy()
+                        out_full.append(X_full)
+                        out_normalized.append(X_imputed)
+                    
+                    return out_normalized, out_full
 
-        # Denormalize the predictions with train y mean and std
-        # medians = medians * (train_y.std() + 1e-8) + train_y.mean()
+            # Denormalize the predictions with train y mean and std
+            # medians = medians * (train_y.std() + 1e-8) + train_y.mean()
 
-        X_full = X_normalized.copy()
+            X_full = X_normalized.copy()
 
-        medians_train = medians[: train_size]
-        medians_test = medians[train_size :]
+            medians_train = medians[: train_size]
+            medians_test = medians[train_size :]
 
-        # Impute the missing values with the median predictions
-        X_normalized[missing_indices] = medians_test.cpu().detach().numpy()
+            # Impute the missing values with the median predictions
+            X_normalized[missing_indices] = medians_test.cpu().detach().numpy()
 
-        X_full[missing_indices] = medians_test.cpu().detach().numpy()
-        X_full[non_missing_indices] = medians_train.cpu().detach().numpy()
+            X_full[missing_indices] = medians_test.cpu().detach().numpy()
+            X_full[non_missing_indices] = medians_train.cpu().detach().numpy()
 
-        return X_normalized, X_full
+            return X_normalized, X_full
+        else:
+            with torch.no_grad():
+                X_normalized_tensor = X_normalized_tensor.unsqueeze(0).to(torch.bfloat16)
+                preds = self.model(X_normalized_tensor)
+                medians = self.bar_distribution.median(logits=preds).squeeze(0)
+                # print(medians)
+                # preds_0 = preds[0,0,0,:]
+                # # print the softmax of the predictions
+                # softmax = torch.softmax(preds_0, dim=-1)
+                # plt.bar(range(softmax.shape[0]), softmax.cpu().detach().to(torch.float32).numpy())
+                # plt.savefig('softmax.png')
+            X_imputed = medians.cpu().detach().numpy()
+            missing_mask = np.isnan(X_normalized)
+            X_normalized[missing_mask] = X_imputed[missing_mask]
+            return X_normalized, X_imputed
+            
 
 
 class TabPFNImputer:
@@ -793,3 +831,57 @@ X[np.random.rand(*X.shape) < 0.1] = np.nan # Set 10% of values to NaN
 out = imputer.impute(X) # Impute the missing values
 print(out)
 """
+
+import time
+if __name__ == "__main__":
+    imputer = ImputePFN(device='cuda', 
+                        entry_wise_features=False, 
+                        checkpoint_path='/home/jacobf18/tabular/mcpfn/src/tabimpute/workdir/tabimpute-large-pancake-model-mcar-p0.4-num-cls-8-rank-1-11/checkpoint_29000.pth')
+    
+    imputer_old = ImputePFN(device='cuda', entry_wise_features=True)
+    
+    print(f"New Model size: {sum(p.numel() for p in imputer.model.parameters()):,}")
+    print(f"Old Model size: {sum(p.numel() for p in imputer_old.model.parameters()):,}")
+    
+    # X = np.arange(25).reshape(5, 5) # Test matrix of size 10 x 10
+    X = np.random.randn(1000,20)
+    X = (X - X.mean(axis=0) )/ X.std(axis=0)
+    # print(X)
+    # X[list(range(5)), list(range(5))] = np.nan # Set 10% of values to NaN
+    X[np.random.rand(*X.shape) < 0.1] = np.nan # Set 10% of values to NaN
+    # print(X)
+    start_time = time.time()
+    out, full = imputer.impute(X, return_full=True) # Impute the missing values
+    end_time = time.time()
+    speed_new = end_time - start_time
+    print(f"Time taken: {end_time - start_time} seconds")
+    
+    start_time = time.time()
+    out_old, full_old = imputer_old.impute(X, return_full=True)
+    end_time = time.time()
+    speed_old = end_time - start_time
+    print(f"Time taken: {end_time - start_time} seconds")
+    
+    print(f"Speedup: {speed_old / speed_new}")
+    
+    exit()
+    
+    print(np.nanmean(X, axis=0))
+    print(out)
+    print(full)
+    
+    
+    attn_weights = imputer.model.transformer_blocks[0].get_attention_weights(attention_type="datapoints")
+
+    # Look at the weights for a [MASK] token
+    # Attention weights shape: (batch*rows, num_heads, seq_len, seq_len) or (batch*rows, seq_len, seq_len)
+    if attn_weights is not None:
+        print(f"Attention weights shape: {attn_weights.shape}")
+        # If multi-head, average across heads or select first head
+        if attn_weights.dim() == 4:
+            # Multi-head: (batch*rows, num_heads, seq_len, seq_len)
+            attn_weights = attn_weights.mean(dim=1)  # Average across heads
+        # Now shape is (batch*rows, seq_len, seq_len)
+        print(attn_weights[0, 0, :])  # First row, first query position, attention to all keys
+    else:
+        print("Attention weights not available. Run a forward pass first.")

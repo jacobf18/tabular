@@ -461,6 +461,15 @@ if summary_data:
         latex_content += header
         latex_content += "\\midrule\n"
         
+        # Calculate global maximum across all values in this table (higher is better)
+        table_global_max = float('-inf')
+        for pattern in all_patterns:
+            for method in table_methods:
+                if f"{method}_mean" in summary_pivot.columns:
+                    mean_val = summary_pivot.loc[pattern, f"{method}_mean"]
+                    if pd.notna(mean_val) and mean_val > table_global_max:
+                        table_global_max = mean_val
+        
         # Data rows (patterns as rows)
         for i, pattern in enumerate(all_patterns):
             row = patern_latex_names[pattern]  # Escape underscores in pattern names
@@ -469,21 +478,13 @@ if summary_data:
             if pattern == 'Overall' and i > 0:
                 latex_content += "\\midrule\n"
             
-            # Find the maximum mean value for this pattern to bold it
-            max_mean = float('-inf')
-            for method in table_methods:
-                if f"{method}_mean" in summary_pivot.columns:
-                    mean_val = summary_pivot.loc[pattern, f"{method}_mean"]
-                    if pd.notna(mean_val) and mean_val > max_mean:
-                        max_mean = mean_val
-            
             for method in table_methods:
                 if f"{method}_mean" in summary_pivot.columns:
                     mean_val = summary_pivot.loc[pattern, f"{method}_mean"]
                     std_val = summary_pivot.loc[pattern, f"{method}_std"]
                     if pd.notna(mean_val) and pd.notna(std_val):
-                        # Bold if this is the maximum mean value for this pattern
-                        if abs(mean_val - max_mean) < 1e-6:  # Use small epsilon for float comparison
+                        # Bold if this is the global maximum value in this table
+                        if abs(mean_val - table_global_max) < 1e-6:  # Use small epsilon for float comparison
                             row += f" & \\textbf{{{mean_val:.3f} ± {std_val:.3f}}}"
                         else:
                             row += f" & {mean_val:.3f} ± {std_val:.3f}"
@@ -531,22 +532,22 @@ transposed_df = pd.DataFrame(transposed_summary_data)
 max_cols = 4
 num_tables_transposed = (len(all_patterns) + max_cols - 1) // max_cols
 
-# Calculate global maximum for each pattern across all methods (for consistent bolding)
-pattern_global_max_means = {}
-for pattern in all_patterns:
-    max_mean = float('-inf')
-    for method in all_methods:
-        mean_col = f"{pattern}_mean"
-        if mean_col in transposed_df.columns:
-            mean_val = transposed_df[transposed_df['Method'] == method][mean_col].iloc[0]
-            if pd.notna(mean_val) and mean_val > max_mean:
-                max_mean = mean_val
-    pattern_global_max_means[pattern] = max_mean
-
 for table_idx in range(num_tables_transposed):
     start_col = table_idx * max_cols
     end_col = min(start_col + max_cols, len(all_patterns))
     table_patterns = all_patterns[start_col:end_col]
+    
+    # Calculate global maximum across all values in this table (higher is better)
+    table_global_max = float('-inf')
+    for method in all_methods:
+        for pattern in table_patterns:
+            mean_col = f"{pattern}_mean"
+            if mean_col in transposed_df.columns:
+                method_row = transposed_df[transposed_df['Method'] == method]
+                if not method_row.empty:
+                    mean_val = method_row[mean_col].iloc[0]
+                    if pd.notna(mean_val) and mean_val > table_global_max:
+                        table_global_max = mean_val
     
     latex_content_transposed = "\\begin{table}[h]\n"
     latex_content_transposed += "\\centering\n"
@@ -576,8 +577,6 @@ for table_idx in range(num_tables_transposed):
     for method in all_methods:
         row = method.replace('_', '\\_')  # Escape underscores in method names
         
-        # Use global maximum for each pattern (calculated above)
-        
         for pattern in table_patterns:
             mean_col = f"{pattern}_mean"
             std_col = f"{pattern}_std"
@@ -588,8 +587,8 @@ for table_idx in range(num_tables_transposed):
                     mean_val = method_row[mean_col].iloc[0]
                     std_val = method_row[std_col].iloc[0]
                     if pd.notna(mean_val) and pd.notna(std_val):
-                        # Bold if this is the global maximum mean value for this pattern
-                        if abs(mean_val - pattern_global_max_means[pattern]) < 1e-6:  # Use small epsilon for float comparison
+                        # Bold if this is the global maximum value in this table
+                        if abs(mean_val - table_global_max) < 1e-6:  # Use small epsilon for float comparison
                             row += f" & \\textbf{{{mean_val:.3f} ± {std_val:.3f}}}"
                         else:
                             row += f" & {mean_val:.3f} ± {std_val:.3f}"
@@ -669,25 +668,24 @@ if not mcar_data.empty:
         latex_content_mcar += header
         latex_content_mcar += "\\midrule\n"
         
+        # Calculate global maximum across all values in this table (higher is better)
+        table_global_max = float('-inf')
+        for _, row_data in mcar_df.iterrows():
+            for method in available_methods:
+                r_squared_val = row_data[method]
+                if pd.notna(r_squared_val) and r_squared_val > table_global_max:
+                    table_global_max = r_squared_val
+        
         # Data rows (datasets as rows)
         for _, row_data in mcar_df.iterrows():
             dataset_name = row_data['Dataset'].replace('_', '\\_')  # Escape underscores
             row = dataset_name
             
-            # Find the minimum (best) column-wise R^2 value for this row
-            valid_r_squared_values = []
             for method in available_methods:
                 r_squared_val = row_data[method]
                 if pd.notna(r_squared_val):
-                    valid_r_squared_values.append(r_squared_val)
-            
-            min_r_squared = min(valid_r_squared_values) if valid_r_squared_values else None
-            
-            for method in available_methods:
-                r_squared_val = row_data[method]
-                if pd.notna(r_squared_val):
-                    # Bold if this is the minimum (best) column-wise R^2 value for this row
-                    if abs(r_squared_val - min_r_squared) < 1e-6:  # Use small epsilon for float comparison
+                    # Bold if this is the global maximum value in this table
+                    if abs(r_squared_val - table_global_max) < 1e-6:  # Use small epsilon for float comparison
                         row += f" & \\textbf{{{r_squared_val:.3f}}}"
                     else:
                         row += f" & {r_squared_val:.3f}"

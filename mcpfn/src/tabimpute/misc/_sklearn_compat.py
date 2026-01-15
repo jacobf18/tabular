@@ -262,8 +262,12 @@ else:
     )
     from sklearn.utils.validation import (
         _is_fitted,  # noqa: F401
-        _is_pandas_df,  # noqa: F401
     )
+    # Handle both _is_pandas_df (sklearn < 1.5) and is_pandas_df (sklearn >= 1.5)
+    try:
+        from sklearn.utils.validation import _is_pandas_df  # noqa: F401
+    except ImportError:
+        from sklearn.utils.validation import is_pandas_df as _is_pandas_df  # noqa: F401
 
 
 ########################################################################################

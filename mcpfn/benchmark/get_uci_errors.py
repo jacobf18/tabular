@@ -12,6 +12,7 @@ from tabimpute.prepreocess import (
 )
 from hyperimpute.plugins.imputers import Imputers
 from sklearn.impute import KNNImputer
+from fancyimpute import SoftImpute as FancySoftImpute
 import time
 import itertools
 
@@ -34,14 +35,14 @@ force_rerun = True
 
 # --- Choose which imputers to run ---
 imputers = set([
-    "mcpfn",
+    # "mcpfn",
     # "mcpfn_ensemble",
     # "tabimpute_ensemble",
     # "knn",
     # "tabpfn",
     # "tabpfn_unsupervised",
     # "hyperimpute_mean",
-    # "softimpute",
+    "softimpute",
     # "hyperimpute_ot", # Sinkhorn / Optimal Transport
     # "hyperimpute",
     # "hyperimpute_missforest",
@@ -58,7 +59,7 @@ imputers = set([
 patterns = {
     "MCAR",
     # "MAR",
-    "MNAR",
+    # "MNAR",
     # "MAR_Neural",
     # "MAR_BlockNeural",
     # "MAR_Sequential",
@@ -72,13 +73,13 @@ patterns = {
 }
 
 missingness_levels = [
-    # 0.1, 0.2, 
-    # 0.3, 
+    0.1, 0.2, 
+    0.3, 
     0.4, 
-    # 0.5
+    0.5
 ]
 
-num_repeats = 1
+num_repeats = 10
 
 # --- Initialize classes once ---
 if "mcpfn" in imputers:
@@ -106,11 +107,12 @@ if "mcpfn" in imputers:
         nhead=2,
         preprocessors=preprocessors,
         entry_wise_features=False,
-        checkpoint_path='/home/jacobf18/tabular/mcpfn/src/tabimpute/workdir/tabimpute-large-pancake-model-mcar_mnar-p0.4-num-cls-8-rank-1-15/checkpoint_40000.pth'
+        # checkpoint_path='/home/jacobf18/tabular/mcpfn/src/tabimpute/workdir/tabimpute-large-pancake-model-mcar_mnar-p0.4-num-cls-8-rank-1-15/checkpoint_40000.pth'
+        checkpoint_path='/home/jacobf18/tabular/mcpfn/src/tabimpute/.workdir/tabimpute-large-pancake-model-mcar-p0.4-num-cls-8-rank-1-11/checkpoint_70000.pth'
         # max_num_rows=100,
         # max_num_chunks=2,
     )
-    mcpfn_name = "tabimpute_large_mcar_mnar"
+    mcpfn_name = "tabimpute_large_mcar"
     
 if "tabimpute_ensemble" in imputers:
     preprocessors = [
@@ -210,7 +212,7 @@ def run_forest_diffusion(X_missing: np.ndarray, n_t: int = 50,
     return model.impute(k=num_repeats)
 
 # --- Run benchmark ---
-base_path = "datasets/openml"
+base_path = "datasets/uci"
 datasets = os.listdir(base_path)
 repeats = 1
 
@@ -221,11 +223,15 @@ for name in pbar:
     configs = itertools.product(patterns, missingness_levels, range(num_repeats))
     
     for pattern, missingness_level, r in configs:
-        # cfg_dir = f"{base_path}/{name}/{pattern}/missingness-{missingness_level}/repeat-{r}"
-        cfg_dir = f"{base_path}/{name}/{pattern}_{missingness_level}"
+        cfg_dir = f"{base_path}/{name}/{pattern}/missingness-{missingness_level}/repeat-{r}"
 
         X_missing = np.load(f"{cfg_dir}/missing.npy")
-        X_true = np.load(f"{cfg_dir}/true.npy")  # normalized/ground truth
+        X_true = np.load(f"{cfg_dir}/true.npy")
+        
+        X_missing_mean = np.nanmean(X_missing, axis=0)
+        X_missing_std = np.nanstd(X_missing, axis=0)
+        
+        X_missing = (X_missing - X_missing_mean) / X_missing_std
 
         # mask for reference if needed downstream
         mask = np.isnan(X_missing)
@@ -256,13 +262,13 @@ for name in pbar:
                             out_path = f"{cfg_dir}/{mcpfn_name}.npy"
                             with open(f"{cfg_dir}/mcpfn_imputation_time.txt", "a") as f:
                                 f.write(f"{(end_time - start_time) / repeats}\n")
-                            np.save(out_path, X_mcpfn_list[i])
+                            np.save(out_path, (X_mcpfn_list[i] * X_missing_std) + X_missing_mean)
                         break
                     else:
                         start_time = time.time()
                         X_mcpfn = mcpfn.impute(X_missing.copy())
                         end_time = time.time()
-                        np.save(out_path, X_mcpfn)
+                        np.save(out_path, (X_mcpfn * X_missing_std) + X_missing_mean)
                         print(f"MCPFN imputation time: {end_time - start_time} seconds for {cfg_dir}")
                         # save the imputation time
                         with open(f"{cfg_dir}/{mcpfn_name}_imputation_time.txt", "a") as f:
@@ -279,7 +285,7 @@ for name in pbar:
                     # save the imputation time
                     with open(f"{cfg_dir}/knn_imputation_time.txt", "a") as f:
                         f.write(f"{end_time - start_time}\n")
-                    np.save(out_path, X_knn)
+                    np.save(out_path, (X_knn * X_missing_std) + X_missing_mean)
                 
             if "mcpfn_ensemble" in imputers:
                 out_path = f"{cfg_dir}/mcpfn_ensemble.npy"
@@ -288,7 +294,7 @@ for name in pbar:
                     X_mcpfn_ensemble = mcpfn_ensemble.impute(X_missing.copy())
                     end_time = time.time()
                     print(f"MCPFN Ensemble imputation time: {end_time - start_time} seconds")
-                    np.save(out_path, X_mcpfn_ensemble)
+                    np.save(out_path, (X_mcpfn_ensemble * X_missing_std) + X_missing_mean)
                     # save the imputation time
                     with open(f"{cfg_dir}/mcpfn_ensemble_cpu_imputation_time.txt", "a") as f:
                         f.write(f"{end_time - start_time}\n")
@@ -300,7 +306,7 @@ for name in pbar:
                     X_tabimpute_ensemble = tabimpute_ensemble.impute(X_missing.copy())
                     end_time = time.time()
                     print(f"TabImpute Ensemble imputation time: {end_time - start_time} seconds")
-                    np.save(out_path, X_tabimpute_ensemble)
+                    np.save(out_path, (X_tabimpute_ensemble * X_missing_std) + X_missing_mean)
                     # save the imputation time
                     with open(f"{cfg_dir}/{mcpfn_name}_imputation_time.txt", "a") as f:
                         f.write(f"{end_time - start_time}\n")
@@ -316,7 +322,7 @@ for name in pbar:
                     # save the imputation time
                     with open(f"{cfg_dir}/tabpfn_imputation_time.txt", "a") as f:
                         f.write(f"{end_time - start_time}\n")
-                    np.save(out_path, X_tabpfn)
+                    np.save(out_path, (X_tabpfn * X_missing_std) + X_missing_mean)
 
             # --- TabPFN Unsupervised ---
             if "tabpfn_unsupervised" in imputers:
@@ -329,7 +335,7 @@ for name in pbar:
                     # save the imputation time
                     with open(f"{cfg_dir}/tabpfn_unsupervised_imputation_time.txt", "a") as f:
                         f.write(f"{end_time - start_time}\n")
-                    np.save(out_path, X_tabpfn_unsupervised)
+                    np.save(out_path, (X_tabpfn_unsupervised * X_missing_std) + X_missing_mean)
 
             # --- Column Mean (HyperImpute simple baseline) ---
             if "column_mean" in imputers:
@@ -345,21 +351,21 @@ for name in pbar:
                     # save the imputation time
                     with open(f"{cfg_dir}/column_mean_imputation_time.txt", "a") as f:
                         f.write(f"{end_time - start_time}\n")
-                    np.save(out_path, out)
+                    np.save(out_path, (out * X_missing_std) + X_missing_mean)
 
-            # --- SoftImpute (HyperImpute) ---
+            # --- SoftImpute (fancyimpute) ---
             if "softimpute" in imputers:
                 out_path = f"{cfg_dir}/softimpute.npy"
                 if not os.path.exists(out_path) or force_rerun:
                     start_time = time.time()
-                    plugin = Imputers().get("softimpute", random_state=repeat)
-                    out = plugin.fit_transform(pd.DataFrame(fill_all_nan_columns(X_missing.copy()))).to_numpy()
+                    X_processed = fill_all_nan_columns(X_missing.copy())
+                    out = FancySoftImpute(verbose=False).fit_transform(X_processed)
                     end_time = time.time()
                     print(f"SoftImpute imputation time: {end_time - start_time} seconds")
                     # save the imputation time
                     with open(f"{cfg_dir}/softimpute_imputation_time.txt", "a") as f:
                         f.write(f"{end_time - start_time}\n")
-                    np.save(out_path, out)
+                    np.save(out_path, (out * X_missing_std) + X_missing_mean)
 
             # --- HyperImpute family (OT/Sinkhorn, MissForest, ICE, MICE, EM, GAIN, MIRACLE, MIWAE) ---
             for key, (plugin_id, fname) in HYPERIMPUTE_MAP.items():
@@ -375,10 +381,9 @@ for name in pbar:
                             # save the imputation time
                             with open(f"{cfg_dir}/hyperimpute_ot_sinkhorn_imputation_time.txt", "a") as f:
                                 f.write(f"{end_time - start_time}\n")
-                            np.save(out_path, out)
+                            np.save(out_path, (out * X_missing_std) + X_missing_mean)
                 else:
                     if key in imputers:
-                        print(key)
                         out_path = f"{cfg_dir}/{fname}.npy"
                         if not os.path.exists(out_path) or force_rerun:
                             try:
@@ -392,7 +397,7 @@ for name in pbar:
                             except Exception as e:
                                 print(f"Error running {plugin_id}: {e}")
                                 out = np.zeros_like(X_missing)
-                            np.save(out_path, out)
+                            np.save(out_path, (out * X_missing_std) + X_missing_mean)
 
             
             # --- ForestDiffusion (separate package) ---
@@ -408,12 +413,12 @@ for name in pbar:
                         for i in range(repeats):
                             cfg_dir = f"{original_cfg_dir}/repeats/{i}/"
                             out_path = f"{cfg_dir}/forestdiffusion.npy"
-                            np.save(out_path, out[i])
+                            np.save(out_path, (out[i] * X_missing_std) + X_missing_mean)
                             with open(f"{cfg_dir}/forestdiffusion_imputation_time.txt", "a") as f:
                                 f.write(f"{(end_time - start_time) / repeats}\n")
                         break
                     else:
-                        np.save(out_path, out)
+                        np.save(out_path, (out * X_missing_std) + X_missing_mean)
                         print(f"ForestDiffusion imputation time: {end_time - start_time} seconds")
                         # save the imputation time
                         with open(f"{cfg_dir}/forestdiffusion_imputation_time.txt", "a") as f:
@@ -426,7 +431,7 @@ for name in pbar:
                     X_diffputer = diffputer.fit_transform(X_missing.copy())
                     end_time = time.time()
                     print(f"DiffPuter imputation time: {end_time - start_time} seconds")
-                    np.save(out_path, X_diffputer)
+                    np.save(out_path, (X_diffputer * X_missing_std) + X_missing_mean)
                     # save the imputation time
                     with open(f"{cfg_dir}/diffputer_imputation_time.txt", "a") as f:
                         f.write(f"{end_time - start_time}\n")
@@ -443,7 +448,7 @@ for name in pbar:
                     # save the imputation time
                     with open(f"{cfg_dir}/remasker_imputation_time.txt", "a") as f:
                         f.write(f"{end_time - start_time}\n")
-                    np.save(out_path, X_remasker)
+                    np.save(out_path, (X_remasker * X_missing_std) + X_missing_mean)
 
             # --- CACTI ---
             if "cacti" in imputers:
@@ -455,7 +460,7 @@ for name in pbar:
                         X_cacti = cacti.fit_transform(fill_all_nan_columns(X_missing.copy()))
                         end_time = time.time()
                         print(f"CACTI imputation time: {end_time - start_time} seconds")
-                        np.save(out_path, X_cacti)
+                        np.save(out_path, (X_cacti * X_missing_std) + X_missing_mean)
                         # save the imputation time
                         with open(f"{cfg_dir}/cacti_imputation_time.txt", "a") as f:
                             f.write(f"{end_time - start_time}\n")

@@ -91,6 +91,7 @@ def find_imputation_times(base_path):
 
 method_names = {
     "mixed_nonlinear": "TabImpute (Nonlinear FM)",
+    "tabimpute_large_mcar": "TabImpute (New Model)",
     "mcpfn_ensemble": "TabImpute+",
     "mcpfn_mnar": "TabImpute (MNAR)",
     "mcpfn_mixed_fixed": "TabImpute (Fixed)",
@@ -124,6 +125,7 @@ method_names = {
 # Define consistent color mapping for methods (using display names as they appear in the DataFrame)
 method_colors = {
     "TabImpute+": "#2f88a8",  # Blue
+    "TabImpute (New Model)": "#2f88a8",  # Blue
     "TabImpute": "#2f88a8",  # Sea Green (distinct from GPU)
     "TabImpute Ensemble": "#2f88a8",  # Sea Green (distinct from GPU)
     "TabImpute (MNAR)": "#2f88a8",  # Sea Green (distinct from GPU)
@@ -156,6 +158,7 @@ method_colors = {
 include_methods = [
     "mcpfn",
     "mcpfn_cpu",
+    # "tabimpute_large_mcar",
     # "mcpfn_ensemble",
     # "mcpfn_ensemble_cpu",
     "tabpfn_unsupervised",
@@ -169,7 +172,7 @@ include_methods = [
     "hyperimpute_hyperimpute_mice",
     "hyperimpute_hyperimpute_gain",
     "hyperimpute_hyperimpute_miwae",
-    "column_mean",
+    # "column_mean",
     "knn",
     "softimpute",
     "forestdiffusion",
@@ -204,17 +207,19 @@ def create_plots(imputation_data, dataset_info):
     # Filter to only include methods in include_methods list
     df_filtered = df[df['method'].isin(include_methods)].copy()
     
-    # Calculate and print speedup of TabPFN+ (GPU) compared to TabPFN (GPU)
-    tabpfn_plus_data = df_filtered[df_filtered['method'] == 'mcpfn_ensemble']
-    tabpfn_data = df_filtered[df_filtered['method'] == 'mcpfn']
+    # Calculate and print speedup
+    baseline_method = 'mcpfn'
+    speed_up_method = 'tabimpute_large_mcar'
+    baseline_data = df_filtered[df_filtered['method'] == baseline_method]
+    speed_up_data = df_filtered[df_filtered['method'] == speed_up_method]
     
-    if len(tabpfn_plus_data) > 0 and len(tabpfn_data) > 0:
-        tabpfn_plus_mean_time = tabpfn_plus_data['time'].mean()
-        tabpfn_mean_time = tabpfn_data['time'].mean()
-        speedup = tabpfn_mean_time / tabpfn_plus_mean_time
-        print(f"\nSpeedup of TabPFN+ (GPU) compared to TabPFN (GPU): {speedup:.2f}x")
-        print(f"TabPFN+ (GPU) mean time: {tabpfn_plus_mean_time:.3f} seconds")
-        print(f"TabPFN (GPU) mean time: {tabpfn_mean_time:.3f} seconds")
+    if len(baseline_data) > 0 and len(speed_up_data) > 0:
+        baseline_mean_time = baseline_data['time'].mean()
+        speed_up_mean_time = speed_up_data['time'].mean()
+        speedup = baseline_mean_time / speed_up_mean_time
+        print(f"\nSpeedup of {method_names[speed_up_method]} compared to {method_names[baseline_method]}: {speedup:.2f}x")
+        print(f"{method_names[speed_up_method]} mean time: {speed_up_mean_time:.3f} seconds")
+        print(f"{method_names[baseline_method]} mean time: {baseline_mean_time:.3f} seconds")
     else:
         print("\nWarning: Could not calculate speedup - missing data for TabPFN+ (GPU) or TabPFN (GPU)")
     

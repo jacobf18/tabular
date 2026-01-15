@@ -174,7 +174,8 @@ class BarDistribution(nn.Module):
             raise ValueError(f"Found NaN in target {y}")
 
         # this is just a default value, it will be ignored anyway
-        y[ignore_loss_mask] = self.borders[0]
+        # Convert borders[0] to match y's dtype to avoid dtype mismatch
+        y[ignore_loss_mask] = self.borders[0].to(y.dtype)
         return ignore_loss_mask
 
     def compute_scaled_log_probs(self, logits: torch.Tensor) -> torch.Tensor:

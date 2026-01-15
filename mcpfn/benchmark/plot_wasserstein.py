@@ -31,24 +31,24 @@ methods = [
     "tabpfn_impute",
     "knn",
     "forestdiffusion",
-    "diffputer",
+    # "diffputer",
     # "remasker",
 ]
 
 patterns = {
     "MCAR",
-    "MAR",
+    # "MAR",
     "MNAR",
     "MAR_Neural",
-    "MAR_BlockNeural",
+    # "MAR_BlockNeural",
     "MAR_Sequential",
-    "MNARPanelPattern",
+    # "MNARPanelPattern",
     "MNARPolarizationPattern",
     "MNARSoftPolarizationPattern",
     "MNARLatentFactorPattern",
     "MNARClusterLevelPattern",
     "MNARTwoPhaseSubsetPattern",
-    "MNARCensoringPattern",
+    # "MNARCensoringPattern",
 }
 
 method_names = {
@@ -171,10 +171,11 @@ for dataset in datasets:
 
 df = pd.Series(wasserstein).unstack()
 
-plot_pattern = False
+plot_pattern = True
 
 # Plot for all patterns combined
 # Get dataframe for all patterns
+df = 1.-df
 df_all = df.copy()
 df_norm_all = (df_all - df_all.min(axis=1).values[:, None]) / (df_all.max(axis=1) - df_all.min(axis=1)).values[:, None]
 
@@ -308,12 +309,14 @@ for pattern_name in patterns:
         print(f"No data found for pattern: {pattern_name}")
         continue
 
-    # Normalize column-wise 1-Wasserstein distance for this pattern
-    df_norm = df_pattern
+    # Normalize column-wise 1-Wasserstein distance for this pattern (per dataset-pattern combination)
+    df_norm = (df_pattern - df_pattern.min(axis=1).values[:, None]) / (
+        df_pattern.max(axis=1) - df_pattern.min(axis=1)
+    ).values[:, None]
 
-    # Calculate mean and std for each method across datasets
+    # Calculate mean and standard error for each method across datasets
     pattern_means = df_norm.mean(axis=0)
-    pattern_stds = df_norm.sem(axis=0)
+    pattern_sems = df_norm.sem(axis=0)
 
     # Create summary data for this pattern
     pattern_data = []
@@ -321,15 +324,15 @@ for pattern_name in patterns:
         pattern_data.append({
             'Method': method,
             'mean': pattern_means[method],
-            'std': pattern_stds[method],
+            'sem': pattern_sems[method],
             'Pattern': pattern_name
         })
 
     pattern_wasserstein[pattern_name] = pd.DataFrame(pattern_data)
 
-# Calculate overall column-wise 1-Wasserstein distance
-overall_means = df_all.mean(axis=0)
-overall_stds = df_all.sem(axis=0)
+# Calculate overall column-wise 1-Wasserstein distance (using normalized values)
+overall_means = df_norm_all.mean(axis=0)
+overall_sems = df_norm_all.sem(axis=0)
 
 # Create summary data for overall
 overall_data = []
@@ -337,7 +340,7 @@ for method in overall_means.index:
     overall_data.append({
         'Method': method,
         'mean': overall_means[method],
-        'std': overall_stds[method],
+        'sem': overall_sems[method],
         'Pattern': 'Overall'
     })
 
@@ -348,16 +351,16 @@ summary_data = []
 all_patterns = ['MCAR',
                 'MAR_Neural',
                 'MNAR',
-                'MAR',
-                'MAR_BlockNeural',
+                # 'MAR',
+                # 'MAR_BlockNeural',
                 'MAR_Sequential',
-                "MNARPanelPattern",
+                # "MNARPanelPattern",
                 "MNARPolarizationPattern",
                 "MNARSoftPolarizationPattern",
                 "MNARLatentFactorPattern",
                 "MNARClusterLevelPattern",
                 "MNARTwoPhaseSubsetPattern",
-                "MNARCensoringPattern",
+                # "MNARCensoringPattern",
                 'Overall'
                 ]
 
@@ -385,49 +388,60 @@ for pattern in all_patterns:
         filtered_pattern_df = pattern_df[pattern_df['Method'].isin(table_methods)]
         summary_data.append(filtered_pattern_df)
 
-print(summary_data)
+# print(summary_data)
 
 if summary_data:
     summary_df = pd.concat(summary_data, ignore_index=True)
-    summary_pivot = summary_df.pivot(index='Pattern', columns='Method', values=['mean', 'std'])
+    summary_pivot = summary_df.pivot(index='Pattern', columns='Method', values=['mean', 'sem'])
 
     # Flatten column names
     summary_pivot.columns = [f"{col[1]}_{col[0]}" for col in summary_pivot.columns]
 
-    # Get all methods and sort by overall performance (lower is better)
+    # Get all methods and sort by overall performance (higher normalized score is better)
     all_methods = []
     for method in table_methods:
         if f"{method}_mean" in summary_pivot.columns:
             all_methods.append(method)
 
-    # Sort methods by overall performance (lower column-wise 1-Wasserstein distance is better)
+    # Sort methods by overall performance (higher normalized score is better)
     if 'Overall' in summary_pivot.index:
         overall_means = summary_pivot.loc['Overall', [f"{method}_mean" for method in all_methods]]
-        all_methods = [method for _, method in sorted(zip(overall_means, all_methods), reverse=False)]
+        all_methods = [method for _, method in sorted(zip(overall_means, all_methods), reverse=True)]
 
-    # Generate LaTeX table with maximum 4 columns
+    # Generate LaTeX table with maximum 5 columns per tabular
     max_cols = 5
     num_tables = (len(all_methods) + max_cols - 1) // max_cols
 
+    # Calculate maximum per pattern (row) across all methods (for bold formatting)
+    pattern_max = {}
+    for pattern in all_patterns:
+        pattern_max_val = float('-inf')
+        for method in all_methods:
+            if f"{method}_mean" in summary_pivot.columns:
+                mean_val = summary_pivot.loc[pattern, f"{method}_mean"]
+                if pd.notna(mean_val) and mean_val > pattern_max_val:
+                    pattern_max_val = mean_val
+        pattern_max[pattern] = pattern_max_val
+
+    # Start single table environment
+    latex_content = "\\begin{table}[h]\n"
+    latex_content += "\\centering\n"
+    latex_content += "\\caption{Mean Column-wise 1-Wasserstein Distance ± Standard Error by Missingness Pattern}\n"
+    latex_content += "\\label{tab:wasserstein_by_pattern}\n"
+
+    # Generate all tabular environments
+    tabular_contents = []
     for table_idx in range(num_tables):
         start_col = table_idx * max_cols
         end_col = min(start_col + max_cols, len(all_methods))
         table_methods = all_methods[start_col:end_col]
 
-        latex_content = "\\begin{table}[h]\n"
-        latex_content += "\\centering\n"
-        if num_tables > 1:
-            latex_content += f"\\caption{{Mean Column-wise 1-Wasserstein Distance ± Standard Deviation by Missingness Pattern (Table {table_idx + 1}/{num_tables})}}\n"
-        else:
-            latex_content += "\\caption{Mean Column-wise 1-Wasserstein Distance ± Standard Deviation by Missingness Pattern}\n"
-        latex_content += f"\\label{{tab:wasserstein_by_pattern_{table_idx + 1}}}\n"
-
         # Create column specification
         num_methods_table = len(table_methods)
         col_spec = "l" + "c" * num_methods_table  # l for pattern names, c for each method
 
-        latex_content += f"\\begin{{tabular}}{{{col_spec}}}\n"
-        latex_content += "\\toprule\n"
+        tabular_content = f"\\begin{{tabular}}{{{col_spec}}}\n"
+        tabular_content += "\\toprule\n"
 
         # Header row
         header = "Pattern"
@@ -435,8 +449,8 @@ if summary_data:
             method_name = method.replace('_', '\\_')  # Escape underscores
             header += f" & {method_name}"
         header += " \\\\\n"
-        latex_content += header
-        latex_content += "\\midrule\n"
+        tabular_content += header
+        tabular_content += "\\midrule\n"
 
         # Data rows (patterns as rows)
         for i, pattern in enumerate(all_patterns):
@@ -444,41 +458,42 @@ if summary_data:
 
             # Add midrule before Overall performance
             if pattern == 'Overall' and i > 0:
-                latex_content += "\\midrule\n"
-
-            # Find the minimum mean value for this pattern to bold it (lower is better)
-            min_mean = float('inf')
-            for method in table_methods:
-                if f"{method}_mean" in summary_pivot.columns:
-                    mean_val = summary_pivot.loc[pattern, f"{method}_mean"]
-                    if pd.notna(mean_val) and mean_val < min_mean:
-                        min_mean = mean_val
+                tabular_content += "\\midrule\n"
 
             for method in table_methods:
                 if f"{method}_mean" in summary_pivot.columns:
                     mean_val = summary_pivot.loc[pattern, f"{method}_mean"]
-                    std_val = summary_pivot.loc[pattern, f"{method}_std"]
-                    if pd.notna(mean_val) and pd.notna(std_val):
-                        # Bold if this is the minimum mean value for this pattern
-                        if abs(mean_val - min_mean) < 1e-6:
-                            row += f" & \\textbf{{{mean_val:.3f} ± {std_val:.3f}}}"
+                    sem_val = summary_pivot.loc[pattern, f"{method}_sem"]
+                    if pd.notna(mean_val) and pd.notna(sem_val):
+                        # Bold if this is the maximum value for this pattern (row)
+                        if abs(mean_val - pattern_max[pattern]) < 1e-6:
+                            row += f" & \\textbf{{{mean_val:.3f} ± {sem_val:.3f}}}"
                         else:
-                            row += f" & {mean_val:.3f} ± {std_val:.3f}"
+                            row += f" & {mean_val:.3f} ± {sem_val:.3f}"
                     else:
                         row += " & --"
             row += " \\\\\n"
-            latex_content += row
+            tabular_content += row
 
-        latex_content += "\\bottomrule\n"
-        latex_content += "\\end{tabular}\n"
-        latex_content += "\\end{table}\n"
+        tabular_content += "\\bottomrule\n"
+        tabular_content += "\\end{tabular}\n"
+        
+        tabular_contents.append(tabular_content)
+        
+        # Add spacing between tabulars (except for the last one)
+        if table_idx < num_tables - 1:
+            tabular_contents.append("\\quad\n")
 
-        # Save each table to a separate file
-        filename = f"figures/wasserstein_table_{table_idx + 1}.txt" if num_tables > 1 else "figures/wasserstein_table.txt"
-        with open(filename, "w") as f:
-            f.write(latex_content)
+    # Combine all tabulars
+    latex_content += "".join(tabular_contents)
+    latex_content += "\\end{table}\n"
 
-        print(f"LaTeX table {table_idx + 1} saved to {filename}")
+    # Save single table to file
+    filename = "figures/wasserstein_table.txt"
+    with open(filename, "w") as f:
+        f.write(latex_content)
+
+    print(f"LaTeX table saved to {filename}")
 
 # Generate transposed LaTeX table (methods as rows, patterns as columns)
 print("Creating transposed LaTeX table...")
@@ -493,52 +508,54 @@ for method in all_methods:
             method_row = pattern_df[pattern_df['Method'] == method]
             if not method_row.empty:
                 method_data[f"{pattern}_mean"] = method_row.iloc[0]['mean']
-                method_data[f"{pattern}_std"] = method_row.iloc[0]['std']
+                method_data[f"{pattern}_sem"] = method_row.iloc[0]['sem']
             else:
                 method_data[f"{pattern}_mean"] = None
-                method_data[f"{pattern}_std"] = None
+                method_data[f"{pattern}_sem"] = None
         else:
             method_data[f"{pattern}_mean"] = None
-            method_data[f"{pattern}_std"] = None
+            method_data[f"{pattern}_sem"] = None
     transposed_summary_data.append(method_data)
 
 transposed_df = pd.DataFrame(transposed_summary_data)
 
-# Generate transposed LaTeX table with maximum 4 columns
+# Generate transposed LaTeX table with maximum 4 columns per tabular
 max_cols = 4
 num_tables_transposed = (len(all_patterns) + max_cols - 1) // max_cols
 
-# Calculate global minimum for each pattern across all methods (lower is better)
-pattern_global_min_means = {}
-for pattern in all_patterns:
-    min_mean = float('inf')
-    for method in all_methods:
+# Calculate maximum per method (row) across all patterns (for bold formatting)
+method_max = {}
+for method in all_methods:
+    method_max_val = float('-inf')
+    for pattern in all_patterns:
         mean_col = f"{pattern}_mean"
         if mean_col in transposed_df.columns:
-            mean_val = transposed_df[transposed_df['Method'] == method][mean_col].iloc[0]
-            if pd.notna(mean_val) and mean_val < min_mean:
-                min_mean = mean_val
-    pattern_global_min_means[pattern] = min_mean
+            method_row = transposed_df[transposed_df['Method'] == method]
+            if not method_row.empty:
+                mean_val = method_row[mean_col].iloc[0]
+                if pd.notna(mean_val) and mean_val > method_max_val:
+                    method_max_val = mean_val
+    method_max[method] = method_max_val
 
+# Start single table environment
+latex_content_transposed = "\\begin{table}[h]\n"
+latex_content_transposed += "\\centering\n"
+latex_content_transposed += "\\caption{Mean Column-wise 1-Wasserstein Distance ± Standard Error by Method (Transposed)}\n"
+latex_content_transposed += "\\label{tab:wasserstein_by_method_transposed}\n"
+
+# Generate all tabular environments
+tabular_contents_transposed = []
 for table_idx in range(num_tables_transposed):
     start_col = table_idx * max_cols
     end_col = min(start_col + max_cols, len(all_patterns))
     table_patterns = all_patterns[start_col:end_col]
 
-    latex_content_transposed = "\\begin{table}[h]\n"
-    latex_content_transposed += "\\centering\n"
-    if num_tables_transposed > 1:
-        latex_content_transposed += f"\\caption{{Mean Column-wise 1-Wasserstein Distance ± Standard Deviation by Method (Transposed, Table {table_idx + 1}/{num_tables_transposed})}}\n"
-    else:
-        latex_content_transposed += "\\caption{Mean Column-wise 1-Wasserstein Distance ± Standard Deviation by Method (Transposed)}\n"
-    latex_content_transposed += f"\\label{{tab:wasserstein_by_method_transposed_{table_idx + 1}}}\n"
-
     # Create column specification
     num_patterns_table = len(table_patterns)
     col_spec = "l" + "c" * num_patterns_table  # l for method names, c for each pattern
 
-    latex_content_transposed += f"\\begin{{tabular}}{{{col_spec}}}\n"
-    latex_content_transposed += "\\toprule\n"
+    tabular_content = f"\\begin{{tabular}}{{{col_spec}}}\n"
+    tabular_content += "\\toprule\n"
 
     # Header row
     header = "Method"
@@ -546,8 +563,8 @@ for table_idx in range(num_tables_transposed):
         pattern_name = pattern.replace('_', '\\_')  # Escape underscores
         header += f" & {pattern_name}"
     header += " \\\\\n"
-    latex_content_transposed += header
-    latex_content_transposed += "\\midrule\n"
+    tabular_content += header
+    tabular_content += "\\midrule\n"
 
     # Data rows (methods as rows)
     for method in all_methods:
@@ -555,19 +572,19 @@ for table_idx in range(num_tables_transposed):
 
         for pattern in table_patterns:
             mean_col = f"{pattern}_mean"
-            std_col = f"{pattern}_std"
+            sem_col = f"{pattern}_sem"
 
-            if mean_col in transposed_df.columns and std_col in transposed_df.columns:
+            if mean_col in transposed_df.columns and sem_col in transposed_df.columns:
                 method_row = transposed_df[transposed_df['Method'] == method]
                 if not method_row.empty:
                     mean_val = method_row[mean_col].iloc[0]
-                    std_val = method_row[std_col].iloc[0]
-                    if pd.notna(mean_val) and pd.notna(std_val):
-                        # Bold if this is the global minimum mean value for this pattern
-                        if abs(mean_val - pattern_global_min_means[pattern]) < 1e-6:
-                            row += f" & \\textbf{{{mean_val:.3f} ± {std_val:.3f}}}"
+                    sem_val = method_row[sem_col].iloc[0]
+                    if pd.notna(mean_val) and pd.notna(sem_val):
+                        # Bold if this is the maximum value for this method (row)
+                        if abs(mean_val - method_max[method]) < 1e-6:
+                            row += f" & \\textbf{{{mean_val:.3f} ± {sem_val:.3f}}}"
                         else:
-                            row += f" & {mean_val:.3f} ± {std_val:.3f}"
+                            row += f" & {mean_val:.3f} ± {sem_val:.3f}"
                     else:
                         row += " & --"
                 else:
@@ -576,18 +593,27 @@ for table_idx in range(num_tables_transposed):
                 row += " & --"
 
         row += " \\\\\n"
-        latex_content_transposed += row
+        tabular_content += row
 
-    latex_content_transposed += "\\bottomrule\n"
-    latex_content_transposed += "\\end{tabular}\n"
-    latex_content_transposed += "\\end{table}\n"
+    tabular_content += "\\bottomrule\n"
+    tabular_content += "\\end{tabular}\n"
+    
+    tabular_contents_transposed.append(tabular_content)
+    
+    # Add spacing between tabulars (except for the last one)
+    if table_idx < num_tables_transposed - 1:
+        tabular_contents_transposed.append("\\quad\n")
 
-    # Save each transposed table to a separate file
-    transposed_filename = f"figures/wasserstein_table_transposed_{table_idx + 1}.txt" if num_tables_transposed > 1 else "figures/wasserstein_table_transposed.txt"
-    with open(transposed_filename, "w") as f:
-        f.write(latex_content_transposed)
+# Combine all tabulars
+latex_content_transposed += "".join(tabular_contents_transposed)
+latex_content_transposed += "\\end{table}\n"
 
-    print(f"Transposed LaTeX table {table_idx + 1} saved to {transposed_filename}")
+# Save single transposed table to file
+transposed_filename = "figures/wasserstein_table_transposed.txt"
+with open(transposed_filename, "w") as f:
+    f.write(latex_content_transposed)
+
+print(f"Transposed LaTeX table saved to {transposed_filename}")
 
 # Generate LaTeX table for column-wise 1-Wasserstein distance values for MCAR with datasets as rows
 print("Creating LaTeX table for column-wise 1-Wasserstein distance values (MCAR, datasets as rows)...")
@@ -596,20 +622,25 @@ print("Creating LaTeX table for column-wise 1-Wasserstein distance values (MCAR,
 mcar_data = df[df.index.get_level_values(1) == 'MCAR']
 
 if not mcar_data.empty:
+    # Normalize per dataset (row-wise normalization)
+    mcar_data_norm = (mcar_data - mcar_data.min(axis=1).values[:, None]) / (
+        mcar_data.max(axis=1) - mcar_data.min(axis=1)
+    ).values[:, None]
+    
     # Filter to only include methods in table_methods
-    available_methods = [method for method in table_methods if method in mcar_data.columns]
+    available_methods = [method for method in table_methods if method in mcar_data_norm.columns]
 
     if available_methods:
         # Create the table data
         mcar_table_data = []
-        for dataset in mcar_data.index.get_level_values(0).unique():
+        for dataset in mcar_data_norm.index.get_level_values(0).unique():
             dataset_data = {'Dataset': dataset}
             for method in available_methods:
-                if method in mcar_data.columns:
-                    # Get the column-wise 1-Wasserstein distance value
+                if method in mcar_data_norm.columns:
+                    # Get the normalized column-wise 1-Wasserstein distance value
                     # Use .iloc[0] to get the scalar value from the Series
                     try:
-                        wasserstein_val = mcar_data.loc[dataset, method].iloc[0]
+                        wasserstein_val = mcar_data_norm.loc[dataset, method].iloc[0]
                         if pd.notna(wasserstein_val):
                             dataset_data[method] = wasserstein_val
                         else:
@@ -644,25 +675,24 @@ if not mcar_data.empty:
         latex_content_mcar += header
         latex_content_mcar += "\\midrule\n"
 
+        # Calculate global maximum across all values in this table (higher normalized score is better)
+        table_global_max = float('-inf')
+        for _, row_data in mcar_df.iterrows():
+            for method in available_methods:
+                wasserstein_val = row_data[method]
+                if pd.notna(wasserstein_val) and wasserstein_val > table_global_max:
+                    table_global_max = wasserstein_val
+
         # Data rows (datasets as rows)
         for _, row_data in mcar_df.iterrows():
             dataset_name = row_data['Dataset'].replace('_', '\\_')  # Escape underscores
             row = dataset_name
 
-            # Find the minimum (best) column-wise 1-Wasserstein distance value for this row
-            valid_wasserstein_values = []
             for method in available_methods:
                 wasserstein_val = row_data[method]
                 if pd.notna(wasserstein_val):
-                    valid_wasserstein_values.append(wasserstein_val)
-
-            min_wasserstein = min(valid_wasserstein_values) if valid_wasserstein_values else None
-
-            for method in available_methods:
-                wasserstein_val = row_data[method]
-                if pd.notna(wasserstein_val):
-                    # Bold if this is the minimum (best) column-wise 1-Wasserstein distance value for this row
-                    if abs(wasserstein_val - min_wasserstein) < 1e-6:
+                    # Bold if this is the global maximum value in this table
+                    if abs(wasserstein_val - table_global_max) < 1e-6:
                         row += f" & \\textbf{{{wasserstein_val:.3f}}}"
                     else:
                         row += f" & {wasserstein_val:.3f}"

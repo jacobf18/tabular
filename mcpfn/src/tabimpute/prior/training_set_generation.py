@@ -126,19 +126,11 @@ class LatentFactorPrior:
         return latent_matrix
 
     def generate_complete_matrix(self) -> pd.DataFrame:
-        n_rows = int(
-            sample_log_uniform(
-                self.config["num_rows_low"], self.config["num_rows_high"]
-            )[0]
-        )
-        n_cols = int(
-            sample_log_uniform(
-                self.config["num_cols_low"], self.config["num_cols_high"]
-            )[0]
-        )
+        n_rows = np.random.randint(self.config["num_rows_low"], self.config["num_rows_high"]+1)
+        n_cols = np.random.randint(self.config["num_cols_low"], self.config["num_cols_high"]+1)
         rank = np.random.randint(
             self.config.get("latent_rank_low", 1),
-            self.config.get("latent_rank_high", 11),
+            self.config.get("latent_rank_high", 11)+1,
         )
         U = self._sample_latent_vectors(n_rows, rank)
         V = self._sample_latent_vectors(n_cols, rank)
@@ -1012,7 +1004,7 @@ class MixedPattern(BaseMissingness):
             MNARPattern(config),
             # MARSequentialBandit(config),
             # MARBlockNeuralNetwork(config),
-            MARPattern(config)
+            # MARPattern(config)
         ]
         self.pattern_names = [
             "mcar",
@@ -1020,14 +1012,15 @@ class MixedPattern(BaseMissingness):
             "mnar",
             # "mar_sequential",
             # "mar_block",
-            "mar"
+            # "mar"
         ]
         self.weights = {
-            "mcar": 1.0,
-            "mnar": 0.02,
-            "mar": 1.0,
+            "mcar": 0.8,
+            "mnar": 0.2,
+            # "mar": 1.0,
         }
-        self.probs = [1/len(self.patterns)] * len(self.patterns) # uniformly mix all patterns
+        # self.probs = [1/len(self.patterns)] * len(self.patterns) # uniformly mix all patterns
+        self.probs = [self.weights[pattern_name] for pattern_name in self.pattern_names]
         
         # check that the probabilities sum to 1
         if np.abs(sum(self.probs) - 1) > 1e-6:
@@ -1036,7 +1029,7 @@ class MixedPattern(BaseMissingness):
     def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
         ind = np.random.choice(len(self.patterns), p=np.array(self.probs))
         pattern = self.patterns[ind]
-        return pattern._induce_missingness(X), self.pattern_names[ind]
+        return pattern._induce_missingness(X)
 
 
 # Main class
@@ -1130,16 +1123,8 @@ class MissingnessPrior(IterableDataset):
             # X_list, y_list, train_sizes = self.generator.generate_batch(batch_size)
             scm_X, scm_y, _, _, _ = self.generator.scm.get_batch(batch_size)
         else:
-            n_rows = int(
-                sample_log_uniform(
-                    self.config["num_rows_low"], self.config["num_rows_high"]
-                )[0]
-            )
-            n_cols = int(
-                sample_log_uniform(
-                    self.config["num_cols_low"], self.config["num_cols_high"]
-                )[0]
-            )
+            n_rows = np.random.randint(self.config["num_rows_low"], self.config["num_rows_high"]+1)
+            n_cols = np.random.randint(self.config["num_cols_low"], self.config["num_cols_high"]+1)
             new_config = copy.deepcopy(self.config)
             new_config["num_rows_low"] = n_rows
             new_config["num_rows_high"] = n_rows
@@ -1165,6 +1150,7 @@ class MissingnessPrior(IterableDataset):
 
             if X.numel() == 0:  # if the matrix is empty, skip
                 continue
+            X = normalize_data(X.clone())
             X_missing = self.missingness_inducer._induce_missingness(X.clone())
             # pattern_weights.append(self.missingness_inducer.weights[pattern_name])
             pattern_weights.append(1.0)
@@ -1175,6 +1161,7 @@ class MissingnessPrior(IterableDataset):
             )
             X_missing = torch.squeeze(X_missing_normalized, 1)
             X = torch.squeeze(normalize_data(torch.unsqueeze(X, 1), mean=mean, std=std), 1)
+            
             
             if self.entry_wise_features:
                 train_X, train_y, test_X, test_y = create_train_test_sets(
@@ -1209,55 +1196,6 @@ class MissingnessPrior(IterableDataset):
         # train sizes is the part that is different
         return (X_full, y_full, d, seq_lens, train_sizes), torch.tensor(pattern_weights, device=self.device)
 
-    @torch.no_grad()
-    def get_pair(self, batch_size: Optional[int] = None):
-        """Generates a new batch of datasets (X, MissingPattern) pairs."""
-        if batch_size is None:
-            batch_size = self.batch_size
-        X_list, masking_list = [], []
-        step = 0
-        if self.verbose:
-            pbar = tqdm(total=self.batch_size, desc="Generating batches")
-
-        if isinstance(self.generator, SCMPriorTabICL):
-            scm_X, scm_y, _, _, _ = self.generator.scm.get_batch(batch_size)
-
-        while step < self.batch_size:
-            if isinstance(self.generator, SCMPriorTabICL):
-                X = torch.cat(
-                    (scm_X[step, :, :], scm_y[step, :].unsqueeze(dim=-1)), dim=1
-                )
-            else:
-                complete_df = self.generator.generate_complete_matrix()
-                X = torch.tensor(complete_df.values, dtype=torch.float32)
-
-            if X.numel() == 0:  # if the matrix is empty, skip
-                continue
-            X_missing = self.missingness_inducer._induce_missingness(X.clone())
-            
-            # Normalize the data after missingness is induced
-            # Use mean and std from observed values only
-            X_missing_normalized, (mean, std) = normalize_data(
-                torch.unsqueeze(X_missing, 1), return_scaling=True
-            )
-            X_missing = torch.squeeze(X_missing_normalized, 1)
-            X = torch.squeeze(normalize_data(torch.unsqueeze(X, 1), mean=mean, std=std), 1)
-            
-            masking = torch.logical_not(torch.isnan(X_missing)).float()
-            X_list.append(X)
-            masking_list.append(masking)
-            step += 1
-            if self.verbose:
-                pbar.update(1)
-
-        if not X_list:
-            return self.get_pair()
-
-        X_full = torch.stack(X_list, dim=0)
-        masking_full = torch.stack(masking_list, dim=0)
-
-        return X_full, masking_full
-
     def __iter__(self) -> "MissingnessPrior":
         """
         Returns an iterator that yields batches indefinitely.
@@ -1282,8 +1220,8 @@ class MissingnessPrior(IterableDataset):
 # Execution Block
 if __name__ == "__main__":
     config = {
-        "num_rows_low": 12,
-        "num_rows_high": 12,
+        "num_rows_low": 5,
+        "num_rows_high": 5.5,
         "num_cols_low": 5,
         "num_cols_high": 5.5,
         "p_missing": 0.4,
@@ -1295,8 +1233,8 @@ if __name__ == "__main__":
         "scm_activation_functions": list(ACTIVATION_FUNCTIONS.keys()),
         "xgb_n_estimators_exp_scale": 0.5,
         "xgb_max_depth_exp_scale": 0.5,
-        "apply_feature_warping_prob": 0.1,
-        "apply_quantization_prob": 0.1,
+        "apply_feature_warping_prob": 0.0,
+        "apply_quantization_prob": 0.0,
         # MNAR configs
         "threshold_quantile": 0.25,
         "n_core_items": 5,
@@ -1304,7 +1242,7 @@ if __name__ == "__main__":
         "n_policies": 4,
         # Latent Factor configs
         "latent_rank_low": 1,
-        "latent_rank_high": 11,
+        "latent_rank_high": 3,
         "latent_spike_p": 0.3,
         "latent_slab_sigma": 2.0,
         # Non-linear Factor configs
@@ -1344,7 +1282,7 @@ if __name__ == "__main__":
         missingness_type="mcar",
         num_missing=10,
         config=config,
-        batch_size=3,
+        batch_size=1,
         verbose=False,
         entry_wise_features=False,
     )
@@ -1353,5 +1291,5 @@ if __name__ == "__main__":
     
     print(X_full.shape, y_full.shape, d.shape, seq_lens.shape, train_sizes.shape)
     
-    print(X_full[0])
-    print(y_full[0])
+    print(X_full)
+    print(y_full)

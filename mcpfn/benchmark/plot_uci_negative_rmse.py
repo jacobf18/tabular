@@ -5,54 +5,61 @@ import os
 import pandas as pd
 import warnings
 from scipy import stats
+import itertools
 
 # --- Plotting ---
 sns.set(style="whitegrid")
 
-base_path = "datasets/openml"
-
-datasets = os.listdir(base_path)
+base_path = "datasets/uci"
 
 methods = [
     "softimpute", 
-    # "column_mean", 
+    "column_mean", 
     "hyperimpute",
-    "ot_sinkhorn",
+    # "ot_sinkhorn",
     "missforest",
     "ice",
     "mice",
-    "gain",
-    "miwae",
+    # "gain",
+    # "miwae",
     "masters_mcar",
     # "tabimpute_large_mcar",
     # "tabimpute_large_mcar_rank_1_11",
     # "tabimpute_large_mcar_mnar",
-    # "masters_mar",
-    # "masters_mnar",
-    # "masters_mcar_nonlinear",
-    "tabpfn",
-    "tabpfn_impute",
+    # # "masters_mar",
+    # # "masters_mnar",
+    # # "masters_mcar_nonlinear",
+    # "tabpfn",
+    # "tabpfn_impute",
     "knn",
-    "forestdiffusion",
+    # "forestdiffusion",
     # "diffputer",
     # "remasker",
 ]
 
 patterns = {
     "MCAR",
-    "MAR",
-    "MNAR",
-    "MAR_Neural",
-    "MAR_BlockNeural",
-    "MAR_Sequential",
-    "MNARPanelPattern",
-    "MNARPolarizationPattern",
-    "MNARSoftPolarizationPattern",
-    "MNARLatentFactorPattern",
-    "MNARClusterLevelPattern",
-    "MNARTwoPhaseSubsetPattern",
-    "MNARCensoringPattern",
+    # "MAR",
+    # "MNAR",
+    # "MAR_Neural",
+    # "MAR_BlockNeural",
+    # "MAR_Sequential",
+    # "MNARPanelPattern",
+    # "MNARPolarizationPattern",
+    # "MNARSoftPolarizationPattern",
+    # "MNARLatentFactorPattern",
+    # "MNARClusterLevelPattern",
+    # "MNARTwoPhaseSubsetPattern",
+    # "MNARCensoringPattern",
 }
+
+missingness_levels = [
+    # 0.1, 0.2, 0.3, 
+    0.4, 
+    # 0.5
+]
+
+num_repeats = 10
 
 method_names = {
     "tabimpute_large_mcar": "TabImpute (New Model)",
@@ -202,67 +209,46 @@ def compute_normalized_rmse_columnwise(X_true, X_imputed, mask):
     
     return np.mean(nrmse_list)
 
+datasets = os.listdir(base_path)
 for dataset in datasets:
-    configs = os.listdir(f"{base_path}/{dataset}")
-    for config in configs:
-        if "repeats" in config:
-            continue
-        config_split = config.split("_")
-        p = config_split[-1]
-        if p != str(0.4):
-            continue
-        
-        # remove p from config_split
-        config_split = config_split[:-1]
-        pattern_name = "_".join(config_split)
-        
-        if pattern_name not in patterns:
-            continue
-        
-        X_missing = np.load(f"{base_path}/{dataset}/{pattern_name}_{p}/missing.npy")
-        X_true = np.load(f"{base_path}/{dataset}/{pattern_name}_{p}/true.npy")
+    for pattern, missingness_level, repeat in itertools.product(patterns, missingness_levels, range(num_repeats)):
+        cfg_dir = f"{base_path}/{dataset}/{pattern}/missingness-{missingness_level}/repeat-{repeat}"
+
+        X_missing = np.load(f"{cfg_dir}/missing.npy")
+        X_true = np.load(f"{cfg_dir}/true.npy")
         
         mask = np.isnan(X_missing)
         
         for method in methods:
-            X_imputed = np.load(f"{base_path}/{dataset}/{pattern_name}_{p}/{method}.npy")
-            # print(dataset, config, method, X_imputed.shape, X_true.shape, mask.shape)
-            name = method_names[method]
-            # negative_rmse[(dataset, pattern_name, name)] = compute_negative_rmse(X_true, X_imputed, mask)
-            # negative_rmse[(dataset, pattern_name, name)] = compute_normalized_rmse(X_true, X_imputed, mask)
-            negative_rmse[(dataset, pattern_name, name)] = compute_normalized_rmse_columnwise(X_true, X_imputed, mask)
-            
-# s = pd.Series(negative_rmse)
-# s.index = pd.MultiIndex.from_tuples(s.index, names=['dataset', 'pattern', 'method'])
-# df_summary = s.groupby(['pattern', 'method']).mean().unstack('method')
-# print("\nMean by pattern and method:")
-# print(df_summary)
+            X_imputed = np.load(f"{cfg_dir}/{method}.npy")
+            negative_rmse[(dataset, pattern, missingness_level, repeat, method)] = compute_normalized_rmse_columnwise(X_true, X_imputed, mask)
 
-# overall_row = df_summary.mean(axis=0)
-
-# df_summary.loc['Overall'] = overall_row
-
-# print(df_summary)
-
-# exit()
+# Create summary dataframe with missingness_level as rows and method as columns
+s = pd.Series(negative_rmse)
+s.index = pd.MultiIndex.from_tuples(s.index, names=['dataset', 'pattern', 'missingness_level', 'repeat', 'method'])
+df_summary = s.groupby(['missingness_level', 'method']).mean().unstack('method')
+print("\nMean by missingness_level and method:")
+print(df_summary)
 
 df = pd.Series(negative_rmse).unstack()
+df_norm = (df - df.min(axis=1).values[:, None]) / (df.max(axis=1) - df.min(axis=1)).values[:, None]
+
+exit()
 
 plot_pattern = True
 
 # Plot for all patterns combined
 # Get dataframe for all patterns
 df_all = df.copy()
-df_norm_all = 1.0 - (df_all - df_all.min(axis=1).values[:, None]) / (df_all.max(axis=1) - df_all.min(axis=1)).values[:, None]
-# df_norm_all = df_all
+df_norm_all = (df_all - df_all.min(axis=1).values[:, None]) / (df_all.max(axis=1) - df_all.min(axis=1)).values[:, None]
+
 if plot_pattern:
     for pattern_name in patterns:
         # Get dataframe for 1 pattern
         df2 = df[df.index.get_level_values(1) == pattern_name]
-        df_norm = 1.0 - (df2 - df2.min(axis=1).values[:, None]) / (
+        df_norm = (df2 - df2.min(axis=1).values[:, None]) / (
             df2.max(axis=1) - df2.min(axis=1)
         ).values[:, None]
-        # df_norm = df2
         
         # Average across datasets
         # --- Barplot ---
@@ -291,36 +277,20 @@ if plot_pattern:
         ax.set_xticklabels([])
         ax.set_xlabel("")
 
+        
         # Add method names inside bars
         for i, method in enumerate(sorted_methods):
             # Get the bar height (mean value across datasets)
             bar_height = df_norm[method].mean()
-            
-            # Estimate text height when rotated 90 degrees
-            # Use character-count-based estimation (more reliable than coordinate transformation)
-            y_range = ax.get_ylim()[1] - ax.get_ylim()[0]
-            fig_height_inches = ax.figure.get_figheight()
-            # Estimate: font size 15pt, each character is roughly 0.6 * fontsize wide
-            # When rotated 90 degrees, this width becomes height
-            # Convert to data coordinates: (fontsize/72 inches) * (chars * char_width_factor) * (y_range / fig_height)
-            char_width_factor = 0.6  # approximate character width relative to font size
-            text_height_data = (15.0 / 72.0) * len(method) * char_width_factor * (y_range / fig_height_inches)
-            
-            # Compare text height to bar height
-            if text_height_data > bar_height + 0.2:
-                # Text is taller than bar - place above bar with black color
-                ax.text(i, bar_height + 0.03, method, ha='center', va='bottom', 
-                    fontsize=15.0, rotation=90, color='black', weight='bold',
-                    bbox=dict(boxstyle='round,pad=0.1', facecolor='white', alpha=0.0))
-            else:
-                # Text fits in bar - place at bottom with white color
-                ax.text(i, 0.02, method, ha='center', va='bottom', 
-                    fontsize=15.0, rotation=90, color='white', weight='bold',
-                    bbox=dict(boxstyle='round,pad=0.1', facecolor='black', alpha=0.0))
+            # Position the text at the bottom of the bar
+            # Use larger font size and position at bottom for better readability
+            ax.text(i, 0.02, method, ha='center', va='bottom', 
+                fontsize=15.0, rotation=90, color='white', weight='bold',
+                bbox=dict(boxstyle='round,pad=0.1', facecolor='black', alpha=0.0))
 
-        plt.ylabel("Column-wise Normalized RMSE", fontsize=15)
+        plt.ylabel("Normalized Negative RMSE (0–1)", fontsize=15)
         # plt.title(f"Comparison of Imputation Algorithms | {pattern_name}")
-        # plt.ylim(0, 1.0)
+        plt.ylim(0, 1.0)
         plt.tight_layout()
         plt.savefig(f"figures/negative_rmse_{pattern_name}.png", dpi=300)
         plt.close()
@@ -354,37 +324,19 @@ if plot_pattern:
     for i, method in enumerate(sorted_methods_all):
         # Get the bar height (mean value across datasets and patterns)
         bar_height = df_norm_all[method].mean()
-        
-        # Estimate text height when rotated 90 degrees
-        # Use character-count-based estimation (more reliable than coordinate transformation)
-        y_range = ax.get_ylim()[1] - ax.get_ylim()[0]
-        fig_height_inches = ax.figure.get_figheight()
-        # Estimate: font size 15pt, each character is roughly 0.6 * fontsize wide
-        # When rotated 90 degrees, this width becomes height
-        # Convert to data coordinates: (fontsize/72 inches) * (chars * char_width_factor) * (y_range / fig_height)
-        char_width_factor = 0.6  # approximate character width relative to font size
-        text_height_data = (15.0 / 72.0) * len(method) * char_width_factor * (y_range / fig_height_inches)
-        
-        # Compare text height to bar height
-        if text_height_data > bar_height:
-            # Text is taller than bar - place above bar with black color
-            ax.text(i, bar_height + 0.03, method, ha='center', va='bottom', 
-                    fontsize=15.0, rotation=90, color='black', weight='bold',
-                    bbox=dict(boxstyle='round,pad=0.1', facecolor='white', alpha=0.0))
-        else:
-            # Text fits in bar - place at bottom with white color
-            ax.text(i, 0.02, method, ha='center', va='bottom', 
-                    fontsize=15.0, rotation=90, color='white', weight='bold',
-                    bbox=dict(boxstyle='round,pad=0.1', facecolor='black', alpha=0.0))
+        # Position the text at the bottom of the bar
+        ax.text(i, 0.02, method, ha='center', va='bottom', 
+                fontsize=15.0, rotation=90, color='white', weight='bold',
+                bbox=dict(boxstyle='round,pad=0.1', facecolor='black', alpha=0.0))
 
-    plt.ylabel("Column-wise Normalized RMSE", fontsize=18)
+    plt.ylabel("1 - Normalized RMSE (0–1)", fontsize=18)
     # plt.title("Comparison of Imputation Algorithms | All Patterns")
-    # plt.ylim(0, 1.0)
+    plt.ylim(0, 1.0)
     # plt.tight_layout()
     
     fig.subplots_adjust(left=0.2, right=0.95, bottom=0.05, top=0.95)
     
-    plt.savefig(f"figures/negative_rmse_overall.pdf", dpi=300, bbox_inches=None)
+    plt.savefig(f"figures/negative_rmse_overall.png", dpi=300, bbox_inches=None)
     plt.close()
 
 

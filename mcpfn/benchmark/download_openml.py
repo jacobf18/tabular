@@ -77,8 +77,8 @@ def fetch_clean_openml_datasets_categorical(
         (datasets_df['NumberOfMissingValues'] == 0) &
         (datasets_df['NumberOfFeatures'] >= min_cols) &
         (datasets_df['NumberOfInstances'] >= min_rows) &
-        (datasets_df['NumberOfInstances'] <= max_rows) & 
-        (datasets_df['NumberOfFeatures'] <= max_cols) & 
+        (datasets_df['NumberOfInstances'] <= max_rows) &
+        (datasets_df['NumberOfFeatures'] <= max_cols) &
         (datasets_df['NumberOfSymbolicFeatures'] > 1)
     ]
 
@@ -115,7 +115,6 @@ def fetch_clean_openml_datasets_categorical(
             df[df.select_dtypes(include=['number']).columns] = df.select_dtypes(include=['number']).astype(np.float32)
             df[df.select_dtypes(include=['float']).columns] = df.select_dtypes(include=['float']).astype(np.float32)
             
-
             # X = torch.tensor(df.values, dtype=torch.float32 if all(np.issubdtype(dtype, np.number) for dtype in df.dtypes) else torch.object)
             collected.append((df, dataset.name, did))
             if verbose:

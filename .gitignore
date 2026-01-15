@@ -24,3 +24,6 @@ __pycache__/
 .vscode
 
 **/figures/
+**/workdir/
+**/.workdir/
+**/.wandb/
