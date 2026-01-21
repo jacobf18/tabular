@@ -307,4 +307,4 @@ if __name__ == "__main__":
     print(X)
     imputer = ReMaskerImputer(device="cuda")
     X_imputed = imputer.fit_transform(X)
-    print(X_imputed)
+    print(type(X_imputed))

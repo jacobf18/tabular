@@ -119,6 +119,8 @@ method_names = {
     "hyperimpute_hyperimpute_miwae": "MIWAE (GPU)",
     "forestdiffusion": "ForestDiffusion",
     "knn": "K-Nearest Neighbors",
+    "remasker": "ReMasker (GPU)",
+    "cacti": "CACTI (GPU)",
     # "diffputer": "DiffPuter (GPU)",
 }
 
@@ -153,6 +155,8 @@ method_colors = {
     "MCPFN (Linear Permuted)": "#c5b0d5",  # Light Purple
     "MCPFN (Nonlinear Permuted)": "#c49c94",  # Light Brown
     "DiffPuter (GPU)": "#d62728",  # Red
+    "ReMasker (GPU)": "#d62728",  # Red
+    "CACTI (GPU)": "#9467bd",  # Purple
 }
 
 include_methods = [
@@ -176,7 +180,9 @@ include_methods = [
     "knn",
     "softimpute",
     "forestdiffusion",
+    "remasker",
     # "diffputer",
+    "cacti",
 ]
 
 def create_plots(imputation_data, dataset_info):

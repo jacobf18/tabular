@@ -35,7 +35,8 @@ methods = [
     "knn",
     "forestdiffusion",
     # "diffputer",
-    # "remasker",
+    "remasker",
+    "cacti",
 ]
 
 patterns = {
@@ -87,6 +88,7 @@ method_names = {
     "knn": "K-Nearest Neighbors",
     "diffputer": "DiffPuter",
     "remasker": "ReMasker",
+    "cacti": "CACTI",
 }
 
 # Define consistent color mapping for methods (using display names as they appear in the DataFrame)
@@ -121,7 +123,8 @@ method_colors = {
     "MCPFN (Linear Permuted)": "#c5b0d5",  # Light Purple
     "MCPFN (Nonlinear Permuted)": "#c49c94",  # Light Brown
     "DiffPuter": "#d62728",  # Red
-    "ReMasker": "#f58231",  # Dark Orange
+    "ReMasker": "#d62728",  # Red
+    "CACTI": "#9467bd",  # Purple
 }
 
 negative_rmse = {}
@@ -318,7 +321,7 @@ if plot_pattern:
                     fontsize=15.0, rotation=90, color='white', weight='bold',
                     bbox=dict(boxstyle='round,pad=0.1', facecolor='black', alpha=0.0))
 
-        plt.ylabel("Column-wise Normalized RMSE", fontsize=15)
+        plt.ylabel("1 - Normalized RMSE", fontsize=15)
         # plt.title(f"Comparison of Imputation Algorithms | {pattern_name}")
         # plt.ylim(0, 1.0)
         plt.tight_layout()
@@ -377,7 +380,7 @@ if plot_pattern:
                     fontsize=15.0, rotation=90, color='white', weight='bold',
                     bbox=dict(boxstyle='round,pad=0.1', facecolor='black', alpha=0.0))
 
-    plt.ylabel("Column-wise Normalized RMSE", fontsize=18)
+    plt.ylabel("1 - Normalized RMSE", fontsize=18)
     # plt.title("Comparison of Imputation Algorithms | All Patterns")
     # plt.ylim(0, 1.0)
     # plt.tight_layout()

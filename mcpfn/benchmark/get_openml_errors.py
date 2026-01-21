@@ -25,16 +25,17 @@ import shutil
 from diffputer_wrapper import DiffPuterImputer
 from remasker_wrapper import ReMaskerImputer
 from cacti_wrapper import CACTIImputer
+from remasker.remasker_impute import ReMasker
 
 os.environ["TABPFN_ALLOW_CPU_LARGE_DATASET"] = "1"
 
 warnings.filterwarnings("ignore")
 
-force_rerun = True
+force_rerun = False
 
 # --- Choose which imputers to run ---
 imputers = set([
-    "mcpfn",
+    # "mcpfn",
     # "mcpfn_ensemble",
     # "tabimpute_ensemble",
     # "knn",
@@ -52,23 +53,23 @@ imputers = set([
     # "forestdiffusion",
     # "diffputer",
     # "remasker",
-    # "cacti",
+    "cacti",
 ])
 
 patterns = {
     "MCAR",
-    # "MAR",
+    "MAR",
     "MNAR",
-    # "MAR_Neural",
-    # "MAR_BlockNeural",
-    # "MAR_Sequential",
-    # "MNARPanelPattern",
-    # "MNARPolarizationPattern",
-    # "MNARSoftPolarizationPattern",
-    # "MNARLatentFactorPattern",
-    # "MNARClusterLevelPattern",
-    # "MNARTwoPhaseSubsetPattern",
-    # "MNARCensoringPattern",
+    "MAR_Neural",
+    "MAR_BlockNeural",
+    "MAR_Sequential",
+    "MNARPanelPattern",
+    "MNARPolarizationPattern",
+    "MNARSoftPolarizationPattern",
+    "MNARLatentFactorPattern",
+    "MNARClusterLevelPattern",
+    "MNARTwoPhaseSubsetPattern",
+    "MNARCensoringPattern",
 }
 
 missingness_levels = [
@@ -433,7 +434,7 @@ for name in pbar:
             
             # --- ReMasker ---
             if "remasker" in imputers:
-                remasker = ReMaskerImputer(device="cuda")
+                remasker = ReMasker()
                 out_path = f"{cfg_dir}/remasker.npy"
                 if not os.path.exists(out_path) or force_rerun:
                     start_time = time.time()
@@ -441,7 +442,7 @@ for name in pbar:
                     end_time = time.time()
                     print(f"ReMasker imputation time: {end_time - start_time} seconds")
                     # save the imputation time
-                    with open(f"{cfg_dir}/remasker_imputation_time.txt", "a") as f:
+                    with open(f"{cfg_dir}/remasker_imputation_time.txt", "w") as f:
                         f.write(f"{end_time - start_time}\n")
                     np.save(out_path, X_remasker)
 
@@ -449,6 +450,7 @@ for name in pbar:
             if "cacti" in imputers:
                 cacti = CACTIImputer(device="cuda", model="CMAE", mask_ratio=0.9, epochs=300)
                 out_path = f"{cfg_dir}/cacti.npy"
+                print(out_path)
                 if not os.path.exists(out_path) or force_rerun:
                     try:
                         start_time = time.time()
@@ -457,9 +459,10 @@ for name in pbar:
                         print(f"CACTI imputation time: {end_time - start_time} seconds")
                         np.save(out_path, X_cacti)
                         # save the imputation time
-                        with open(f"{cfg_dir}/cacti_imputation_time.txt", "a") as f:
+                        with open(f"{cfg_dir}/cacti_imputation_time.txt", "w") as f:
                             f.write(f"{end_time - start_time}\n")
                     except Exception as e:
+                        print(out_path)
                         print(f"Error running CACTI: {e}")
             # GPU housekeeping (for MCPFN/TabPFN)
             torch.cuda.empty_cache()

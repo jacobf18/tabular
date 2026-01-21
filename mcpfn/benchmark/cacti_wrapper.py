@@ -31,12 +31,12 @@ class CACTIImputer:
         embeddings=None,
         mask_ratio=0.9,
         batch_size=128,
-        epochs=100,
+        epochs=300,
         warmup_epochs=50,
-        lr=0.001,
+        lr=1e-3,
         min_lr=None,
-        embed_dim=32,
-        nencoder=6,
+        embed_dim=64,
+        nencoder=10,
         ndecoder=4,
         cembed_size=None,
         grad_clip=5.0,
@@ -246,20 +246,14 @@ def impute_cacti(X_missing: np.ndarray, **kwargs) -> np.ndarray:
 
 if __name__ == "__main__":
     # Test with random data
-    X = np.random.rand(10, 5)
-    X[:,0] = np.nan
-    print(X)
+    base_dir = '/home/jacobf18/tabular/mcpfn/benchmark/datasets/openml/SolarPower/MNARSoftPolarizationPattern_0.4'
+    X_missing = np.load(f"{base_dir}/missing.npy")
+    X_true = np.load(f"{base_dir}/true.npy")
     
-    print("Original data shape:", X.shape)
-    print("Missing values:", np.isnan(X).sum())
+    mask = np.isnan(X_missing)
     
-    imputer = CACTIImputer(
-        model='CMAE',  # CMAE also doesn't require embeddings
-        mask_ratio=0.9,
-        epochs=10
-    )
-    X_imputed = imputer.fit_transform(X)
-    print("Imputed data shape:", X_imputed.shape)
-    print("Missing values after imputation:", np.isnan(X_imputed).sum())
+    imputer = CACTIImputer(device="cuda", model="CMAE", mask_ratio=0.9, epochs=100)
+    X_imputed = imputer.fit_transform(np.copy(X_missing))
     
+    print(X_missing)
     print(X_imputed)
