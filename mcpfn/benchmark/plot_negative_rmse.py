@@ -14,6 +14,7 @@ base_path = "datasets/openml"
 datasets = os.listdir(base_path)
 
 methods = [
+    # "tabpfn_no_preprocessing",
     "softimpute", 
     # "column_mean", 
     "hyperimpute",
@@ -26,7 +27,7 @@ methods = [
     "masters_mcar",
     # "tabimpute_large_mcar",
     # "tabimpute_large_mcar_rank_1_11",
-    # "tabimpute_large_mcar_mnar",
+    # "tabimpute_large_mcar_mnar",  
     # "masters_mar",
     # "masters_mnar",
     # "masters_mcar_nonlinear",
@@ -34,7 +35,6 @@ methods = [
     "tabpfn_impute",
     "knn",
     "forestdiffusion",
-    # "diffputer",
     "remasker",
     "cacti",
 ]
@@ -71,9 +71,9 @@ method_names = {
     "mcpfn_mixed_adaptive": "TabImpute",
     "mcpfn_mar_linear": "TabImpute (MCAR then MAR)",
     "mixed_more_heads": "TabImpute (More Heads)",
-    "tabpfn_no_proprocessing": "TabPFN Fine-Tuned No Preprocessing",
+    "tabpfn_no_preprocessing": "TabPFN Fine-Tuned No Preprocessing",
     # "mixed_perm_both_row_col": "TabImpute",
-    "tabpfn_impute": "TabPFN",
+    "tabpfn_impute": "Col-TabPFN",
     "tabpfn": "EWF-TabPFN",
     "column_mean": "Col Mean",
     "hyperimpute": "HyperImpute",
@@ -116,7 +116,7 @@ method_colors = {
     "MICE": "#7f7f7f",         # Gray
     "GAIN": "#286b33",         # Dark Green
     "MIWAE": "#17becf",        # Cyan
-    "TabPFN": "#3e3b6e",       # Blue
+    "Col-TabPFN": "#3e3b6e",       # Blue
     "K-Nearest Neighbors": "#a36424",  # Orange
     "ForestDiffusion": "#52b980",      # Medium Green
     "MCPFN": "#ff9896",        # Light Red
@@ -408,6 +408,7 @@ table_methods = [
     # "TabPFN Fine-Tuned No Preprocessing",
     "EWF-TabPFN",
     "TabPFN",
+    "TabPFN Fine-Tuned No Preprocessing",
     # "TabImpute (MCAR then MAR)",
     # "TabImpute (More Heads)",
     # "TabImpute (Nonlinear)",
@@ -423,7 +424,8 @@ table_methods = [
     "K-Nearest Neighbors",
     "ForestDiffusion",
     # "DiffPuter",
-    # "ReMasker",
+    "ReMasker",
+    "CACTI",
 ]
 
 # Calculate normalized negative RMSE for each pattern
@@ -438,7 +440,7 @@ for pattern_name in patterns:
         continue
     
     # Normalize negative RMSE for this pattern
-    df_norm = (df_pattern - df_pattern.min(axis=1).values[:, None]) / (df_pattern.max(axis=1) - df_pattern.min(axis=1)).values[:, None]
+    df_norm = 1.0 - (df_pattern - df_pattern.min(axis=1).values[:, None]) / (df_pattern.max(axis=1) - df_pattern.min(axis=1)).values[:, None]
     
     # Calculate mean and std for each method across datasets
     pattern_means = df_norm.mean(axis=0)
@@ -458,7 +460,7 @@ for pattern_name in patterns:
     pattern_normalized_rmse[pattern_name] = pd.DataFrame(pattern_data)
 
 # Calculate overall normalized negative RMSE
-df_all_norm = (df_all - df_all.min(axis=1).values[:, None]) / (df_all.max(axis=1) - df_all.min(axis=1)).values[:, None]
+df_all_norm = 1.0 - (df_all - df_all.min(axis=1).values[:, None]) / (df_all.max(axis=1) - df_all.min(axis=1)).values[:, None]
 overall_means = df_all_norm.mean(axis=0)
 # overall_stds = df_all_norm.std(axis=0)
 overall_stds = df_all_norm.sem(axis=0)
@@ -478,18 +480,18 @@ pattern_normalized_rmse['Overall'] = pd.DataFrame(overall_data)
 # Create summary data for LaTeX table
 summary_data = []
 all_patterns = ['MCAR', 
-                'MAR_Neural', 
-                'MNAR', 
-                'MAR', 
-                'MAR_BlockNeural', 
-                'MAR_Sequential', 
-                "MNARPanelPattern",
-                "MNARPolarizationPattern",
-                "MNARSoftPolarizationPattern",
-                "MNARLatentFactorPattern",
-                "MNARClusterLevelPattern",
-                "MNARTwoPhaseSubsetPattern",
-                "MNARCensoringPattern",
+                # 'MAR_Neural', 
+                # 'MNAR', 
+                # 'MAR', 
+                # 'MAR_BlockNeural', 
+                # 'MAR_Sequential', 
+                # "MNARPanelPattern",
+                # "MNARPolarizationPattern",
+                # "MNARSoftPolarizationPattern",
+                # "MNARLatentFactorPattern",
+                # "MNARClusterLevelPattern",
+                # "MNARTwoPhaseSubsetPattern",
+                # "MNARCensoringPattern",
                 'Overall'
                 ]
 
@@ -537,25 +539,35 @@ if summary_data:
         overall_means = summary_pivot.loc['Overall', [f"{method}_mean" for method in all_methods]]
         all_methods = [method for _, method in sorted(zip(overall_means, all_methods), reverse=True)]
     
-    # Generate LaTeX table with maximum 4 columns
+    # Generate LaTeX table with maximum 5 columns per tabular
     max_cols = 5
-    num_tables = (len(all_methods) + max_cols - 1) // max_cols
+    num_tabulars = (len(all_methods) + max_cols - 1) // max_cols
     
-    for table_idx in range(num_tables):
-        start_col = table_idx * max_cols
+    # Calculate global row maximums across ALL methods (for bolding across all tabulars)
+    global_row_maxs = {}
+    for pattern in all_patterns:
+        row_max = float('-inf')
+        for method in all_methods:
+            if f"{method}_mean" in summary_pivot.columns:
+                mean_val = summary_pivot.loc[pattern, f"{method}_mean"]
+                if pd.notna(mean_val) and mean_val > row_max:
+                    row_max = mean_val
+        global_row_maxs[pattern] = row_max
+    
+    # Start single table environment
+    latex_content = "\\begin{table}[h]\n"
+    latex_content += "\\centering\n"
+    latex_content += "\\caption{Mean Normalized Negative RMSE ± Standard Deviation by Missingness Pattern}\n"
+    latex_content += "\\label{tab:normalized_negative_rmse_by_pattern}\n"
+    
+    # Generate each tabular environment
+    for tabular_idx in range(num_tabulars):
+        start_col = tabular_idx * max_cols
         end_col = min(start_col + max_cols, len(all_methods))
-        table_methods = all_methods[start_col:end_col]
-        
-        latex_content = "\\begin{table}[h]\n"
-        latex_content += "\\centering\n"
-        if num_tables > 1:
-            latex_content += f"\\caption{{Mean Normalized Negative RMSE ± Standard Deviation by Missingness Pattern (Table {table_idx + 1}/{num_tables})}}\n"
-        else:
-            latex_content += "\\caption{Mean Normalized Negative RMSE ± Standard Deviation by Missingness Pattern}\n"
-        latex_content += f"\\label{{tab:normalized_negative_rmse_by_pattern_{table_idx + 1}}}\n"
+        this_table_methods = all_methods[start_col:end_col]
         
         # Create column specification
-        num_methods_table = len(table_methods)
+        num_methods_table = len(this_table_methods)
         col_spec = "l" + "c" * num_methods_table  # l for pattern names, c for each method
         
         latex_content += f"\\begin{{tabular}}{{{col_spec}}}\n"
@@ -563,21 +575,12 @@ if summary_data:
         
         # Header row
         header = "Pattern"
-        for method in table_methods:
+        for method in this_table_methods:
             method_name = method.replace('_', '\\_')  # Escape underscores
             header += f" & {method_name}"
         header += " \\\\\n"
         latex_content += header
         latex_content += "\\midrule\n"
-        
-        # Calculate global maximum across all values in this table (higher is better for normalized negative RMSE)
-        table_global_max = float('-inf')
-        for pattern in all_patterns:
-            for method in table_methods:
-                if f"{method}_mean" in summary_pivot.columns:
-                    mean_val = summary_pivot.loc[pattern, f"{method}_mean"]
-                    if pd.notna(mean_val) and mean_val > table_global_max:
-                        table_global_max = mean_val
         
         # Data rows (patterns as rows)
         for i, pattern in enumerate(all_patterns):
@@ -587,13 +590,16 @@ if summary_data:
             if pattern == 'Overall' and i > 0:
                 latex_content += "\\midrule\n"
             
-            for method in table_methods:
+            # Use global row maximum for this pattern (across all methods)
+            row_max = global_row_maxs[pattern]
+            
+            for method in this_table_methods:
                 if f"{method}_mean" in summary_pivot.columns:
                     mean_val = summary_pivot.loc[pattern, f"{method}_mean"]
                     std_val = summary_pivot.loc[pattern, f"{method}_std"]
                     if pd.notna(mean_val) and pd.notna(std_val):
-                        # Bold if this is the global maximum value in this table
-                        if abs(mean_val - table_global_max) < 1e-6:  # Use small epsilon for float comparison
+                        # Bold if this is the global maximum value in this row (across all tabulars)
+                        if abs(mean_val - row_max) < 1e-6:  # Use small epsilon for float comparison
                             row += f" & \\textbf{{{mean_val:.3f} ± {std_val:.3f}}}"
                         else:
                             row += f" & {mean_val:.3f} ± {std_val:.3f}"
@@ -604,14 +610,20 @@ if summary_data:
         
         latex_content += "\\bottomrule\n"
         latex_content += "\\end{tabular}\n"
-        latex_content += "\\end{table}\n"
         
-        # Save each table to a separate file
-        filename = f"figures/normalized_negative_rmse_table_{table_idx + 1}.txt" if num_tables > 1 else "figures/normalized_negative_rmse_table.txt"
-        with open(filename, "w") as f:
-            f.write(latex_content)
-        
-        print(f"LaTeX table {table_idx + 1} saved to {filename}")
+        # Add spacing between tabulars if not the last one
+        if tabular_idx < num_tabulars - 1:
+            latex_content += "\\quad\n"
+    
+    # End table environment
+    latex_content += "\\end{table}\n"
+    
+    # Save single table file
+    filename = "figures/normalized_negative_rmse_table.txt"
+    with open(filename, "w") as f:
+        f.write(latex_content)
+    
+    print(f"LaTeX table saved to {filename}")
 
 # Generate transposed LaTeX table (methods as rows, patterns as columns)
 print("Creating transposed LaTeX table...")
@@ -637,34 +649,35 @@ for method in all_methods:
 
 transposed_df = pd.DataFrame(transposed_summary_data)
 
-# Generate transposed LaTeX table with maximum 4 columns
+# Generate transposed LaTeX table with maximum 4 columns per tabular
 max_cols = 4
-num_tables_transposed = (len(all_patterns) + max_cols - 1) // max_cols
+num_tabulars_transposed = (len(all_patterns) + max_cols - 1) // max_cols
 
-for table_idx in range(num_tables_transposed):
-    start_col = table_idx * max_cols
+# Calculate global row maximums across ALL patterns (for bolding across all tabulars)
+global_row_maxs_transposed = {}
+for method in all_methods:
+    row_max = float('-inf')
+    for pattern in all_patterns:
+        mean_col = f"{pattern}_mean"
+        if mean_col in transposed_df.columns:
+            method_row = transposed_df[transposed_df['Method'] == method]
+            if not method_row.empty:
+                mean_val = method_row[mean_col].iloc[0]
+                if pd.notna(mean_val) and mean_val > row_max:
+                    row_max = mean_val
+    global_row_maxs_transposed[method] = row_max
+
+# Start single table environment
+latex_content_transposed = "\\begin{table}[h]\n"
+latex_content_transposed += "\\centering\n"
+latex_content_transposed += "\\caption{Mean Normalized Negative RMSE ± Standard Deviation by Method (Transposed)}\n"
+latex_content_transposed += "\\label{tab:normalized_negative_rmse_by_method_transposed}\n"
+
+# Generate each tabular environment
+for tabular_idx in range(num_tabulars_transposed):
+    start_col = tabular_idx * max_cols
     end_col = min(start_col + max_cols, len(all_patterns))
     table_patterns = all_patterns[start_col:end_col]
-    
-    # Calculate global maximum across all values in this table (higher is better for normalized negative RMSE)
-    table_global_max = float('-inf')
-    for method in all_methods:
-        for pattern in table_patterns:
-            mean_col = f"{pattern}_mean"
-            if mean_col in transposed_df.columns:
-                method_row = transposed_df[transposed_df['Method'] == method]
-                if not method_row.empty:
-                    mean_val = method_row[mean_col].iloc[0]
-                    if pd.notna(mean_val) and mean_val > table_global_max:
-                        table_global_max = mean_val
-    
-    latex_content_transposed = "\\begin{table}[h]\n"
-    latex_content_transposed += "\\centering\n"
-    if num_tables_transposed > 1:
-        latex_content_transposed += f"\\caption{{Mean Normalized Negative RMSE ± Standard Deviation by Method (Transposed, Table {table_idx + 1}/{num_tables_transposed})}}\n"
-    else:
-        latex_content_transposed += "\\caption{Mean Normalized Negative RMSE ± Standard Deviation by Method (Transposed)}\n"
-    latex_content_transposed += f"\\label{{tab:normalized_negative_rmse_by_method_transposed_{table_idx + 1}}}\n"
     
     # Create column specification
     num_patterns_table = len(table_patterns)
@@ -686,6 +699,9 @@ for table_idx in range(num_tables_transposed):
     for method in all_methods:
         row = method.replace('_', '\\_')  # Escape underscores in method names
         
+        # Use global row maximum for this method (across all patterns)
+        row_max = global_row_maxs_transposed[method]
+        
         for pattern in table_patterns:
             mean_col = f"{pattern}_mean"
             std_col = f"{pattern}_std"
@@ -696,8 +712,8 @@ for table_idx in range(num_tables_transposed):
                     mean_val = method_row[mean_col].iloc[0]
                     std_val = method_row[std_col].iloc[0]
                     if pd.notna(mean_val) and pd.notna(std_val):
-                        # Bold if this is the global maximum value in this table
-                        if abs(mean_val - table_global_max) < 1e-6:  # Use small epsilon for float comparison
+                        # Bold if this is the global maximum value in this row (across all tabulars)
+                        if abs(mean_val - row_max) < 1e-6:  # Use small epsilon for float comparison
                             row += f" & \\textbf{{{mean_val:.3f} ± {std_val:.3f}}}"
                         else:
                             row += f" & {mean_val:.3f} ± {std_val:.3f}"
@@ -713,14 +729,20 @@ for table_idx in range(num_tables_transposed):
     
     latex_content_transposed += "\\bottomrule\n"
     latex_content_transposed += "\\end{tabular}\n"
-    latex_content_transposed += "\\end{table}\n"
     
-    # Save each transposed table to a separate file
-    transposed_filename = f"figures/normalized_negative_rmse_table_transposed_{table_idx + 1}.txt" if num_tables_transposed > 1 else "figures/normalized_negative_rmse_table_transposed.txt"
-    with open(transposed_filename, "w") as f:
-        f.write(latex_content_transposed)
-    
-    print(f"Transposed LaTeX table {table_idx + 1} saved to {transposed_filename}")
+    # Add spacing between tabulars if not the last one
+    if tabular_idx < num_tabulars_transposed - 1:
+        latex_content_transposed += "\\quad\n"
+
+# End table environment
+latex_content_transposed += "\\end{table}\n"
+
+# Save single transposed table file
+transposed_filename = "figures/normalized_negative_rmse_table_transposed.txt"
+with open(transposed_filename, "w") as f:
+    f.write(latex_content_transposed)
+
+print(f"Transposed LaTeX table saved to {transposed_filename}")
 
 # Generate LaTeX table for non-normalized RMSE values for MCAR with datasets as rows
 print("Creating LaTeX table for non-normalized RMSE values (MCAR, datasets as rows)...")
@@ -728,9 +750,17 @@ print("Creating LaTeX table for non-normalized RMSE values (MCAR, datasets as ro
 # Get data for MCAR pattern only
 mcar_data = df[df.index.get_level_values(1) == 'MCAR']
 
+print(table_methods)
+
+available_methods = [
+    'TabImpute',
+    'EWF-TabPFN',
+    'HyperImpute',
+    'MissForest',
+    'OT'
+]
+
 if not mcar_data.empty:
-    # Filter to only include methods in table_methods
-    available_methods = [method for method in table_methods if method in mcar_data.columns]
     
     if available_methods:
         # Create the table data
@@ -744,7 +774,7 @@ if not mcar_data.empty:
                     try:
                         neg_rmse = mcar_data.loc[dataset, method].iloc[0]
                         if pd.notna(neg_rmse):
-                            rmse = -neg_rmse  # Convert from negative RMSE to positive RMSE
+                            rmse = neg_rmse  # Convert from negative RMSE to positive RMSE
                             dataset_data[method] = rmse
                         else:
                             dataset_data[method] = None
@@ -778,24 +808,23 @@ if not mcar_data.empty:
         latex_content_mcar += header
         latex_content_mcar += "\\midrule\n"
         
-        # Calculate global minimum across all values in this table (lower is better for RMSE)
-        table_global_min = float('inf')
-        for _, row_data in mcar_df.iterrows():
-            for method in available_methods:
-                rmse_val = row_data[method]
-                if pd.notna(rmse_val) and rmse_val < table_global_min:
-                    table_global_min = rmse_val
-        
         # Data rows (datasets as rows)
         for _, row_data in mcar_df.iterrows():
             dataset_name = row_data['Dataset'].replace('_', '\\_')  # Escape underscores
             row = dataset_name
             
+            # Calculate row minimum for this dataset (across methods)
+            row_min = float('inf')
+            for method in available_methods:
+                rmse_val = row_data[method]
+                if pd.notna(rmse_val) and rmse_val < row_min:
+                    row_min = rmse_val
+            
             for method in available_methods:
                 rmse_val = row_data[method]
                 if pd.notna(rmse_val):
-                    # Bold if this is the global minimum value in this table
-                    if abs(rmse_val - table_global_min) < 1e-6:  # Use small epsilon for float comparison
+                    # Bold if this is the minimum value in this row
+                    if abs(rmse_val - row_min) < 1e-6:  # Use small epsilon for float comparison
                         row += f" & \\textbf{{{rmse_val:.3f}}}"
                     else:
                         row += f" & {rmse_val:.3f}"
@@ -821,6 +850,7 @@ else:
     print("No MCAR data found")
     
     
+exit()
     
 # Calculate p values for comparison of TabImpute and HyperImpute
 print("\n" + "="*60)

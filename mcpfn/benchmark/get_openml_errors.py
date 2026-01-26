@@ -52,24 +52,24 @@ imputers = set([
     # "hyperimpute_miwae",
     # "forestdiffusion",
     # "diffputer",
-    # "remasker",
+    "remasker",
     "cacti",
 ])
 
 patterns = {
     "MCAR",
-    "MAR",
-    "MNAR",
-    "MAR_Neural",
-    "MAR_BlockNeural",
-    "MAR_Sequential",
-    "MNARPanelPattern",
-    "MNARPolarizationPattern",
-    "MNARSoftPolarizationPattern",
-    "MNARLatentFactorPattern",
-    "MNARClusterLevelPattern",
-    "MNARTwoPhaseSubsetPattern",
-    "MNARCensoringPattern",
+    # "MAR",
+    # "MNAR",
+    # "MAR_Neural",
+    # "MAR_BlockNeural",
+    # "MAR_Sequential",
+    # "MNARPanelPattern",
+    # "MNARPolarizationPattern",
+    # "MNARSoftPolarizationPattern",
+    # "MNARLatentFactorPattern",
+    # "MNARClusterLevelPattern",
+    # "MNARTwoPhaseSubsetPattern",
+    # "MNARCensoringPattern",
 }
 
 missingness_levels = [
@@ -137,9 +137,9 @@ if "mcpfn_ensemble" in imputers:
         # StandardizeWhiten(whiten=True),
     ]
     mcpfn_ensemble = MCTabPFNEnsemble(device="cuda", 
-                        #    checkpoint_path="/mnt/mcpfn_data/checkpoints/mixed_adaptive/step-125000.ckpt",
-                           nhead=2,
-                           preprocessors=preprocessors)
+                                    # checkpoint_path="/mnt/mcpfn_data/checkpoints/mixed_adaptive/step-125000.ckpt",
+                                      nhead=2,
+                                      preprocessors=preprocessors)
 
 if "tabpfn" in imputers:
     tabpfn = TabPFNImputer(device="cuda")
@@ -213,7 +213,7 @@ def run_forest_diffusion(X_missing: np.ndarray, n_t: int = 50,
 # --- Run benchmark ---
 base_path = "datasets/openml"
 datasets = os.listdir(base_path)
-repeats = 1
+repeats = 5
 
 pbar = tqdm(datasets)
 for name in pbar:
@@ -236,6 +236,9 @@ for name in pbar:
         for repeat in range(repeats):
             if repeats > 1:
                 cfg_dir = f"{original_cfg_dir}/repeats/{repeat}/"
+                # set the random state for the repeat
+                np.random.seed(repeat + 1)
+                torch.manual_seed(repeat + 1)
             else:
                 cfg_dir = original_cfg_dir
             # create the directory if it doesn't exist

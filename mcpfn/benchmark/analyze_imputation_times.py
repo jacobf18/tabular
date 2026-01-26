@@ -106,7 +106,7 @@ method_names = {
     "mixed_more_heads": "TabImpute (More Heads)",
     "tabpfn_no_proprocessing": "TabPFN Fine-Tuned No Preprocessing",
     # "mixed_perm_both_row_col": "TabImpute",
-    "tabpfn_unsupervised": "TabPFN (GPU)",
+    "tabpfn_unsupervised": "Col-TabPFN (GPU)",
     "tabpfn": "EWF-TabPFN (GPU)",
     "column_mean": "Col Mean",
     "softimpute": "SoftImpute",
@@ -148,7 +148,7 @@ method_colors = {
     "MICE": "#7f7f7f",         # Gray
     "GAIN (GPU)": "#286b33",         # Dark Green
     "MIWAE (GPU)": "#17becf",        # Cyan
-    "TabPFN (GPU)": "#3e3b6e",       # Blue
+    "Col-TabPFN (GPU)": "#3e3b6e",       # Blue
     "K-Nearest Neighbors": "#a36424",  # Orange
     "ForestDiffusion": "#52b980",      # Medium Green
     "MCPFN": "#ff9896",        # Light Red

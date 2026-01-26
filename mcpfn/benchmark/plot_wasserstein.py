@@ -15,7 +15,7 @@ datasets = os.listdir(base_path)
 
 methods = [
     "softimpute",
-    "column_mean",
+    # "column_mean",
     "hyperimpute",
     "ot_sinkhorn",
     "missforest",
@@ -32,7 +32,8 @@ methods = [
     "knn",
     "forestdiffusion",
     # "diffputer",
-    # "remasker",
+    "remasker",
+    "cacti",
 ]
 
 patterns = {
@@ -81,6 +82,7 @@ method_names = {
     "knn": "K-Nearest Neighbors",
     "diffputer": "DiffPuter",
     "remasker": "ReMasker",
+    "cacti": "CACTI",
 }
 
 # Define consistent color mapping for methods (using display names as they appear in the DataFrame)
@@ -113,6 +115,7 @@ method_colors = {
     "MCPFN (Nonlinear Permuted)": "#c49c94",  # Light Brown
     "DiffPuter": "#d62728",  # Red
     "ReMasker": "#f58231",  # Dark Orange
+    "CACTI": "#98df8a",  # Light Green
 }
 
 wasserstein = {}
@@ -171,7 +174,7 @@ for dataset in datasets:
 
 df = pd.Series(wasserstein).unstack()
 
-plot_pattern = True
+plot_pattern = False
 
 # Plot for all patterns combined
 # Get dataframe for all patterns
@@ -296,6 +299,8 @@ table_methods = [
     "MIWAE",
     "K-Nearest Neighbors",
     "ForestDiffusion",
+    "ReMasker",
+    "CACTI",
 ]
 
 # Calculate column-wise 1-Wasserstein distance for each pattern

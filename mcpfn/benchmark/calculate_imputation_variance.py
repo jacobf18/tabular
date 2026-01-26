@@ -10,7 +10,7 @@ datasets = os.listdir(base_path)
 
 methods = [
     "softimpute", 
-    "column_mean", 
+    # "column_mean", 
     "hyperimpute",
     "ot_sinkhorn",
     "missforest",
@@ -23,6 +23,10 @@ methods = [
     # "tabpfn_impute",
     # "knn",
     "forestdiffusion",
+    "cacti",
+    "remasker",
+    "cacti",
+    # "diffputer",
 ]
 
 method_names = {
@@ -52,6 +56,9 @@ method_names = {
     "miwae": "MIWAE",
     "forestdiffusion": "ForestDiffusion",
     "knn": "K-Nearest Neighbors",
+    "cacti": "CACTI",
+    "diffputer": "DiffPuter",
+    "remasker": "ReMasker",
 }
 
 # Dictionary to store MAD data: method -> list of MADs
