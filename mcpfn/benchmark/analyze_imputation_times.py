@@ -124,39 +124,42 @@ method_names = {
     # "diffputer": "DiffPuter (GPU)",
 }
 
+neutral_color = "#B8B8B8"
+highlight_color = "#2A6FBB"
+
 # Define consistent color mapping for methods (using display names as they appear in the DataFrame)
 method_colors = {
-    "TabImpute+": "#2f88a8",  # Blue
-    "TabImpute (New Model)": "#2f88a8",  # Blue
-    "TabImpute": "#2f88a8",  # Sea Green (distinct from GPU)
+    "TabImpute+": highlight_color,  # Blue
+    "TabImpute (New Model)": highlight_color,  # Blue
+    "TabImpute": highlight_color,  # Sea Green (distinct from GPU)
     "TabImpute Ensemble": "#2f88a8",  # Sea Green (distinct from GPU)
-    "TabImpute (MNAR)": "#2f88a8",  # Sea Green (distinct from GPU)
+    "TabImpute (MNAR)": highlight_color,  # Sea Green (distinct from GPU)
     "TabImpute (Fixed)": "#2f88a8",  # Sea Green (distinct from GPU)
-    "TabImpute (GPU)": "#2f88a8",  # Sea Green (distinct from GPU)
-    "TabImpute (CPU)": "#2f88a8",  # Sea Green (distinct from GPU)
-    "TabImpute (MCAR)": "#2f88a8",  # Sea Green (distinct from GPU)
+    "TabImpute (GPU)": highlight_color,  # Sea Green (distinct from GPU)
+    "TabImpute (CPU)": highlight_color,  # Sea Green (distinct from GPU)
+    "TabImpute (MCAR)": highlight_color,  # Sea Green (distinct from GPU)
     "TabImpute (MAR)": "#2f88a8",  # Sea Green (distinct from GPU)
     "TabImpute (MNAR)": "#2f88a8",  # Sea Green (distinct from GPU)
     "TabImpute Router": "#2f88a8",  # Sea Green (distinct from GPU)
-    "EWF-TabPFN (GPU)": "#3e3b6e",  # 
-    "HyperImpute (GPU)": "#ff7f0e",  # Orange
-    "MissForest": "#2ca02c",   # Green
-    "OT": "#591942",           # Red
-    "Col Mean": "#9467bd",     # Purple
-    "SoftImpute": "#8c564b",   # Brown
-    "ICE": "#a14d88",          # Pink
-    "MICE": "#7f7f7f",         # Gray
-    "GAIN (GPU)": "#286b33",         # Dark Green
-    "MIWAE (GPU)": "#17becf",        # Cyan
-    "Col-TabPFN (GPU)": "#3e3b6e",       # Blue
-    "K-Nearest Neighbors": "#a36424",  # Orange
-    "ForestDiffusion": "#52b980",      # Medium Green
-    "MCPFN": "#ff9896",        # Light Red
-    "MCPFN (Linear Permuted)": "#c5b0d5",  # Light Purple
-    "MCPFN (Nonlinear Permuted)": "#c49c94",  # Light Brown
-    "DiffPuter (GPU)": "#d62728",  # Red
-    "ReMasker (GPU)": "#d62728",  # Red
-    "CACTI (GPU)": "#9467bd",  # Purple
+    "EWF-TabPFN (GPU)": neutral_color,  # 
+    "HyperImpute (GPU)": neutral_color,  # Orange
+    "MissForest": neutral_color,   # Green
+    "OT": neutral_color,           # Red
+    "Col Mean": neutral_color,     # Purple
+    "SoftImpute": neutral_color,   # Brown
+    "ICE": neutral_color,          # Pink
+    "MICE": neutral_color,         # Gray
+    "GAIN (GPU)": neutral_color,         # Dark Green
+    "MIWAE (GPU)": neutral_color,        # Cyan
+    "Col-TabPFN (GPU)": neutral_color,       # Blue
+    "K-Nearest Neighbors": neutral_color,  # Orange
+    "ForestDiffusion": neutral_color,      # Medium Green
+    "MCPFN": neutral_color,        # Light Red
+    "MCPFN (Linear Permuted)": neutral_color,  # Light Purple
+    "MCPFN (Nonlinear Permuted)": neutral_color,  # Light Brown
+    "DiffPuter (GPU)": neutral_color,  # Red
+    "ReMasker (GPU)": neutral_color,  # Red
+    "CACTI (GPU)": neutral_color,  # Purple
 }
 
 include_methods = [
@@ -205,7 +208,7 @@ def create_plots(imputation_data, dataset_info):
     
     
     # Create efficiency bar plot (runtime per dataset size) using seaborn
-    fig = plt.figure(figsize=(6.5,4.5))
+    plt.figure(figsize=(7.5,6.5))
     
     # Calculate efficiency metric: time per dataset size
     df['efficiency'] = df['time'] / df['dataset_size']
@@ -214,8 +217,8 @@ def create_plots(imputation_data, dataset_info):
     df_filtered = df[df['method'].isin(include_methods)].copy()
     
     # Calculate and print speedup
-    baseline_method = 'mcpfn'
-    speed_up_method = 'tabimpute_large_mcar'
+    baseline_method = 'EWF-TabPFN (GPU)'
+    speed_up_method = 'TabImpute (GPU)'
     baseline_data = df_filtered[df_filtered['method'] == baseline_method]
     speed_up_data = df_filtered[df_filtered['method'] == speed_up_method]
     
@@ -233,7 +236,7 @@ def create_plots(imputation_data, dataset_info):
     df_filtered['Method'] = df_filtered['method'].map(method_names)
     
     # Calculate mean efficiency to determine sort order (decreasing time = increasing efficiency values)
-    efficiency_means = df_filtered.groupby('Method')['efficiency'].mean().sort_values(ascending=False)
+    efficiency_means = df_filtered.groupby('Method')['efficiency'].mean().sort_values(ascending=True)
     
     # --- Plotting ---
     sns.set(style="whitegrid")
@@ -242,44 +245,17 @@ def create_plots(imputation_data, dataset_info):
     ax = sns.barplot(data=df_filtered, x='Method', y='efficiency', hue='Method',
                 order=efficiency_means.index,
                 palette=method_colors,  # Use consistent colors from palette
-                legend=False, capsize=0.2, err_kws={'color': '#999999'})
+                legend=False, capsize=0.2, err_kws={'color': '#999999'}, edgecolor="#6E6E6E")
     
-    # Remove x-axis labels since we'll put text inside/above bars
-    ax.set_xticklabels([])
+    # Set x-axis labels with 45-degree rotation
+    ax.set_xticklabels(efficiency_means.index, rotation=45, ha='right', fontsize=14)
     ax.set_xlabel('')
     
-    # Get bar heights and positions
-    bars = ax.patches
-    bar_heights = [bar.get_height() for bar in bars]
-    bar_centers = [bar.get_x() + bar.get_width()/2 for bar in bars]
-    # Add method names at bottom of bars, or above if they don't fit
-    # Get the actual order from the seaborn plot by matching bar heights to efficiency values
-    # Create a mapping from bar height to method name
-    height_to_method = {}
-    for method, efficiency in efficiency_means.items():
-        height_to_method[efficiency] = method
-    
-    # Match each bar height to its corresponding method
-    plot_order = []
-    for height in bar_heights:
-        # Find the closest efficiency value to this bar height
-        closest_efficiency = min(height_to_method.keys(), key=lambda x: abs(x - height))
-        plot_order.append(height_to_method[closest_efficiency])
-    
-    for i, (bar, height, center) in enumerate(zip(bars, bar_heights, bar_centers)):
-        method_name = plot_order[i]
-        
-        # Calculate if bar is tall enough for text at bottom (use 15% of max height as threshold)
-        max_height = max(bar_heights)
-        threshold = max_height * 0.5
-        
-        if method_name == "K-Nearest Neighbors" or method_name == "Col Mean":
-            ax.text(center, 0.000005, method_name, ha='center', va='bottom', 
-                   color='black', fontweight='bold', fontsize=14, rotation=90)
-            
-        else:
-            ax.text(center, 0.000002, method_name, ha='center', va='bottom', 
-                   color='white', fontweight='bold', fontsize=14, rotation=90)
+    # Set label colors to match bar colors
+    for label in ax.get_xticklabels():
+        method_name = label.get_text()
+        if method_name == "TabImpute (GPU)" or method_name == "TabImpute (CPU)":
+            label.set_color(method_colors[method_name])
     
     plt.ylabel('Milliseconds per entry', fontsize=18)
     # plt.title('Runtime per entry \n(seconds per number of entries (rows × columns))', fontsize=18.0)
@@ -288,13 +264,15 @@ def create_plots(imputation_data, dataset_info):
     # Convert y-axis to milliseconds and format ticks without scientific notation
     ax = plt.gca()
     
-    fig.subplots_adjust(left=0.2, right=0.95, bottom=0.05, top=0.95)
+    # fig.subplots_adjust(left=0.2, right=0.95, bottom=0.05, top=0.95)
     
     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x*1000:.2f}'))
     
-    plt.grid(True, alpha=0.3, axis='y')
+    # Configure grid for log scale - enable both major and minor grid lines
+    ax.yaxis.grid(True, which='major', alpha=0.3, linestyle='-')
+    ax.yaxis.grid(True, which='minor', alpha=0.3, linestyle='--')
     
-    # plt.tight_layout()
+    plt.tight_layout()
     plt.savefig('/home/jacobf18/tabular/mcpfn/benchmark/imputation_efficiency_barplot.pdf', 
                 dpi=300, bbox_inches=None)
     plt.show()

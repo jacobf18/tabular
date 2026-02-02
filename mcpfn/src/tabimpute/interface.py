@@ -468,7 +468,7 @@ class TabPFNImputer:
         self.device = device
         self.reg = TabPFNRegressor(device=device, n_estimators=8)
 
-    def impute(self, X: np.ndarray, return_full: bool = False) -> np.ndarray:
+    def impute(self, X: np.ndarray, return_full: bool = False, num_repeats: int = 1) -> np.ndarray:
         """Impute missing values in the input matrix.
         Imputes the missing values in place.
         """
@@ -480,10 +480,33 @@ class TabPFNImputer:
         train_X_npy = train_X.cpu().numpy()
         train_y_npy = train_y.cpu().numpy()
         test_X_npy = test_X.cpu().numpy()
+        
+        missing_indices = np.where(np.isnan(X))
+        non_missing_indices = np.where(~np.isnan(X))
 
         self.reg.fit(train_X_npy, train_y_npy)
 
         # self.reg.model_ = mcpfn.model # override the model with the mcpfn model
+        
+        if num_repeats > 1:
+            out_full = self.reg.predict(test_X_npy, output_type='full')
+            bar_dist = out_full['criterion']
+            logits = out_full['logits']
+            
+            out_normalized = []
+            # out_full = []
+            
+            for _ in range(num_repeats):
+                sample = bar_dist.sample(logits=logits)
+                X_imputed = X.copy()
+                
+                # sampls_train = sample[:train_y.shape[0]]
+                # sampls_test = sample[train_y.shape[0]:]
+                X_imputed[missing_indices] = sample.cpu().detach().numpy()
+                # out_full.append(X_full)
+                out_normalized.append(X_imputed)
+            
+            return out_normalized
 
         preds = self.reg.predict(test_X_npy)
         preds_train = self.reg.predict(train_X_npy)

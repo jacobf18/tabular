@@ -39,6 +39,8 @@ methods = [
     "cacti",
 ]
 
+
+
 patterns = {
     "MCAR",
     "MAR",
@@ -91,13 +93,16 @@ method_names = {
     "cacti": "CACTI",
 }
 
+neutral_color = "#B8B8B8"
+highlight_color = "#2A6FBB"
+
 # Define consistent color mapping for methods (using display names as they appear in the DataFrame)
 method_colors = {
-    "TabImpute (New Model)": "#2f88a8",  # Blue
-    "TabImpute (MNAR)": "#2f88a8",  # Blue
-    "TabImpute (New)": "#2f88a8",  # Blue
-    "TabImpute+": "#2f88a8",  # Blue
-    "TabImpute": "#2f88a8",  # Sea Green (distinct from GPU)
+    "TabImpute (New Model)": highlight_color,  # Blue
+    "TabImpute (MNAR)": highlight_color,  # Blue
+    "TabImpute (New)": highlight_color,  # Blue
+    "TabImpute+": highlight_color,  # Blue
+    "TabImpute": highlight_color,  # Sea Green (distinct from GPU)
     "TabImpute Ensemble": "#2f88a8",  # Sea Green (distinct from GPU)
     "TabImpute (Self-Masking-MNAR)": "#2f88a8",  # Sea Green (distinct from GPU)
     "TabImpute (Fixed)": "#2f88a8",  # Sea Green (distinct from GPU)
@@ -107,24 +112,21 @@ method_colors = {
     "TabImpute (Nonlinear)": "#2f88a8",  # Sea Green (distinct from GPU)
     "TabImpute Router": "#2f88a8",  # Sea Green (distinct from GPU)
     "EWF-TabPFN": "#3e3b6e",  # 
-    "HyperImpute": "#ff7f0e",  # Orange
-    "MissForest": "#2ca02c",   # Green
-    "OT": "#591942",           # Red
+    "HyperImpute": neutral_color,  # Orange
+    "MissForest": neutral_color,   # Green
+    "OT": neutral_color,           # Red
     "Col Mean": "#9467bd",     # Purple
-    "SoftImpute": "#8c564b",   # Brown
-    "ICE": "#a14d88",          # Pink
-    "MICE": "#7f7f7f",         # Gray
-    "GAIN": "#286b33",         # Dark Green
-    "MIWAE": "#17becf",        # Cyan
-    "Col-TabPFN": "#3e3b6e",       # Blue
-    "K-Nearest Neighbors": "#a36424",  # Orange
-    "ForestDiffusion": "#52b980",      # Medium Green
-    "MCPFN": "#ff9896",        # Light Red
-    "MCPFN (Linear Permuted)": "#c5b0d5",  # Light Purple
-    "MCPFN (Nonlinear Permuted)": "#c49c94",  # Light Brown
-    "DiffPuter": "#d62728",  # Red
-    "ReMasker": "#d62728",  # Red
-    "CACTI": "#9467bd",  # Purple
+    "SoftImpute": neutral_color,   # Brown
+    "ICE": neutral_color,          # Pink
+    "MICE": neutral_color,         # Gray
+    "GAIN": neutral_color,         # Dark Green
+    "MIWAE": neutral_color,        # Cyan
+    "Col-TabPFN": neutral_color,       # Blue
+    "K-Nearest Neighbors": neutral_color,  # Orange
+    "ForestDiffusion": neutral_color,      # Medium Green
+    "DiffPuter": neutral_color,  # Red
+    "ReMasker": neutral_color,  # Red
+    "CACTI": neutral_color,  # Purple
 }
 
 negative_rmse = {}
@@ -253,6 +255,10 @@ df = pd.Series(negative_rmse).unstack()
 
 plot_pattern = True
 
+dont_plot_methods = [
+    "EWF-TabPFN",
+]
+
 # Plot for all patterns combined
 # Get dataframe for all patterns
 df_all = df.copy()
@@ -269,11 +275,11 @@ if plot_pattern:
         
         # Average across datasets
         # --- Barplot ---
-        plt.figure(figsize=(6.5,4.5))
+        plt.figure(figsize=(7.5,6.5))
         
         # sort methods by mean performance
-        sorted_methods = df_norm.mean(axis=0).sort_values(ascending=True).index
-        
+        sorted_methods = df_norm.mean(axis=0).sort_values(ascending=False).index
+        sorted_methods = [method for method in sorted_methods if method not in dont_plot_methods]
         # Melt into long format
         df_long = df_norm.melt(var_name="method", value_name="score")
         
@@ -287,55 +293,35 @@ if plot_pattern:
             palette=method_colors,   # <- consistent colors
             capsize=0.2,
             err_kws={"color": "#999999"},
-            legend=False
+            legend=False,
+            edgecolor="#6E6E6E"
         )
         
-        # Remove x-axis labels
-        ax.set_xticklabels([])
+        # Set x-axis labels with 45-degree rotation
+        ax.set_xticklabels(sorted_methods, rotation=45, ha='right')
         ax.set_xlabel("")
-
-        # Add method names inside bars
-        for i, method in enumerate(sorted_methods):
-            # Get the bar height (mean value across datasets)
-            bar_height = df_norm[method].mean()
-            
-            # Estimate text height when rotated 90 degrees
-            # Use character-count-based estimation (more reliable than coordinate transformation)
-            y_range = ax.get_ylim()[1] - ax.get_ylim()[0]
-            fig_height_inches = ax.figure.get_figheight()
-            # Estimate: font size 15pt, each character is roughly 0.6 * fontsize wide
-            # When rotated 90 degrees, this width becomes height
-            # Convert to data coordinates: (fontsize/72 inches) * (chars * char_width_factor) * (y_range / fig_height)
-            char_width_factor = 0.6  # approximate character width relative to font size
-            text_height_data = (15.0 / 72.0) * len(method) * char_width_factor * (y_range / fig_height_inches)
-            
-            # Compare text height to bar height
-            if text_height_data > bar_height + 0.2:
-                # Text is taller than bar - place above bar with black color
-                ax.text(i, bar_height + 0.03, method, ha='center', va='bottom', 
-                    fontsize=15.0, rotation=90, color='black', weight='bold',
-                    bbox=dict(boxstyle='round,pad=0.1', facecolor='white', alpha=0.0))
-            else:
-                # Text fits in bar - place at bottom with white color
-                ax.text(i, 0.02, method, ha='center', va='bottom', 
-                    fontsize=15.0, rotation=90, color='white', weight='bold',
-                    bbox=dict(boxstyle='round,pad=0.1', facecolor='black', alpha=0.0))
+        
+        # Set label colors to match bar colors
+        for label in ax.get_xticklabels():
+            method_name = label.get_text()
+            if method_name in method_colors:
+                label.set_color(method_colors[method_name])
 
         plt.ylabel("1 - Normalized RMSE", fontsize=15)
         # plt.title(f"Comparison of Imputation Algorithms | {pattern_name}")
-        # plt.ylim(0, 1.0)
+        plt.ylim(0, 1.0)
         plt.tight_layout()
         plt.savefig(f"figures/negative_rmse_{pattern_name}.png", dpi=300)
         plt.close()
 
     # Average across datasets and patterns
-    fig = plt.figure(figsize=(6.5,4.5))
+    fig = plt.figure(figsize=(7.5,6.5))
     # sort df_norm_all by the mean of the rows
-    sorted_methods_all = df_norm_all.mean(axis=0).sort_values(ascending=True).index
+    sorted_methods_all = df_norm_all.mean(axis=0).sort_values(ascending=False).index
 
     # Melt into long format
     df_long = df_norm_all.melt(var_name="method", value_name="score")
-
+    sorted_methods_all = [method for method in sorted_methods_all if method not in dont_plot_methods]
     # Use your method_colors dictionary for consistent mapping
     ax = sns.barplot(
         data=df_long,
@@ -346,46 +332,26 @@ if plot_pattern:
         palette=method_colors,   # <- consistent colors
         capsize=0.2,
         err_kws={"color": "#999999"},
-        legend=False
+        legend=False,
+        edgecolor="#6E6E6E"
     )
 
-    # Remove x-axis labels
-    ax.set_xticklabels([])
+    # Set x-axis labels with 45-degree rotation
+    ax.set_xticklabels(sorted_methods_all, rotation=45, ha='right', fontsize=14)
     ax.set_xlabel("")
-
-    # Add method names inside bars
-    for i, method in enumerate(sorted_methods_all):
-        # Get the bar height (mean value across datasets and patterns)
-        bar_height = df_norm_all[method].mean()
-        
-        # Estimate text height when rotated 90 degrees
-        # Use character-count-based estimation (more reliable than coordinate transformation)
-        y_range = ax.get_ylim()[1] - ax.get_ylim()[0]
-        fig_height_inches = ax.figure.get_figheight()
-        # Estimate: font size 15pt, each character is roughly 0.6 * fontsize wide
-        # When rotated 90 degrees, this width becomes height
-        # Convert to data coordinates: (fontsize/72 inches) * (chars * char_width_factor) * (y_range / fig_height)
-        char_width_factor = 0.6  # approximate character width relative to font size
-        text_height_data = (15.0 / 72.0) * len(method) * char_width_factor * (y_range / fig_height_inches)
-        
-        # Compare text height to bar height
-        if text_height_data > bar_height:
-            # Text is taller than bar - place above bar with black color
-            ax.text(i, bar_height + 0.03, method, ha='center', va='bottom', 
-                    fontsize=15.0, rotation=90, color='black', weight='bold',
-                    bbox=dict(boxstyle='round,pad=0.1', facecolor='white', alpha=0.0))
-        else:
-            # Text fits in bar - place at bottom with white color
-            ax.text(i, 0.02, method, ha='center', va='bottom', 
-                    fontsize=15.0, rotation=90, color='white', weight='bold',
-                    bbox=dict(boxstyle='round,pad=0.1', facecolor='black', alpha=0.0))
+    
+    # Set label colors to match bar colors
+    for label in ax.get_xticklabels():
+        method_name = label.get_text()
+        if method_name == "TabImpute":
+            label.set_color(method_colors[method_name])
 
     plt.ylabel("1 - Normalized RMSE", fontsize=18)
     # plt.title("Comparison of Imputation Algorithms | All Patterns")
-    # plt.ylim(0, 1.0)
-    # plt.tight_layout()
+    plt.ylim(0.3, 0.95)
+    plt.tight_layout()
     
-    fig.subplots_adjust(left=0.2, right=0.95, bottom=0.05, top=0.95)
+    # fig.subplots_adjust(left=0.2, right=0.95, bottom=0.05, top=0.95)
     
     plt.savefig(f"figures/negative_rmse_overall.pdf", dpi=300, bbox_inches=None)
     plt.close()
@@ -403,29 +369,25 @@ print("Creating LaTeX table for normalized negative RMSE...")
 # Define methods to include in the table (subset of all methods)
 table_methods = [
     "TabImpute",
-    # "TabImpute (MAR)",
-    # "TabImpute (Self-Masking-MNAR)",
-    # "TabPFN Fine-Tuned No Preprocessing",
-    "EWF-TabPFN",
+    # "EWF-TabPFN",
     "TabPFN",
-    "TabPFN Fine-Tuned No Preprocessing",
+    # "TabPFN Fine-Tuned No Preprocessing",
     # "TabImpute (MCAR then MAR)",
     # "TabImpute (More Heads)",
     # "TabImpute (Nonlinear)",
     "HyperImpute",
     "MissForest",
     "OT",
-    "Col Mean",
-    "SoftImpute",
-    "ICE",
-    "MICE",
-    "GAIN",
-    "MIWAE",
+    # "Col Mean",
+    # "SoftImpute",
+    # "ICE",
+    # "MICE",
+    # "GAIN",
+    # "MIWAE",
     "K-Nearest Neighbors",
-    "ForestDiffusion",
-    # "DiffPuter",
-    "ReMasker",
-    "CACTI",
+    # "ForestDiffusion",
+    # "ReMasker",
+    # "CACTI",
 ]
 
 # Calculate normalized negative RMSE for each pattern
@@ -480,18 +442,18 @@ pattern_normalized_rmse['Overall'] = pd.DataFrame(overall_data)
 # Create summary data for LaTeX table
 summary_data = []
 all_patterns = ['MCAR', 
-                # 'MAR_Neural', 
-                # 'MNAR', 
-                # 'MAR', 
-                # 'MAR_BlockNeural', 
-                # 'MAR_Sequential', 
-                # "MNARPanelPattern",
-                # "MNARPolarizationPattern",
-                # "MNARSoftPolarizationPattern",
-                # "MNARLatentFactorPattern",
-                # "MNARClusterLevelPattern",
-                # "MNARTwoPhaseSubsetPattern",
-                # "MNARCensoringPattern",
+                'MAR_Neural', 
+                'MNAR', 
+                'MAR', 
+                'MAR_BlockNeural', 
+                'MAR_Sequential', 
+                "MNARPanelPattern",
+                "MNARPolarizationPattern",
+                "MNARSoftPolarizationPattern",
+                "MNARLatentFactorPattern",
+                "MNARClusterLevelPattern",
+                "MNARTwoPhaseSubsetPattern",
+                "MNARCensoringPattern",
                 'Overall'
                 ]
 
@@ -754,10 +716,12 @@ print(table_methods)
 
 available_methods = [
     'TabImpute',
-    'EWF-TabPFN',
+    # 'EWF-TabPFN',
     'HyperImpute',
     'MissForest',
-    'OT'
+    'OT',
+    "K-Nearest Neighbors",
+    
 ]
 
 if not mcar_data.empty:

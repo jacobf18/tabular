@@ -39,7 +39,7 @@ imputers = set([
     # "mcpfn_ensemble",
     # "tabimpute_ensemble",
     # "knn",
-    # "tabpfn",
+    "tabpfn",
     # "tabpfn_unsupervised",
     # "hyperimpute_mean",
     # "softimpute",
@@ -52,8 +52,8 @@ imputers = set([
     # "hyperimpute_miwae",
     # "forestdiffusion",
     # "diffputer",
-    "remasker",
-    "cacti",
+    # "remasker",
+    # "cacti",
 ])
 
 patterns = {
@@ -313,14 +313,29 @@ for name in pbar:
             if "tabpfn" in imputers:
                 out_path = f"{cfg_dir}/tabpfn.npy"
                 if not os.path.exists(out_path) or force_rerun:
-                    start_time = time.time()
-                    X_tabpfn = tabpfn.impute(X_missing.copy())
-                    end_time = time.time()
-                    print(f"TabPFN imputation time: {end_time - start_time} seconds")
-                    # save the imputation time
-                    with open(f"{cfg_dir}/tabpfn_imputation_time.txt", "a") as f:
-                        f.write(f"{end_time - start_time}\n")
-                    np.save(out_path, X_tabpfn)
+                    # Time the imputation
+                    if repeats > 1:
+                        start_time = time.time()
+                        X_tabpfn_list = tabpfn.impute(X_missing.copy(), num_repeats=repeats)
+                        end_time = time.time()
+                        print(f"TabPFN imputation time: {end_time - start_time} seconds for {cfg_dir}")
+                        # save the imputation time
+                        for i in range(repeats):
+                            cfg_dir = f"{original_cfg_dir}/repeats/{i}/"
+                            out_path = f"{cfg_dir}/tabpfn.npy"
+                            with open(f"{cfg_dir}/tabpfn_imputation_time.txt", "a") as f:
+                                f.write(f"{(end_time - start_time) / repeats}\n")
+                            np.save(out_path, X_tabpfn_list[i])
+                        break
+                    else:
+                        start_time = time.time()
+                        X_tabpfn = tabpfn.impute(X_missing.copy())
+                        end_time = time.time()
+                        np.save(out_path, X_tabpfn)
+                        print(f"TabPFN imputation time: {end_time - start_time} seconds for {cfg_dir}")
+                        # save the imputation time
+                        with open(f"{cfg_dir}/tabpfn_imputation_time.txt", "a") as f:
+                            f.write(f"{end_time - start_time}\n")
 
             # --- TabPFN Unsupervised ---
             if "tabpfn_unsupervised" in imputers:

@@ -13,7 +13,7 @@ base_path = "datasets/openml"
 datasets = os.listdir(base_path)
 
 methods = [
-    "softimpute", 
+    # "softimpute", 
     "column_mean", 
     "hyperimpute",
     # # "ot_sinkhorn",
@@ -39,6 +39,16 @@ method_names = {
     "mice": "MICE",
     "gain": "GAIN",
     "miwae": "MIWAE",
+}
+
+highlight_color = "#2A6FBB"
+neutral_color = "#B8B8B8"
+
+# Create slightly different neutral colors for each method
+neutral_colors = {
+    "HyperImpute": "#A8A8A8",  # Slightly darker gray
+    "Col Mean": "#B3B3B3",      # Medium gray
+    "MissForest": "#B0B0B0",   # Medium-dark gray
 }
 
 # Only focus on MCAR pattern
@@ -112,13 +122,70 @@ df["value_norm"] = df.groupby(["dataset"])["value"].transform(
 print(df)
 include_methods = ["TabImpute", "HyperImpute", "Col Mean", "MissForest"]
 
+# Create color palette: TabImpute gets highlight color, others get slightly different neutral colors
+palette = {method: highlight_color if method == "TabImpute" else neutral_colors.get(method, neutral_color) for method in include_methods}
+
 # Plot the values with a separate line for each method
 plt.figure(figsize=(10, 6))
-sns.lineplot(x="p", y="value_norm", hue="method", data=df[df["method"].isin(include_methods)], hue_order=include_methods)
+ax = sns.lineplot(x="p", y="value_norm", hue="method", data=df[df["method"].isin(include_methods)], hue_order=include_methods, palette=palette)
 plt.ylabel("1 - Normalized RMSE (0–1)")
 plt.xlabel("Fraction of Missing Values")
-# Remove legend title
-plt.legend(title="")
+
+# Remove legend and add labels at the end of each line
+ax.legend_.remove()
+
+# Make TabImpute's line bold
+lines = ax.get_lines()
+for i, method in enumerate(include_methods):
+    if i < len(lines) and method == "TabImpute":
+        lines[i].set_linewidth(2.5)  # Make TabImpute line bold
+
+# Get the maximum x value to place labels at the end
+max_p = df["p"].max()
+
+# Get lines from the plot and add labels at the end
+lines = ax.get_lines()
+label_positions = []  # Store (method, x_end, y_end) for overlap detection
+
+# First pass: collect all label positions
+for i, method in enumerate(include_methods):
+    if i < len(lines):
+        line = lines[i]
+        x_data = line.get_xdata()
+        y_data = line.get_ydata()
+        if len(x_data) > 0 and len(y_data) > 0:
+            x_end = x_data[-1]
+            y_end = y_data[-1]
+            label_positions.append((method, x_end, y_end))
+
+# Adjust positions to prevent overlap (minimum spacing)
+min_spacing = 0.03  # Minimum vertical spacing between labels (in data coordinates)
+label_positions.sort(key=lambda x: x[2])  # Sort by y position
+
+# Adjust overlapping labels
+adjusted_positions = []
+for i, (method, x_end, y_end) in enumerate(label_positions):
+    adjusted_y = y_end
+    # Check if too close to previous label
+    if i > 0:
+        prev_y = adjusted_positions[-1][2]
+        if abs(adjusted_y - prev_y) < min_spacing:
+            # Move this label up or down to create space
+            if adjusted_y > prev_y:
+                adjusted_y = prev_y + min_spacing
+            else:
+                adjusted_y = prev_y - min_spacing
+    adjusted_positions.append((method, x_end, adjusted_y))
+
+# Second pass: add labels with adjusted positions
+for method, x_end, y_end in adjusted_positions:
+    line_idx = include_methods.index(method)
+    if line_idx < len(lines):
+        line = lines[line_idx]
+        line_color = line.get_color()
+        ax.text(x_end, y_end, f"  {method}", 
+               color=line_color, va='center', fontsize=10, fontweight='bold' if method == "TabImpute" else 'normal')
+
 plt.savefig('figures/mcar_normalized_performance_vs_p.pdf', dpi=300)
 plt.close()
 

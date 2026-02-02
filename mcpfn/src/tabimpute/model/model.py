@@ -6,8 +6,7 @@ import os
 import importlib.resources as resources
 from tabimpute.model.bar_distribution import FullSupportBarDistribution
 from torch.optim import AdamW
-from torch.nn.attention import SDPBackend, sdpa_kernel
-import math
+from .positional import SinusoidalRowEmbedding, SinusoidalColumnEmbedding, LinearPositionalEmbedding
 
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
@@ -67,107 +66,6 @@ class TabImputeModel(nn.Module):
         # runs the embeddings through the decoder to get
         # the logits of our predictions (B,num_targets,num_classes)
         return self.decoder(src[:,self.num_cls:,self.num_cls:,:]) # remove the cls token
-    
-class SinusoidalColumnEmbedding(nn.Module):
-    def __init__(self, embedding_size, max_len=100, damping_factor=0.1):
-        super().__init__()
-        # Pre-compute the positional encodings once to save speed
-        pe = torch.zeros(max_len, embedding_size)
-        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, embedding_size, 2).float() * (-math.log(max_len) / embedding_size))
-        
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        
-        # Register as buffer (not a learnable parameter, but part of state_dict)
-        self.register_buffer('pe', pe)
-        self.damping_factor = damping_factor
-
-    def forward(self, x):
-        """
-        Args:
-            x: Tensor of shape (Batch, num_rows, num_cols, embedding_size)
-        """
-        _, _, num_cols, _ = x.shape
-        
-        # Slice the pre-computed embeddings to the current number of columns
-        # Shape: (1, 1, num_cols, embedding_size) for broadcasting
-        col_embeddings = self.pe[:num_cols, :].unsqueeze(0).unsqueeze(0)
-        
-        return x + col_embeddings * self.damping_factor
-    
-import torch
-import torch.nn as nn
-import math
-
-class SinusoidalRowEmbedding(nn.Module):
-    def __init__(self, embedding_size, max_len=100, damping_factor=0.1):
-        super().__init__()
-        self.embedding_size = embedding_size
-        self.damping_factor = damping_factor
-        
-        # 1. Store the frequency term (div_term) as a buffer.
-        # We MUST use the original max_len to define the curve's 'slope'.
-        # If we change this later, the embeddings for pos 0-100 would change, 
-        # confusing the model.
-        div_term = torch.exp(
-            torch.arange(0, embedding_size, 2).float() * (-math.log(max_len) / embedding_size)
-        )
-        self.register_buffer('div_term', div_term)
-        
-        # 2. Pre-compute the initial PE cache
-        # We verify if `pe` exists in forward, but initializing it here is good practice.
-        self.register_buffer('pe', self._generate_pe(max_len))
-
-    def _generate_pe(self, length):
-        """
-        Generates positional embeddings for positions [0, length).
-        Uses the stored self.div_term to ensure consistency.
-        """
-        # Ensure we generate on the correct device/dtype
-        pe = torch.zeros(length, self.embedding_size, device=self.div_term.device, dtype=self.div_term.dtype)
-        position = torch.arange(0, length, dtype=self.div_term.dtype, device=self.div_term.device).unsqueeze(1)
-        
-        pe[:, 0::2] = torch.sin(position * self.div_term)
-        pe[:, 1::2] = torch.cos(position * self.div_term)
-        return pe
-
-    def forward(self, x):
-        """
-        Args:
-            x: Tensor of shape (Batch, num_rows, num_cols, embedding_size)
-        """
-        _, num_rows, _, _ = x.shape
-        current_max_len = self.pe.size(0)
-
-        # 3. Dynamic Extrapolation
-        # If input is longer than our cache, extend the cache
-        if num_rows > current_max_len:
-            # Generate ONLY the new needed positions (e.g., from 100 to 150)
-            # This is more efficient than regenerating the whole matrix
-            new_positions = torch.arange(
-                current_max_len, num_rows, 
-                dtype=torch.float, 
-                device=self.pe.device
-            ).unsqueeze(1)
-            
-            new_pe = torch.zeros(
-                num_rows - current_max_len, 
-                self.embedding_size, 
-                device=self.pe.device
-            )
-            
-            new_pe[:, 0::2] = torch.sin(new_positions * self.div_term)
-            new_pe[:, 1::2] = torch.cos(new_positions * self.div_term)
-            
-            # Concatenate and update the buffer so next time it's fast
-            self.pe = torch.cat([self.pe, new_pe], dim=0)
-
-        # Slice the embeddings to the current number of rows
-        # Shape: (1, num_rows, 1, embedding_size) for broadcasting
-        row_embeddings = self.pe[:num_rows, :].unsqueeze(0).unsqueeze(2).to(x.device).to(x.dtype)
-        
-        return x + row_embeddings * self.damping_factor
 
 class FeatureEncoder(nn.Module):
     def __init__(self, embedding_size: int, num_cls: int = 1):
