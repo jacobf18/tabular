@@ -96,7 +96,7 @@ class ImputePFN:
                                         num_cls=num_cls,
                                         num_outputs=5000).to(self.device).to(torch.bfloat16)
         self.model.eval()
-        torch.compile(self.model)
+        # torch.compile(self.model)
 
         # Load borders tensor for outputting continuous values
         with resources.files("tabimpute.data").joinpath("borders.pt").open("rb") as f:
@@ -859,7 +859,7 @@ import time
 if __name__ == "__main__":
     imputer = ImputePFN(device='cuda', 
                         entry_wise_features=False, 
-                        checkpoint_path='/home/jacobf18/tabular/mcpfn/src/tabimpute/workdir/tabimpute-large-pancake-model-mcar-p0.4-num-cls-8-rank-1-11/checkpoint_29000.pth')
+                        checkpoint_path='/home/jacobf18/tabular/mcpfn/src/tabimpute/workdir/tabimpute-mcar_p0.4-num_cls_8-rank_1_11/checkpoint_60000.pth')
     
     imputer_old = ImputePFN(device='cuda', entry_wise_features=True)
     
@@ -867,7 +867,8 @@ if __name__ == "__main__":
     print(f"Old Model size: {sum(p.numel() for p in imputer_old.model.parameters()):,}")
     
     # X = np.arange(25).reshape(5, 5) # Test matrix of size 10 x 10
-    X = np.random.randn(1000,20)
+    X = np.random.randn(100,10)
+    # X = np.random.randn(5,5)
     X = (X - X.mean(axis=0) )/ X.std(axis=0)
     # print(X)
     # X[list(range(5)), list(range(5))] = np.nan # Set 10% of values to NaN
@@ -877,15 +878,15 @@ if __name__ == "__main__":
     out, full = imputer.impute(X, return_full=True) # Impute the missing values
     end_time = time.time()
     speed_new = end_time - start_time
-    print(f"Time taken: {end_time - start_time} seconds")
+    print(f"New Model Time taken: {end_time - start_time:.4f} seconds")
     
     start_time = time.time()
     out_old, full_old = imputer_old.impute(X, return_full=True)
     end_time = time.time()
     speed_old = end_time - start_time
-    print(f"Time taken: {end_time - start_time} seconds")
+    print(f"Old Model Time taken: {end_time - start_time:.4f} seconds")
     
-    print(f"Speedup: {speed_old / speed_new}")
+    print(f"Speedup: {speed_old / speed_new:.4f} x")
     
     exit()
     

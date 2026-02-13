@@ -1,12 +1,27 @@
 import seaborn as sns
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pandas as pd
 import warnings
+from plot_options import (
+    setup_latex_fonts,
+    METHOD_NAMES,
+    METHOD_COLORS,
+    HIGHLIGHT_COLOR,
+    NEUTRAL_COLOR,
+    NEUTRAL_COLORS,
+    FIGURE_SIZES,
+)
 
 # --- Plotting ---
-sns.set(style="whitegrid")
+# Configure LaTeX rendering for all text in plots
+setup_latex_fonts()
+
+# Ensure LaTeX is enabled (redundant but explicit)
+matplotlib.rcParams['text.usetex'] = True
+matplotlib.rcParams['font.family'] = 'serif'
 
 base_path = "datasets/openml"
 
@@ -27,29 +42,13 @@ methods = [
     # # "tabpfn_impute",
 ]
 
-method_names = {
-    "masters_mcar": "TabImpute",
-    "tabpfn_impute": "TabPFN",
-    "column_mean": "Col Mean",
-    "hyperimpute": "HyperImpute",
-    "ot_sinkhorn": "OT",
-    "missforest": "MissForest",
-    "softimpute": "SoftImpute",
-    "ice": "ICE",
-    "mice": "MICE",
-    "gain": "GAIN",
-    "miwae": "MIWAE",
-}
+# Use method names from plot_options
+method_names = METHOD_NAMES
 
-highlight_color = "#2A6FBB"
-neutral_color = "#B8B8B8"
-
-# Create slightly different neutral colors for each method
-neutral_colors = {
-    "HyperImpute": "#A8A8A8",  # Slightly darker gray
-    "Col Mean": "#B3B3B3",      # Medium gray
-    "MissForest": "#B0B0B0",   # Medium-dark gray
-}
+# Use colors from plot_options
+highlight_color = HIGHLIGHT_COLOR
+neutral_color = NEUTRAL_COLOR
+neutral_colors = NEUTRAL_COLORS
 
 # Only focus on MCAR pattern
 pattern_name = "MCAR"
@@ -126,10 +125,11 @@ include_methods = ["TabImpute", "HyperImpute", "Col Mean", "MissForest"]
 palette = {method: highlight_color if method == "TabImpute" else neutral_colors.get(method, neutral_color) for method in include_methods}
 
 # Plot the values with a separate line for each method
-plt.figure(figsize=(10, 6))
+plt.figure(figsize=FIGURE_SIZES['wide'])
 ax = sns.lineplot(x="p", y="value_norm", hue="method", data=df[df["method"].isin(include_methods)], hue_order=include_methods, palette=palette)
-plt.ylabel("1 - Normalized RMSE (0–1)")
-plt.xlabel("Fraction of Missing Values")
+# Use LaTeX-formatted labels
+plt.ylabel(r"1 - Normalized RMSE (0–1)")
+plt.xlabel(r"Fraction of Missing Values")
 
 # Remove legend and add labels at the end of each line
 ax.legend_.remove()
@@ -183,10 +183,11 @@ for method, x_end, y_end in adjusted_positions:
     if line_idx < len(lines):
         line = lines[line_idx]
         line_color = line.get_color()
+        # Text labels will use LaTeX rendering (configured via rcParams)
         ax.text(x_end, y_end, f"  {method}", 
                color=line_color, va='center', fontsize=10, fontweight='bold' if method == "TabImpute" else 'normal')
 
-plt.savefig('figures/mcar_normalized_performance_vs_p.pdf', dpi=300)
+plt.savefig('figures/mcar_normalized_performance_vs_p.pdf', dpi=300, bbox_inches='tight')
 plt.close()
 
 print(f"Saved figure to figures/mcar_normalized_performance_vs_p.pdf")

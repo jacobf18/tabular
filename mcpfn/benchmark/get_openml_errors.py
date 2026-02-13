@@ -31,15 +31,15 @@ os.environ["TABPFN_ALLOW_CPU_LARGE_DATASET"] = "1"
 
 warnings.filterwarnings("ignore")
 
-force_rerun = False
+force_rerun = True
 
 # --- Choose which imputers to run ---
 imputers = set([
-    # "mcpfn",
+    "mcpfn",
     # "mcpfn_ensemble",
     # "tabimpute_ensemble",
     # "knn",
-    "tabpfn",
+    # "tabpfn",
     # "tabpfn_unsupervised",
     # "hyperimpute_mean",
     # "softimpute",
@@ -58,18 +58,18 @@ imputers = set([
 
 patterns = {
     "MCAR",
-    # "MAR",
-    # "MNAR",
-    # "MAR_Neural",
-    # "MAR_BlockNeural",
-    # "MAR_Sequential",
-    # "MNARPanelPattern",
-    # "MNARPolarizationPattern",
-    # "MNARSoftPolarizationPattern",
-    # "MNARLatentFactorPattern",
-    # "MNARClusterLevelPattern",
-    # "MNARTwoPhaseSubsetPattern",
-    # "MNARCensoringPattern",
+    "MAR",
+    "MNAR",
+    "MAR_Neural",
+    "MAR_BlockNeural",
+    "MAR_Sequential",
+    "MNARPanelPattern",
+    "MNARPolarizationPattern",
+    "MNARSoftPolarizationPattern",
+    "MNARLatentFactorPattern",
+    "MNARClusterLevelPattern",
+    "MNARTwoPhaseSubsetPattern",
+    "MNARCensoringPattern",
 }
 
 missingness_levels = [
@@ -107,11 +107,11 @@ if "mcpfn" in imputers:
         nhead=2,
         preprocessors=preprocessors,
         entry_wise_features=False,
-        checkpoint_path='/home/jacobf18/tabular/mcpfn/src/tabimpute/workdir/tabimpute-large-pancake-model-mcar_mnar-p0.4-num-cls-8-rank-1-15/checkpoint_40000.pth'
+        checkpoint_path='/home/jacobf18/tabular/mcpfn/src/tabimpute/workdir/tabimpute-mcar_p0.4-num_cls_8-rank_1_11/checkpoint_80000.pth'
         # max_num_rows=100,
         # max_num_chunks=2,
     )
-    mcpfn_name = "tabimpute_large_mcar_mnar"
+    mcpfn_name = "tabimpute_75_75_rank_1_11"
     
 if "tabimpute_ensemble" in imputers:
     preprocessors = [
@@ -213,7 +213,7 @@ def run_forest_diffusion(X_missing: np.ndarray, n_t: int = 50,
 # --- Run benchmark ---
 base_path = "datasets/openml"
 datasets = os.listdir(base_path)
-repeats = 5
+repeats = 1
 
 pbar = tqdm(datasets)
 for name in pbar:
@@ -269,7 +269,7 @@ for name in pbar:
                         np.save(out_path, X_mcpfn)
                         print(f"MCPFN imputation time: {end_time - start_time} seconds for {cfg_dir}")
                         # save the imputation time
-                        with open(f"{cfg_dir}/{mcpfn_name}_imputation_time.txt", "a") as f:
+                        with open(f"{cfg_dir}/{mcpfn_name}_imputation_time.txt", "w") as f:
                             f.write(f"{end_time - start_time}\n")
             
             # --- KNN ---

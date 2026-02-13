@@ -7,11 +7,21 @@ import os
 import re
 import glob
 import pandas as pd
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 from pathlib import Path
 from scipy import stats
+from plot_options import (
+    setup_latex_fonts,
+    METHOD_NAMES,
+    METHOD_COLORS,
+    HIGHLIGHT_COLOR,
+    NEUTRAL_COLOR,
+    FIGURE_SIZES,
+    BARPLOT_STYLE,
+)
 
 def parse_dataset_sizes(file_path):
     """Parse the dataset_sizes.txt file to extract dataset names and dimensions."""
@@ -89,27 +99,14 @@ def find_imputation_times(base_path):
     
     return imputation_data
 
-method_names = {
-    "mixed_nonlinear": "TabImpute (Nonlinear FM)",
-    "tabimpute_large_mcar": "TabImpute (New Model)",
-    "mcpfn_ensemble": "TabImpute+",
-    "mcpfn_mnar": "TabImpute (MNAR)",
-    "mcpfn_mixed_fixed": "TabImpute (Fixed)",
+# Use method names from plot_options and add file-specific mappings
+method_names = METHOD_NAMES.copy()
+# Add file-specific method name mappings
+method_names.update({
     "mcpfn": "TabImpute (GPU)",
-    "masters_mar": "TabImpute (MAR)",
-    "masters_mnar": "TabImpute (MNAR)",
     "mcpfn_cpu": "TabImpute (CPU)",
-    "tabimpute_ensemble": "TabImpute Ensemble",
-    "tabimpute_ensemble_router": "TabImpute Router",
-    "mcpfn_mixed_adaptive": "TabImpute",
-    "mcpfn_mar_linear": "TabImpute (MCAR then MAR)",
-    "mixed_more_heads": "TabImpute (More Heads)",
-    "tabpfn_no_proprocessing": "TabPFN Fine-Tuned No Preprocessing",
-    # "mixed_perm_both_row_col": "TabImpute",
     "tabpfn_unsupervised": "Col-TabPFN (GPU)",
     "tabpfn": "EWF-TabPFN (GPU)",
-    "column_mean": "Col Mean",
-    "softimpute": "SoftImpute",
     "hyperimpute_hyperimpute": "HyperImpute (GPU)",
     "hyperimpute_ot_sinkhorn": "OT",
     "hyperimpute_hyperimpute_missforest": "MissForest",
@@ -117,50 +114,33 @@ method_names = {
     "hyperimpute_hyperimpute_mice": "MICE",
     "hyperimpute_hyperimpute_gain": "GAIN (GPU)",
     "hyperimpute_hyperimpute_miwae": "MIWAE (GPU)",
-    "forestdiffusion": "ForestDiffusion",
-    "knn": "K-Nearest Neighbors",
     "remasker": "ReMasker (GPU)",
     "cacti": "CACTI (GPU)",
-    # "diffputer": "DiffPuter (GPU)",
-}
+    # "tabimpute_mcar_lin": "TabImpute (Lin. Emb.)",
+    "tabimpute_dynamic_cls": "TabImpute (New)",
+})
 
-neutral_color = "#B8B8B8"
-highlight_color = "#2A6FBB"
+# Use colors from plot_options
+neutral_color = NEUTRAL_COLOR
+highlight_color = HIGHLIGHT_COLOR
+# Use darker gray for x-axis labels (not bars) to match plot_negative_rmse.py
+darker_neutral_color = "#333333"  # Very dark gray for x-axis label text
+method_colors = METHOD_COLORS.copy()
 
-# Define consistent color mapping for methods (using display names as they appear in the DataFrame)
-method_colors = {
-    "TabImpute+": highlight_color,  # Blue
-    "TabImpute (New Model)": highlight_color,  # Blue
-    "TabImpute": highlight_color,  # Sea Green (distinct from GPU)
-    "TabImpute Ensemble": "#2f88a8",  # Sea Green (distinct from GPU)
-    "TabImpute (MNAR)": highlight_color,  # Sea Green (distinct from GPU)
-    "TabImpute (Fixed)": "#2f88a8",  # Sea Green (distinct from GPU)
-    "TabImpute (GPU)": highlight_color,  # Sea Green (distinct from GPU)
-    "TabImpute (CPU)": highlight_color,  # Sea Green (distinct from GPU)
-    "TabImpute (MCAR)": highlight_color,  # Sea Green (distinct from GPU)
-    "TabImpute (MAR)": "#2f88a8",  # Sea Green (distinct from GPU)
-    "TabImpute (MNAR)": "#2f88a8",  # Sea Green (distinct from GPU)
-    "TabImpute Router": "#2f88a8",  # Sea Green (distinct from GPU)
-    "EWF-TabPFN (GPU)": neutral_color,  # 
-    "HyperImpute (GPU)": neutral_color,  # Orange
-    "MissForest": neutral_color,   # Green
-    "OT": neutral_color,           # Red
-    "Col Mean": neutral_color,     # Purple
-    "SoftImpute": neutral_color,   # Brown
-    "ICE": neutral_color,          # Pink
-    "MICE": neutral_color,         # Gray
-    "GAIN (GPU)": neutral_color,         # Dark Green
-    "MIWAE (GPU)": neutral_color,        # Cyan
-    "Col-TabPFN (GPU)": neutral_color,       # Blue
-    "K-Nearest Neighbors": neutral_color,  # Orange
-    "ForestDiffusion": neutral_color,      # Medium Green
-    "MCPFN": neutral_color,        # Light Red
-    "MCPFN (Linear Permuted)": neutral_color,  # Light Purple
-    "MCPFN (Nonlinear Permuted)": neutral_color,  # Light Brown
-    "DiffPuter (GPU)": neutral_color,  # Red
-    "ReMasker (GPU)": neutral_color,  # Red
-    "CACTI (GPU)": neutral_color,  # Purple
-}
+# Add file-specific method colors (for bars)
+method_colors.update({
+    "TabImpute (GPU)": highlight_color,
+    "TabImpute (CPU)": highlight_color,
+    "EWF-TabPFN (GPU)": neutral_color,
+    "HyperImpute (GPU)": neutral_color,
+    "GAIN (GPU)": neutral_color,
+    "MIWAE (GPU)": neutral_color,
+    "Col-TabPFN (GPU)": neutral_color,
+    "ReMasker (GPU)": neutral_color,
+    "CACTI (GPU)": neutral_color,
+    # "TabImpute (Lin. Emb.)": highlight_color,
+    "TabImpute (New)": highlight_color,
+})
 
 include_methods = [
     "mcpfn",
@@ -171,6 +151,8 @@ include_methods = [
     "tabpfn_unsupervised",
     # "masters_mcar",
     "tabpfn",
+    # "tabimpute_mcar_lin",
+    "tabimpute_large_mcar_rank_1_11",
     # "tabpfn_impute",
     "hyperimpute_hyperimpute",
     "hyperimpute_hyperimpute_missforest",
@@ -207,8 +189,13 @@ def create_plots(imputation_data, dataset_info):
     print(f"Unique datasets: {df['dataset'].unique()}")
     
     
+    # Configure LaTeX rendering for all text in plots
+    setup_latex_fonts()
+    matplotlib.rcParams['text.usetex'] = True
+    matplotlib.rcParams['font.family'] = 'serif'
+    
     # Create efficiency bar plot (runtime per dataset size) using seaborn
-    plt.figure(figsize=(7.5,6.5))
+    plt.figure(figsize=FIGURE_SIZES['standard'])
     
     # Calculate efficiency metric: time per dataset size
     df['efficiency'] = df['time'] / df['dataset_size']
@@ -216,21 +203,23 @@ def create_plots(imputation_data, dataset_info):
     # Filter to only include methods in include_methods list
     df_filtered = df[df['method'].isin(include_methods)].copy()
     
-    # Calculate and print speedup
-    baseline_method = 'EWF-TabPFN (GPU)'
-    speed_up_method = 'TabImpute (GPU)'
-    baseline_data = df_filtered[df_filtered['method'] == baseline_method]
-    speed_up_data = df_filtered[df_filtered['method'] == speed_up_method]
+    # Calculate and print speedup (using method keys, not display names)
+    baseline_method_key = 'tabpfn'  # Method key for EWF-TabPFN (GPU)
+    speed_up_method_key = 'mcpfn'   # Method key for TabImpute (GPU)
+    baseline_data = df_filtered[df_filtered['method'] == baseline_method_key]
+    speed_up_data = df_filtered[df_filtered['method'] == speed_up_method_key]
     
     if len(baseline_data) > 0 and len(speed_up_data) > 0:
         baseline_mean_time = baseline_data['time'].mean()
         speed_up_mean_time = speed_up_data['time'].mean()
         speedup = baseline_mean_time / speed_up_mean_time
-        print(f"\nSpeedup of {method_names[speed_up_method]} compared to {method_names[baseline_method]}: {speedup:.2f}x")
-        print(f"{method_names[speed_up_method]} mean time: {speed_up_mean_time:.3f} seconds")
-        print(f"{method_names[baseline_method]} mean time: {baseline_mean_time:.3f} seconds")
+        baseline_display_name = method_names[baseline_method_key]
+        speed_up_display_name = method_names[speed_up_method_key]
+        print(f"\nSpeedup of {speed_up_display_name} compared to {baseline_display_name}: {speedup:.2f}x")
+        print(f"{speed_up_display_name} mean time: {speed_up_mean_time:.3f} seconds")
+        print(f"{baseline_display_name} mean time: {baseline_mean_time:.3f} seconds")
     else:
-        print("\nWarning: Could not calculate speedup - missing data for TabPFN+ (GPU) or TabPFN (GPU)")
+        print("\nWarning: Could not calculate speedup - missing data for TabPFN (GPU) or TabImpute (GPU)")
     
     # Add method names for plotting
     df_filtered['Method'] = df_filtered['method'].map(method_names)
@@ -238,26 +227,35 @@ def create_plots(imputation_data, dataset_info):
     # Calculate mean efficiency to determine sort order (decreasing time = increasing efficiency values)
     efficiency_means = df_filtered.groupby('Method')['efficiency'].mean().sort_values(ascending=True)
     
-    # --- Plotting ---
-    sns.set(style="whitegrid")
-    
     # Create seaborn bar plot with error bars, sorted by efficiency (decreasing time)
     ax = sns.barplot(data=df_filtered, x='Method', y='efficiency', hue='Method',
                 order=efficiency_means.index,
-                palette=method_colors,  # Use consistent colors from palette
-                legend=False, capsize=0.2, err_kws={'color': '#999999'}, edgecolor="#6E6E6E")
+                palette=method_colors,
+                **BARPLOT_STYLE,
+                legend=False)
     
     # Set x-axis labels with 45-degree rotation
-    ax.set_xticklabels(efficiency_means.index, rotation=45, ha='right', fontsize=14)
+    # Bold TabImpute methods using LaTeX \textbf{}
+    labels_with_bold = [r"\textbf{" + method + "}" if "TabImpute" in method else method for method in efficiency_means.index]
+    ax.set_xticks(range(len(efficiency_means.index)))
+    ax.set_xticklabels(labels_with_bold, rotation=45, ha='right', fontsize=14)
     ax.set_xlabel('')
     
-    # Set label colors to match bar colors
-    for label in ax.get_xticklabels():
-        method_name = label.get_text()
-        if method_name == "TabImpute (GPU)" or method_name == "TabImpute (CPU)":
-            label.set_color(method_colors[method_name])
+    # Set label colors - use darker color for non-TabImpute x-axis labels
+    for i, label in enumerate(ax.get_xticklabels()):
+        method_name = efficiency_means.index[i]
+        if "TabImpute" in method_name:
+            # TabImpute methods use highlight color and are larger
+            if method_name in method_colors:
+                label.set_color(method_colors[method_name])
+            # Make TabImpute methods slightly larger for extra boldness
+            label.set_fontsize(label.get_fontsize() * 1.1)
+        else:
+            # Non-TabImpute methods use darker gray for x-axis labels
+            label.set_color(darker_neutral_color)
     
-    plt.ylabel('Milliseconds per entry', fontsize=18)
+    # Use LaTeX-formatted label
+    plt.ylabel(r'Milliseconds per entry', fontsize=18)
     # plt.title('Runtime per entry \n(seconds per number of entries (rows × columns))', fontsize=18.0)
     plt.yscale('log')  # Set y-axis to log scale
     
@@ -274,7 +272,7 @@ def create_plots(imputation_data, dataset_info):
     
     plt.tight_layout()
     plt.savefig('/home/jacobf18/tabular/mcpfn/benchmark/imputation_efficiency_barplot.pdf', 
-                dpi=300, bbox_inches=None)
+                dpi=300, bbox_inches='tight')
     plt.show()
     
     # Print efficiency statistics

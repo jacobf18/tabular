@@ -1,13 +1,30 @@
 import seaborn as sns
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pandas as pd
 import warnings
 from scipy import stats
+from plot_options import (
+    setup_latex_fonts,
+    METHOD_NAMES,
+    METHOD_COLORS,
+    HIGHLIGHT_COLOR,
+    NEUTRAL_COLOR,
+    PATTERNS,
+    PATTERN_LATEX_NAMES,
+    FIGURE_SIZES,
+    BARPLOT_STYLE,
+)
 
 # --- Plotting ---
-sns.set(style="whitegrid")
+# Configure LaTeX rendering for all text in plots
+setup_latex_fonts()
+
+# Ensure LaTeX is enabled (redundant but explicit)
+matplotlib.rcParams['text.usetex'] = True
+matplotlib.rcParams['font.family'] = 'serif'
 
 base_path = "datasets/openml"
 
@@ -16,6 +33,11 @@ datasets = os.listdir(base_path)
 methods = [
     # "tabpfn_no_preprocessing",
     "softimpute", 
+    # "tabimpute_mcar_lin",
+    # "tabimpute_dynamic_cls",
+    # "tabimpute_large_cls_8",
+    "tabimpute_75_75_rank_1_11",
+    "tabimpute_large_mcar_rank_1_11",
     # "column_mean", 
     "hyperimpute",
     "ot_sinkhorn",
@@ -25,12 +47,6 @@ methods = [
     "gain",
     "miwae",
     "masters_mcar",
-    # "tabimpute_large_mcar",
-    # "tabimpute_large_mcar_rank_1_11",
-    # "tabimpute_large_mcar_mnar",  
-    # "masters_mar",
-    # "masters_mnar",
-    # "masters_mcar_nonlinear",
     "tabpfn",
     "tabpfn_impute",
     "knn",
@@ -41,93 +57,34 @@ methods = [
 
 
 
-patterns = {
-    "MCAR",
-    "MAR",
-    "MNAR",
-    "MAR_Neural",
-    "MAR_BlockNeural",
-    "MAR_Sequential",
-    "MNARPanelPattern",
-    "MNARPolarizationPattern",
-    "MNARSoftPolarizationPattern",
-    "MNARLatentFactorPattern",
-    "MNARClusterLevelPattern",
-    "MNARTwoPhaseSubsetPattern",
-    "MNARCensoringPattern",
-}
+# Use patterns from plot_options
+patterns = PATTERNS
 
-method_names = {
-    "tabimpute_large_mcar": "TabImpute (New Model)",
-    "tabimpute_large_mcar_mnar": "TabImpute (MNAR)",
-    "tabimpute_large_mcar_rank_1_11": "TabImpute (New)",
-    "mixed_nonlinear": "TabImpute (Nonlinear FM)",
-    "mcpfn_ensemble": "TabImpute+",
-    "mcpfn_mixed_fixed": "TabImpute (Fixed)",
-    "masters_mcar": "TabImpute",
-    "masters_mar": "TabImpute (MAR)",
-    "masters_mnar": "TabImpute (Self-Masking-MNAR)",
-    "masters_mcar_nonlinear": "TabImpute (Nonlinear)",
-    "tabimpute_ensemble": "TabImpute Ensemble",
-    "tabimpute_ensemble_router": "TabImpute Router",
-    "mcpfn_mixed_adaptive": "TabImpute",
-    "mcpfn_mar_linear": "TabImpute (MCAR then MAR)",
-    "mixed_more_heads": "TabImpute (More Heads)",
-    "tabpfn_no_preprocessing": "TabPFN Fine-Tuned No Preprocessing",
-    # "mixed_perm_both_row_col": "TabImpute",
-    "tabpfn_impute": "Col-TabPFN",
-    "tabpfn": "EWF-TabPFN",
-    "column_mean": "Col Mean",
-    "hyperimpute": "HyperImpute",
-    "ot_sinkhorn": "OT",
-    "missforest": "MissForest",
-    "softimpute": "SoftImpute",
-    "ice": "ICE",
-    "mice": "MICE",
-    "gain": "GAIN",
-    "miwae": "MIWAE",
-    "forestdiffusion": "ForestDiffusion",
-    "knn": "K-Nearest Neighbors",
-    "diffputer": "DiffPuter",
-    "remasker": "ReMasker",
-    "cacti": "CACTI",
-}
+# Use method names from plot_options
+method_names = METHOD_NAMES
 
-neutral_color = "#B8B8B8"
-highlight_color = "#2A6FBB"
+# Use colors from plot_options
+neutral_color = NEUTRAL_COLOR
+highlight_color = HIGHLIGHT_COLOR
+method_colors = METHOD_COLORS.copy()
 
-# Define consistent color mapping for methods (using display names as they appear in the DataFrame)
-method_colors = {
-    "TabImpute (New Model)": highlight_color,  # Blue
-    "TabImpute (MNAR)": highlight_color,  # Blue
-    "TabImpute (New)": highlight_color,  # Blue
-    "TabImpute+": highlight_color,  # Blue
-    "TabImpute": highlight_color,  # Sea Green (distinct from GPU)
-    "TabImpute Ensemble": "#2f88a8",  # Sea Green (distinct from GPU)
-    "TabImpute (Self-Masking-MNAR)": "#2f88a8",  # Sea Green (distinct from GPU)
-    "TabImpute (Fixed)": "#2f88a8",  # Sea Green (distinct from GPU)
-    "TabImpute (MCAR)": "#2f88a8",  # Sea Green (distinct from GPU)
-    "TabImpute (MAR)": "#2f88a8",  # Sea Green (distinct from GPU)
-    "TabImpute (MNAR)": "#2f88a8",  # Sea Green (distinct from GPU)
-    "TabImpute (Nonlinear)": "#2f88a8",  # Sea Green (distinct from GPU)
-    "TabImpute Router": "#2f88a8",  # Sea Green (distinct from GPU)
-    "EWF-TabPFN": "#3e3b6e",  # 
-    "HyperImpute": neutral_color,  # Orange
-    "MissForest": neutral_color,   # Green
-    "OT": neutral_color,           # Red
-    "Col Mean": "#9467bd",     # Purple
-    "SoftImpute": neutral_color,   # Brown
-    "ICE": neutral_color,          # Pink
-    "MICE": neutral_color,         # Gray
-    "GAIN": neutral_color,         # Dark Green
-    "MIWAE": neutral_color,        # Cyan
-    "Col-TabPFN": neutral_color,       # Blue
-    "K-Nearest Neighbors": neutral_color,  # Orange
-    "ForestDiffusion": neutral_color,      # Medium Green
-    "DiffPuter": neutral_color,  # Red
-    "ReMasker": neutral_color,  # Red
-    "CACTI": neutral_color,  # Purple
-}
+method_names.update({
+    "tabimpute_mcar_lin": "TabImpute (Lin. Emb.)",
+    "tabimpute_large_mcar_rank_1_11": "TabImpute (50x50)",
+    "tabimpute_dynamic_cls": "TabImpute (Dynamic CLs)",
+    "tabimpute_large_cls_8": "TabImpute (CLS-8)",
+    "tabimpute_75_75_rank_1_11": "TabImpute (75x75)",
+})
+
+method_colors.update({
+    "TabImpute (Lin. Emb.)": highlight_color,
+    "TabImpute (50x50)": highlight_color,
+    "TabImpute (Dynamic CLs)": highlight_color,
+    "TabImpute (CLS-8)": highlight_color,
+    "TabImpute (75x75)": highlight_color,
+})
+
+# Add missing method colors that may appear in the data
 
 negative_rmse = {}
 
@@ -256,7 +213,7 @@ df = pd.Series(negative_rmse).unstack()
 plot_pattern = True
 
 dont_plot_methods = [
-    "EWF-TabPFN",
+    # "EWF-TabPFN",
 ]
 
 # Plot for all patterns combined
@@ -275,7 +232,7 @@ if plot_pattern:
         
         # Average across datasets
         # --- Barplot ---
-        plt.figure(figsize=(7.5,6.5))
+        plt.figure(figsize=FIGURE_SIZES['standard'])
         
         # sort methods by mean performance
         sorted_methods = df_norm.mean(axis=0).sort_values(ascending=False).index
@@ -283,70 +240,79 @@ if plot_pattern:
         # Melt into long format
         df_long = df_norm.melt(var_name="method", value_name="score")
         
-        # Use your method_colors dictionary for consistent mapping
+        # Use method_colors dictionary for consistent mapping
         ax = sns.barplot(
             data=df_long,
             x="method",
             y="score",
             hue="method",
             order=sorted_methods,
-            palette=method_colors,   # <- consistent colors
-            capsize=0.2,
-            err_kws={"color": "#999999"},
+            palette=method_colors,
+            **BARPLOT_STYLE,
             legend=False,
-            edgecolor="#6E6E6E"
         )
         
         # Set x-axis labels with 45-degree rotation
-        ax.set_xticklabels(sorted_methods, rotation=45, ha='right')
+        # Bold TabImpute using LaTeX \textbf{}
+        labels_with_bold = [r"\textbf{" + method + "}" if method == "TabImpute" else method for method in sorted_methods]
+        ax.set_xticks(range(len(sorted_methods)))
+        ax.set_xticklabels(labels_with_bold, rotation=45, ha='right')
         ax.set_xlabel("")
         
-        # Set label colors to match bar colors
-        for label in ax.get_xticklabels():
-            method_name = label.get_text()
+        # Set label colors to match bar colors and make TabImpute even bolder
+        for i, label in enumerate(ax.get_xticklabels()):
+            method_name = sorted_methods[i]
             if method_name in method_colors:
                 label.set_color(method_colors[method_name])
+            if method_name == "TabImpute":
+                # Make TabImpute slightly larger for extra boldness
+                label.set_fontsize(label.get_fontsize() * 1.1)
 
-        plt.ylabel("1 - Normalized RMSE", fontsize=15)
+        # Use LaTeX-formatted label
+        plt.ylabel(r"1 - Normalized RMSE", fontsize=15)
         # plt.title(f"Comparison of Imputation Algorithms | {pattern_name}")
         plt.ylim(0, 1.0)
         plt.tight_layout()
-        plt.savefig(f"figures/negative_rmse_{pattern_name}.png", dpi=300)
+        plt.savefig(f"figures/negative_rmse_{pattern_name}.png", dpi=300, bbox_inches='tight')
         plt.close()
 
     # Average across datasets and patterns
-    fig = plt.figure(figsize=(7.5,6.5))
+    fig = plt.figure(figsize=FIGURE_SIZES['standard'])
     # sort df_norm_all by the mean of the rows
     sorted_methods_all = df_norm_all.mean(axis=0).sort_values(ascending=False).index
 
     # Melt into long format
     df_long = df_norm_all.melt(var_name="method", value_name="score")
     sorted_methods_all = [method for method in sorted_methods_all if method not in dont_plot_methods]
-    # Use your method_colors dictionary for consistent mapping
+    # Use method_colors dictionary for consistent mapping
     ax = sns.barplot(
         data=df_long,
         x="method",
         y="score",
         hue="method",
         order=sorted_methods_all,
-        palette=method_colors,   # <- consistent colors
-        capsize=0.2,
-        err_kws={"color": "#999999"},
+        palette=method_colors,
+        **BARPLOT_STYLE,
         legend=False,
-        edgecolor="#6E6E6E"
     )
 
     # Set x-axis labels with 45-degree rotation
-    ax.set_xticklabels(sorted_methods_all, rotation=45, ha='right', fontsize=14)
+    # Bold TabImpute using LaTeX \textbf{}
+    labels_with_bold = [r"\textbf{" + method + "}" if method == "TabImpute" else method for method in sorted_methods_all]
+    ax.set_xticks(range(len(sorted_methods_all)))
+    ax.set_xticklabels(labels_with_bold, rotation=45, ha='right', fontsize=14)
     ax.set_xlabel("")
     
-    # Set label colors to match bar colors
-    for label in ax.get_xticklabels():
-        method_name = label.get_text()
+    # Set label colors to match bar colors and make TabImpute even bolder
+    for i, label in enumerate(ax.get_xticklabels()):
+        method_name = sorted_methods_all[i]
         if method_name == "TabImpute":
             label.set_color(method_colors[method_name])
+            # Make TabImpute slightly larger for extra boldness
+            label.set_fontsize(label.get_fontsize() * 1.1)
 
-    plt.ylabel("1 - Normalized RMSE", fontsize=18)
+    # Use LaTeX-formatted label
+    plt.ylabel(r"1 - Normalized RMSE", fontsize=18)
     # plt.title("Comparison of Imputation Algorithms | All Patterns")
     plt.ylim(0.3, 0.95)
     plt.tight_layout()
@@ -457,22 +423,8 @@ all_patterns = ['MCAR',
                 'Overall'
                 ]
 
-patern_latex_names = {
-    "MCAR": "\\mcar",
-    "MAR_Neural": "\\nnmar",
-    "MNAR": "\\mnarself",
-    "MAR": "\\colmar",
-    "MAR_BlockNeural": "\\marblockneural",
-    "MAR_Sequential": "\\seqmar",
-    "MNARPanelPattern": "\\panelmnar",
-    "MNARPolarizationPattern": "\\polarmnar",
-    "MNARSoftPolarizationPattern": "\\softpolarmnar",
-    "MNARLatentFactorPattern": "\\latentmnar",
-    "MNARClusterLevelPattern": "\\clustermnar",
-    "MNARTwoPhaseSubsetPattern": "\\twophasemnar",
-    "MNARCensoringPattern": "\\censormnar",
-    "Overall": "Overall"
-}
+# Use pattern LaTeX names from plot_options
+patern_latex_names = PATTERN_LATEX_NAMES
 
 for pattern in all_patterns:
     if pattern in pattern_normalized_rmse:
