@@ -111,7 +111,7 @@ class FeatureEncoder(nn.Module):
         # Note: Damping factor 0.1 helps prevent embeddings from drowning out the data
         self.row_embedding = SinusoidalRowEmbedding(embedding_size, damping_factor=0.1)
         self.column_embedding = SinusoidalColumnEmbedding(embedding_size, damping_factor=0.1)
-            
+        
         self.mask_token = nn.Parameter(torch.zeros(1, 1, 1, embedding_size))
         
         # Store fixed CLS tokens as embeddings
@@ -372,7 +372,7 @@ if __name__ == "__main__":
     opt = AdamW(model.parameters(), lr=1e-4)
     print(f"Number of parameters: {sum(p.numel() for p in model.parameters()):,}")
     
-    exit()
+    # exit()
     
     size = (20, 20)
     true_values_npy = np.random.randn(1, size[0], size[1])

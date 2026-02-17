@@ -70,7 +70,7 @@ def train(model: TabImputeModel,
 
     try:
         for epoch in tqdm(range(ckpt['epoch'] + 1 if ckpt else 1, epochs + 1)):
-            torch.cuda.empty_cache()
+            # torch.cuda.empty_cache()
             epoch_start_time = time.time()
             
             (batch_X, batch_target, _, _, _), _ = prior.get_batch()
@@ -111,19 +111,19 @@ def train(model: TabImputeModel,
             
             # print(f"Step {epoch}: Loss: {loss_total.item()}, Missing loss: {loss_missing.item()}")
 
-            training_state = {
-                'epoch': epoch,
-                'model': (model.module if multi_gpu else model).state_dict(),
-                'optimizer': optimizer.state_dict()
-            }
             if epoch % 5000 == 0:
+                training_state = {
+                    'epoch': epoch,
+                    'model': (model.module if multi_gpu else model).state_dict(),
+                    'optimizer': optimizer.state_dict()
+                }
                 torch.save(training_state, work_dir+'/checkpoint_'+str(epoch)+'.pth')
 
             for callback in callbacks:
                 if type(criterion) is FullSupportBarDistribution:
-                    callback.on_epoch_end(epoch, end_time - epoch_start_time, loss_missing.item(), (model.module if multi_gpu else model), dist=criterion, log_dict=log_dict)
+                    callback.on_epoch_end(epoch, end_time - epoch_start_time, loss_missing.item(), None, dist=criterion, log_dict=log_dict)
                 else:
-                    callback.on_epoch_end(epoch, end_time - epoch_start_time, loss_missing.item(), (model.module if multi_gpu else model), log_dict=log_dict)
+                    callback.on_epoch_end(epoch, end_time - epoch_start_time, loss_missing.item(), None, log_dict=log_dict)
         
 
     except KeyboardInterrupt:
@@ -138,10 +138,10 @@ if __name__ == "__main__":
     num_attention_heads = 32
     embedding_size = 32 * num_attention_heads
     mlp_hidden_size = 1024
-    num_cls = 8
+    num_cls = 12
     num_layers = 12
     epochs = 100000
-    lr = 1e-4
+    lr = 2e-4
     
     model = TabImputeModel(
         embedding_size=embedding_size,
@@ -160,9 +160,9 @@ if __name__ == "__main__":
     p_missing = 0.4
     config = {
         "num_rows_low": 10,
-        "num_rows_high": 75,
+        "num_rows_high": 50,
         "num_cols_low": 5,
-        "num_cols_high": 75,
+        "num_cols_high": 50,
         "p_missing": p_missing,
         "apply_feature_warping_prob": 0.0,
         "apply_quantization_prob": 0.0,
@@ -194,11 +194,24 @@ if __name__ == "__main__":
     model.train()
     
     name = f"tabimpute-mcar_p{p_missing}-num_cls_{num_cls}-rank_1_11"
+    # NOTE: a directory with the name of the run will be created in the workdir directory
+    
+    # NOTE: If not resuming training, set ckpt to None
+    ckpt_path = '/home/jacobf18/tabular/mcpfn/src/tabimpute/workdir/tabimpute-mcar_p0.4-num_cls_8-rank_1_11/checkpoint_60000.pth'
+    # ckpt = torch.load(ckpt_path)
+    ckpt = None
+    
+    if ckpt is None:
+        id_name = None
+    else:
+        id_name = ckpt_path.split('/')[-1].split('.')[0]
+    
     callbacks = [
         WandbLoggerCallback(
             project="tabimpute",
             name=name,
-            id='tabimpute-mcar_p0.4-num_cls_8-rank_1_1120260211_124242',
+            # id='tabimpute-mcar_p0.4-num_cls_8-rank_1_1120260211_124242',
+            id=id_name,
             config={
                 "embedding_size": embedding_size,
                 "num_attention_heads": num_attention_heads,
@@ -214,9 +227,6 @@ if __name__ == "__main__":
     ]
     
     mse_criterion = nn.MSELoss()
-    
-    ckpt_path = '/home/jacobf18/tabular/mcpfn/src/tabimpute/workdir/tabimpute-mcar_p0.4-num_cls_8-rank_1_11/checkpoint_60000.pth'
-    ckpt = torch.load(ckpt_path)
     
     train(model, prior, bar_distribution, bar_distribution, epochs=epochs, lr=lr, device='cuda', callbacks=callbacks, run_name=name, ckpt=ckpt)
     print("Training complete")

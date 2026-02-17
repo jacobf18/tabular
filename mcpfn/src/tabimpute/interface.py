@@ -87,7 +87,7 @@ class ImputePFN:
             num_attention_heads = 32
             embedding_size = 32 * num_attention_heads
             mlp_hidden_size = 1024
-            num_cls = 8
+            num_cls = 12
             num_layers = 12
             self.model = TabImputeModel(embedding_size=embedding_size, 
                                         num_attention_heads=num_attention_heads, 

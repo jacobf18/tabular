@@ -6,9 +6,19 @@ import pandas as pd
 import warnings
 from scipy import stats
 import itertools
+from plot_options import (
+    METHOD_NAMES,
+    METHOD_COLORS,
+    PATTERNS,
+    PATTERN_LATEX_NAMES,
+    setup_latex_fonts,
+    PLOT_PARAMS,
+    BARPLOT_STYLE,
+    FIGURE_SIZES,
+)
 
 # --- Plotting ---
-sns.set(style="whitegrid")
+setup_latex_fonts()
 
 base_path = "datasets/uci"
 
@@ -19,10 +29,11 @@ methods = [
     # "ot_sinkhorn",
     "missforest",
     "ice",
-    "mice",
+    # "mice",
     # "gain",
     # "miwae",
     "masters_mcar",
+    "tabimpute_mcar_p0.4_num_cls_8_rank_1_11",
     # "tabimpute_large_mcar",
     # "tabimpute_large_mcar_rank_1_11",
     # "tabimpute_large_mcar_mnar",
@@ -37,6 +48,7 @@ methods = [
     # "remasker",
 ]
 
+# Use patterns from plot_options, but filter to only active ones
 patterns = {
     "MCAR",
     # "MAR",
@@ -61,75 +73,13 @@ missingness_levels = [
 
 num_repeats = 10
 
-method_names = {
-    "tabimpute_large_mcar": "TabImpute (New Model)",
-    "tabimpute_large_mcar_mnar": "TabImpute (MNAR)",
-    "tabimpute_large_mcar_rank_1_11": "TabImpute (New)",
-    "mixed_nonlinear": "TabImpute (Nonlinear FM)",
-    "mcpfn_ensemble": "TabImpute+",
-    "mcpfn_mixed_fixed": "TabImpute (Fixed)",
-    "masters_mcar": "TabImpute",
-    "masters_mar": "TabImpute (MAR)",
-    "masters_mnar": "TabImpute (Self-Masking-MNAR)",
-    "masters_mcar_nonlinear": "TabImpute (Nonlinear)",
-    "tabimpute_ensemble": "TabImpute Ensemble",
-    "tabimpute_ensemble_router": "TabImpute Router",
-    "mcpfn_mixed_adaptive": "TabImpute",
-    "mcpfn_mar_linear": "TabImpute (MCAR then MAR)",
-    "mixed_more_heads": "TabImpute (More Heads)",
-    "tabpfn_no_proprocessing": "TabPFN Fine-Tuned No Preprocessing",
-    # "mixed_perm_both_row_col": "TabImpute",
-    "tabpfn_impute": "TabPFN",
-    "tabpfn": "EWF-TabPFN",
-    "column_mean": "Col Mean",
-    "hyperimpute": "HyperImpute",
-    "ot_sinkhorn": "OT",
-    "missforest": "MissForest",
-    "softimpute": "SoftImpute",
-    "ice": "ICE",
-    "mice": "MICE",
-    "gain": "GAIN",
-    "miwae": "MIWAE",
-    "forestdiffusion": "ForestDiffusion",
-    "knn": "K-Nearest Neighbors",
-    "diffputer": "DiffPuter",
-    "remasker": "ReMasker",
-}
+# Use method names from plot_options
+method_names = METHOD_NAMES.copy()
+# Add any UCI-specific method name mappings if needed
+method_names["tabimpute_mcar_p0.4_num_cls_8_rank_1_11"] = "TabImpute (New)"
 
-# Define consistent color mapping for methods (using display names as they appear in the DataFrame)
-method_colors = {
-    "TabImpute (New Model)": "#2f88a8",  # Blue
-    "TabImpute (MNAR)": "#2f88a8",  # Blue
-    "TabImpute (New)": "#2f88a8",  # Blue
-    "TabImpute+": "#2f88a8",  # Blue
-    "TabImpute": "#2f88a8",  # Sea Green (distinct from GPU)
-    "TabImpute Ensemble": "#2f88a8",  # Sea Green (distinct from GPU)
-    "TabImpute (Self-Masking-MNAR)": "#2f88a8",  # Sea Green (distinct from GPU)
-    "TabImpute (Fixed)": "#2f88a8",  # Sea Green (distinct from GPU)
-    "TabImpute (MCAR)": "#2f88a8",  # Sea Green (distinct from GPU)
-    "TabImpute (MAR)": "#2f88a8",  # Sea Green (distinct from GPU)
-    "TabImpute (MNAR)": "#2f88a8",  # Sea Green (distinct from GPU)
-    "TabImpute (Nonlinear)": "#2f88a8",  # Sea Green (distinct from GPU)
-    "TabImpute Router": "#2f88a8",  # Sea Green (distinct from GPU)
-    "EWF-TabPFN": "#3e3b6e",  # 
-    "HyperImpute": "#ff7f0e",  # Orange
-    "MissForest": "#2ca02c",   # Green
-    "OT": "#591942",           # Red
-    "Col Mean": "#9467bd",     # Purple
-    "SoftImpute": "#8c564b",   # Brown
-    "ICE": "#a14d88",          # Pink
-    "MICE": "#7f7f7f",         # Gray
-    "GAIN": "#286b33",         # Dark Green
-    "MIWAE": "#17becf",        # Cyan
-    "TabPFN": "#3e3b6e",       # Blue
-    "K-Nearest Neighbors": "#a36424",  # Orange
-    "ForestDiffusion": "#52b980",      # Medium Green
-    "MCPFN": "#ff9896",        # Light Red
-    "MCPFN (Linear Permuted)": "#c5b0d5",  # Light Purple
-    "MCPFN (Nonlinear Permuted)": "#c49c94",  # Light Brown
-    "DiffPuter": "#d62728",  # Red
-    "ReMasker": "#f58231",  # Dark Orange
-}
+# Use method colors from plot_options
+method_colors = METHOD_COLORS
 
 negative_rmse = {}
 
@@ -222,30 +172,35 @@ for dataset in datasets:
         for method in methods:
             X_imputed = np.load(f"{cfg_dir}/{method}.npy")
             name = method_names[method]
-            negative_rmse[(dataset, pattern, missingness_level, repeat, name)] = compute_normalized_rmse_columnwise(X_true, X_imputed, mask)
+            negative_rmse[(dataset, pattern, missingness_level, repeat, name)] = compute_negative_rmse(X_true, X_imputed, mask)
 
 # Create summary dataframe with missingness_level as rows and method as columns
 s = pd.Series(negative_rmse)
 s.index = pd.MultiIndex.from_tuples(s.index, names=['dataset', 'pattern', 'missingness_level', 'repeat', 'method'])
 df_summary = s.groupby(['missingness_level', 'method']).mean().unstack('method')
 print("\nMean by missingness_level and method:")
-print(df_summary)
+print(df_summary.sort_values(by='missingness_level', ascending=True))
+
+# exit()
 
 df = pd.Series(negative_rmse).unstack()
 df_norm = (df - df.min(axis=1).values[:, None]) / (df.max(axis=1) - df.min(axis=1)).values[:, None]
 
+print(df_norm)
+
+exit()
 plot_pattern = True
 
 # Plot for all patterns combined
 # Get dataframe for all patterns
 df_all = df.copy()
-df_norm_all = (df_all - df_all.min(axis=1).values[:, None]) / (df_all.max(axis=1) - df_all.min(axis=1)).values[:, None]
+df_norm_all = 1.0 - (df_all - df_all.min(axis=1).values[:, None]) / (df_all.max(axis=1) - df_all.min(axis=1)).values[:, None]
 
 if plot_pattern:
     for pattern_name in patterns:
         # Get dataframe for 1 pattern
         df2 = df[df.index.get_level_values(1) == pattern_name]
-        df_norm = (df2 - df2.min(axis=1).values[:, None]) / (
+        df_norm = 1.0 - (df2 - df2.min(axis=1).values[:, None]) / (
             df2.max(axis=1) - df2.min(axis=1)
         ).values[:, None]
         
@@ -261,17 +216,16 @@ if plot_pattern:
         # Melt into long format
         df_long = df_norm.melt(var_name="method", value_name="score")
         
-        # Use your method_colors dictionary for consistent mapping
+        # Use method_colors from plot_options for consistent mapping
         ax = sns.barplot(
             data=df_long,
             x="method",
             y="score",
             hue="method",
             order=sorted_methods,
-            palette=method_colors,   # <- consistent colors
-            capsize=0.2,
-            err_kws={"color": "#999999"},
-            legend=False
+            palette=method_colors,   # <- consistent colors from plot_options
+            legend=False,
+            **BARPLOT_STYLE
         )
         
         # Remove x-axis labels
@@ -293,7 +247,7 @@ if plot_pattern:
         # plt.title(f"Comparison of Imputation Algorithms | {pattern_name}")
         # plt.ylim(0, 1.0)
         plt.tight_layout()
-        plt.savefig(f"figures/uci_negative_rmse_{pattern_name}.pdf", dpi=300)
+        plt.savefig(f"figures/uci_negative_rmse_{pattern_name}.pdf", **PLOT_PARAMS)
         plt.close()
 
     # Average across datasets and patterns
@@ -303,19 +257,18 @@ if plot_pattern:
 
     # Melt into long format
     df_long = df_norm_all.melt(var_name="method", value_name="score")
-    df_norm_all = 1.0 - df_norm_all
+    df_norm_all = df_norm_all
 
-    # Use your method_colors dictionary for consistent mapping
+    # Use method_colors from plot_options for consistent mapping
     ax = sns.barplot(
         data=df_long,
         x="method",
         y="score",
         hue="method",
         order=sorted_methods_all,
-        palette=method_colors,   # <- consistent colors
-        capsize=0.2,
-        err_kws={"color": "#999999"},
-        legend=False
+        palette=method_colors,   # <- consistent colors from plot_options
+        legend=False,
+        **BARPLOT_STYLE
     )
 
     # Remove x-axis labels
@@ -338,7 +291,7 @@ if plot_pattern:
     
     fig.subplots_adjust(left=0.2, right=0.95, bottom=0.05, top=0.95)
     
-    plt.savefig(f"figures/uci_negative_rmse_overall.pdf", dpi=300, bbox_inches=None)
+    plt.savefig(f"figures/uci_negative_rmse_overall.pdf", **PLOT_PARAMS)
     plt.close()
 
 
@@ -444,22 +397,8 @@ all_patterns = ['MCAR',
                 'Overall'
                 ]
 
-patern_latex_names = {
-    "MCAR": "\\mcar",
-    "MAR_Neural": "\\nnmar",
-    "MNAR": "\\mnarself",
-    "MAR": "\\colmar",
-    "MAR_BlockNeural": "\\marblockneural",
-    "MAR_Sequential": "\\seqmar",
-    "MNARPanelPattern": "\\panelmnar",
-    "MNARPolarizationPattern": "\\polarmnar",
-    "MNARSoftPolarizationPattern": "\\softpolarmnar",
-    "MNARLatentFactorPattern": "\\latentmnar",
-    "MNARClusterLevelPattern": "\\clustermnar",
-    "MNARTwoPhaseSubsetPattern": "\\twophasemnar",
-    "MNARCensoringPattern": "\\censormnar",
-    "Overall": "Overall"
-}
+# Use pattern LaTeX names from plot_options
+patern_latex_names = PATTERN_LATEX_NAMES
 
 for pattern in all_patterns:
     if pattern in pattern_normalized_rmse:

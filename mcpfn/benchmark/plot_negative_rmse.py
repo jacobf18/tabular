@@ -36,7 +36,8 @@ methods = [
     # "tabimpute_mcar_lin",
     # "tabimpute_dynamic_cls",
     # "tabimpute_large_cls_8",
-    "tabimpute_75_75_rank_1_11",
+    # "tabimpute_75_75_rank_1_11",
+    "tabimpute_50_50_rank_1_11_cls_12",
     "tabimpute_large_mcar_rank_1_11",
     # "column_mean", 
     "hyperimpute",
@@ -74,6 +75,7 @@ method_names.update({
     "tabimpute_dynamic_cls": "TabImpute (Dynamic CLs)",
     "tabimpute_large_cls_8": "TabImpute (CLS-8)",
     "tabimpute_75_75_rank_1_11": "TabImpute (75x75)",
+    "tabimpute_50_50_rank_1_11_cls_12": "TabImpute (New)",
 })
 
 method_colors.update({
@@ -82,6 +84,7 @@ method_colors.update({
     "TabImpute (Dynamic CLs)": highlight_color,
     "TabImpute (CLS-8)": highlight_color,
     "TabImpute (75x75)": highlight_color,
+    "TabImpute (New)": highlight_color,
 })
 
 # Add missing method colors that may appear in the data
@@ -213,7 +216,7 @@ df = pd.Series(negative_rmse).unstack()
 plot_pattern = True
 
 dont_plot_methods = [
-    # "EWF-TabPFN",
+    "EWF-TabPFN",
 ]
 
 # Plot for all patterns combined

@@ -107,11 +107,11 @@ if "mcpfn" in imputers:
         nhead=2,
         preprocessors=preprocessors,
         entry_wise_features=False,
-        checkpoint_path='/home/jacobf18/tabular/mcpfn/src/tabimpute/workdir/tabimpute-mcar_p0.4-num_cls_8-rank_1_11/checkpoint_80000.pth'
+        checkpoint_path='/home/jacobf18/tabular/mcpfn/src/tabimpute/workdir/tabimpute-mcar_p0.4-num_cls_12-rank_1_11/checkpoint_85000.pth'
         # max_num_rows=100,
         # max_num_chunks=2,
     )
-    mcpfn_name = "tabimpute_75_75_rank_1_11"
+    mcpfn_name = "tabimpute_50_50_rank_1_11_cls_12"
     
 if "tabimpute_ensemble" in imputers:
     preprocessors = [
