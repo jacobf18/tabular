@@ -31,7 +31,7 @@ os.environ["TABPFN_ALLOW_CPU_LARGE_DATASET"] = "1"
 
 warnings.filterwarnings("ignore")
 
-force_rerun = True
+force_rerun = False
 
 # --- Choose which imputers to run ---
 imputers = set([
@@ -108,11 +108,11 @@ if "mcpfn" in imputers:
         preprocessors=preprocessors,
         entry_wise_features=False,
         # checkpoint_path='/home/jacobf18/tabular/mcpfn/src/tabimpute/workdir/tabimpute-large-pancake-model-mcar_mnar-p0.4-num-cls-8-rank-1-15/checkpoint_40000.pth'
-        checkpoint_path='/home/jacobf18/tabular/mcpfn/src/tabimpute/workdir/tabimpute-mcar_p0.4-num_cls_8-rank_1_11/checkpoint_85000.pth'
+        checkpoint_path='/home/jacobf18/tabular/mcpfn/src/tabimpute/workdir/tabimpute-mcar_p0.4-num_cls_12-rank_1_11/checkpoint_85000.pth'
         # max_num_rows=100,
         # max_num_chunks=2,
     )
-    mcpfn_name = "tabimpute_mcar_p0.4_num_cls_8_rank_1_11"
+    mcpfn_name = "tabimpute_mcar_p0.4_num_cls_12_rank_1_11"
     
 if "tabimpute_ensemble" in imputers:
     preprocessors = [

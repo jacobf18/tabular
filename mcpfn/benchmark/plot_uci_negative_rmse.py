@@ -15,6 +15,7 @@ from plot_options import (
     PLOT_PARAMS,
     BARPLOT_STYLE,
     FIGURE_SIZES,
+    HIGHLIGHT_COLOR,
 )
 
 # --- Plotting ---
@@ -33,7 +34,8 @@ methods = [
     # "gain",
     # "miwae",
     "masters_mcar",
-    "tabimpute_mcar_p0.4_num_cls_8_rank_1_11",
+    # "tabimpute_mcar_p0.4_num_cls_8_rank_1_11",
+    "tabimpute_mcar_p0.4_num_cls_12_rank_1_11",
     # "tabimpute_large_mcar",
     # "tabimpute_large_mcar_rank_1_11",
     # "tabimpute_large_mcar_mnar",
@@ -76,10 +78,14 @@ num_repeats = 10
 # Use method names from plot_options
 method_names = METHOD_NAMES.copy()
 # Add any UCI-specific method name mappings if needed
-method_names["tabimpute_mcar_p0.4_num_cls_8_rank_1_11"] = "TabImpute (New)"
+method_names["tabimpute_mcar_p0.4_num_cls_8_rank_1_11"] = "TabImpute (CLS-8)"
+method_names["tabimpute_mcar_p0.4_num_cls_12_rank_1_11"] = "TabImpute (New)"
 
 # Use method colors from plot_options
 method_colors = METHOD_COLORS
+
+method_colors["TabImpute (CLS-8)"] = HIGHLIGHT_COLOR
+method_colors["TabImpute (New)"] = HIGHLIGHT_COLOR
 
 negative_rmse = {}
 
@@ -172,7 +178,7 @@ for dataset in datasets:
         for method in methods:
             X_imputed = np.load(f"{cfg_dir}/{method}.npy")
             name = method_names[method]
-            negative_rmse[(dataset, pattern, missingness_level, repeat, name)] = compute_negative_rmse(X_true, X_imputed, mask)
+            negative_rmse[(dataset, pattern, missingness_level, repeat, name)] = compute_normalized_rmse_columnwise(X_true, X_imputed, mask)
 
 # Create summary dataframe with missingness_level as rows and method as columns
 s = pd.Series(negative_rmse)
@@ -184,11 +190,10 @@ print(df_summary.sort_values(by='missingness_level', ascending=True))
 # exit()
 
 df = pd.Series(negative_rmse).unstack()
-df_norm = (df - df.min(axis=1).values[:, None]) / (df.max(axis=1) - df.min(axis=1)).values[:, None]
+df_norm = 1.0 - (df - df.min(axis=1).values[:, None]) / (df.max(axis=1) - df.min(axis=1)).values[:, None]
 
-print(df_norm)
+# print(df_norm)
 
-exit()
 plot_pattern = True
 
 # Plot for all patterns combined
