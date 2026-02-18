@@ -38,7 +38,7 @@ methods = [
     # "tabimpute_large_cls_8",
     # "tabimpute_75_75_rank_1_11",
     "tabimpute_50_50_rank_1_11_cls_12",
-    "tabimpute_large_mcar_rank_1_11",
+    # "tabimpute_large_mcar_rank_1_11",
     # "column_mean", 
     "hyperimpute",
     "ot_sinkhorn",

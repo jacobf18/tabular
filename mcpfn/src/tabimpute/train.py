@@ -226,7 +226,7 @@ if __name__ == "__main__":
         )
     ]
     
-    mse_criterion = nn.MSELoss()
+    # mse_criterion = nn.MSELoss()
     
     train(model, prior, bar_distribution, bar_distribution, epochs=epochs, lr=lr, device='cuda', callbacks=callbacks, run_name=name, ckpt=ckpt)
     print("Training complete")
