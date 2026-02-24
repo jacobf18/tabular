@@ -9,14 +9,32 @@ cd mcpfn
 pip install -e .
 ```
 
+Optional TabPFN extensions support:
+
+```bash
+pip install -e ".[tabpfn_extensions]"
+```
+
+Optional extras:
+
+```bash
+# Benchmark/plotting stack
+pip install -e ".[benchmark]"
+
+# Data generation/training stack
+pip install -e ".[training]"
+
+# Preprocessing and categorical helper utilities
+pip install -e ".[preprocessing,categorical]"
+```
+
 ## Usage
 
 ```python
-from tabimpute.interface import ImputePFN, MCTabPFNEnsemble
+from tabimpute.interface import ImputePFN
 import numpy as np
 
 imputer = ImputePFN(device='cpu') # cuda if available
-ensemble_imputer = MCTabPFNEnsemble(device='cpu') # cuda if available
 
 X = np.random.rand(5, 5)
 print("Original X:")
@@ -26,9 +44,7 @@ print('X with NaNs:')
 print(X)
 
 out1 = imputer.impute(X.copy())
-out2 = ensemble_imputer.impute(X.copy())
 print(out1)
-print(out2)
 ```
 
 ## Citation

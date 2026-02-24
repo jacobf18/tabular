@@ -27,19 +27,45 @@ classifiers = [
 ]
 dependencies = [
     "torch>=2.2,<3",  # to enjoy Flash Attention v2
+    "numpy",
+    "einops>=0.7",
+    "networkx",
+    "huggingface-hub",
+    "tabpfn==6.0.0",
+]
+
+[project.optional-dependencies]
+tabpfn_extensions = [
+    "tabpfn_extensions",
+]
+preprocessing = [
+    "scipy",
+]
+categorical = [
+    "scipy",
+]
+training = [
     "pandas",
     "scikit-learn==1.4.2",
-    "numpy",
-    "matplotlib",
     "scipy",
     "joblib",
     "xgboost",
     "transformers",
-    "einops>=0.7",
     "psutil",
     "wandb",
     "tqdm>=4.64.0",
-    "huggingface-hub",
+]
+benchmark = [
+    "matplotlib",
+    "pandas",
+    "scikit-learn==1.4.2",
+    "scipy",
+    "joblib",
+    "xgboost",
+    "transformers",
+    "psutil",
+    "wandb",
+    "tqdm>=4.64.0",
     "tabpfn",
 ]
 

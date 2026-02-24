@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import ctypes
 import os
+import platform
+import typing
 import warnings
 from collections.abc import Callable
 from types import MethodType
@@ -26,6 +29,41 @@ CELLS_FACTOR = 0.25
 CELLS_SQUARED_FACTOR = 1.3e-7
 
 TO_BYTES_CONVERSION = {"b": 1, "mb": 1e6, "gb": 1e9}
+
+
+def get_total_memory_windows() -> float:
+    """Get the total memory of the system for windows OS, using windows API.
+
+    Returns:
+        The total memory of the system in GB.
+    """
+    if platform.system() != "Windows":
+        return 0.0  # Function should not be called on non-Windows platforms
+
+    # ref: https://github.com/microsoft/windows-rs/blob/c9177f7a65c764c237a9aebbd3803de683bedaab/crates/tests/bindgen/src/fn_return_void_sys.rs#L12
+    # ref: https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/ns-sysinfoapi-memorystatusex
+    class _MEMORYSTATUSEX(ctypes.Structure):
+        _fields_: typing.ClassVar = [
+            ("dwLength", ctypes.c_ulong),
+            ("dwMemoryLoad", ctypes.c_ulong),
+            ("ullTotalPhys", ctypes.c_ulonglong),
+            ("ullAvailPhys", ctypes.c_ulonglong),
+            ("ullTotalPageFile", ctypes.c_ulonglong),
+            ("ullAvailPageFile", ctypes.c_ulonglong),
+            ("ullTotalVirtual", ctypes.c_ulonglong),
+            ("ullAvailVirtual", ctypes.c_ulonglong),
+            ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+        ]
+
+    mem_status = _MEMORYSTATUSEX()
+    mem_status.dwLength = ctypes.sizeof(_MEMORYSTATUSEX)
+    try:
+        windll = typing.cast("typing.Any", ctypes).windll
+        k32_lib = windll.LoadLibrary("kernel32.dll")
+        k32_lib.GlobalMemoryStatusEx(ctypes.byref(mem_status))
+        return float(mem_status.ullTotalPhys) / 1e9  # Convert bytes to GB
+    except (AttributeError, OSError):
+        return 0.0
 
 
 def support_save_peak_mem_factor(method: MethodType) -> Callable:
@@ -261,8 +299,6 @@ class MemoryUsageEstimator:
                     os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 1e9
                 )
             except AttributeError:
-                from mcpfn.utils import get_total_memory_windows
-
                 if os.name == "nt":
                     free_memory = get_total_memory_windows()
                 else:

@@ -6,7 +6,6 @@ import torch
 
 from .config import ModelConfig
 from .transformer import PerFeatureTransformer
-from tabpfn import TabPFNRegressor
 from .encoders import torch_nanmean
 
 import einops
@@ -107,6 +106,8 @@ class TabPFNModel(nn.Module):
 
     def forward(self, X: Tensor, y: Tensor, train_sizes: Tensor) -> Tensor:
         if self.model is None:
+            from tabpfn import TabPFNRegressor
+
             reg = TabPFNRegressor(device=self.device)
             X_npy = X[0, :, :].cpu().numpy()
             y_npy = y[0, :].cpu().numpy()
