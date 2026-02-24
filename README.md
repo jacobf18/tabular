@@ -4,6 +4,14 @@ This is the official repository of TabImpute, a transformer-based architecture f
 
 ## Installation
 
+Install from PyPI:
+
+```bash
+pip install tabimpute
+```
+
+Install from source (editable):
+
 ```bash
 cd mcpfn
 pip install -e .
@@ -12,6 +20,8 @@ pip install -e .
 Optional TabPFN extensions support:
 
 ```bash
+pip install "tabimpute[tabpfn_extensions]"
+# or from source:
 pip install -e ".[tabpfn_extensions]"
 ```
 

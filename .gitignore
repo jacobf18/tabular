@@ -23,6 +23,8 @@ __pycache__/
 
 .vscode
 
+dist/
+
 **/figures/
 **/workdir/
 **/.workdir/
