@@ -5,6 +5,8 @@
 *.png
 *.pdf
 
+**/dist/
+
 # Ignore Python bytecode files
 *.py[cod]
 # Ignore Jupyter Notebook checkpoints

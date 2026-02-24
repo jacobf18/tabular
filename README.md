@@ -20,8 +20,11 @@ pip install -e .
 Optional TabPFN extensions support:
 
 ```bash
+<<<<<<< HEAD
 pip install "tabimpute[tabpfn_extensions]"
 # or from source:
+=======
+>>>>>>> 4c655e0 (fixed dependencies, made them stable for fresh installs.)
 pip install -e ".[tabpfn_extensions]"
 ```
 

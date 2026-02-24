@@ -3,11 +3,15 @@ from __future__ import annotations
 import torch
 
 from tabimpute.prior.splits import create_train_test_sets
+<<<<<<< HEAD
 from tabimpute.prior.training_set_generation import LatentFactorPrior
+=======
+>>>>>>> 4c655e0 (fixed dependencies, made them stable for fresh installs.)
 
 import numpy as np
 from tabimpute.model.mcpfn import MCPFN
 from tabimpute.model.bar_distribution import FullSupportBarDistribution
+from typing import Any
 
 import importlib.resources as resources
 from huggingface_hub import hf_hub_download
@@ -16,7 +20,10 @@ from tabimpute.model.encoders import normalize_data
 # from tabimpute.model.model import TabImputeModel
 from tabimpute.model.model_new_stable import TabImputeModel
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 4c655e0 (fixed dependencies, made them stable for fresh installs.)
 def get_model_from_huggingface() -> str:
     repo_id = "Tabimpute/TabImpute"
     filename = "tabimpute_001.ckpt"
@@ -135,6 +142,7 @@ class ImputePFN:
         borders = self.borders.to(self.device)
         self.bar_distribution = FullSupportBarDistribution(borders=borders)
         self.verbose = verbose
+<<<<<<< HEAD
 
     def _resolve_normalization_stats(
         self,
@@ -175,6 +183,8 @@ class ImputePFN:
             resolved_stds = np.where(np.isnan(resolved_stds), 1, resolved_stds)
 
         return resolved_means, resolved_stds
+=======
+>>>>>>> 4c655e0 (fixed dependencies, made them stable for fresh installs.)
         
     def impute(
         self,
@@ -623,6 +633,7 @@ class ImputePFN:
 
         return X_normalized, X_full
 
+<<<<<<< HEAD
     def _get_imputation_single_ttt(
         self,
         X_normalized: np.ndarray,
@@ -742,6 +753,8 @@ class ImputePFN:
                 {k: v.to(self.device) for k, v in state_before.items()}
             )
 
+=======
+>>>>>>> 4c655e0 (fixed dependencies, made them stable for fresh installs.)
 _TABPFN_EXTENSIONS_IMPORT_ERROR = None
 try:
     from tabimpute.tabpfn_extensions_interface import (
@@ -961,6 +974,7 @@ if __name__ == "__main__":
     start_time = time.time()
     out, full = imputer.impute(X, return_full=True)  # Impute the missing values
     end_time = time.time()
+<<<<<<< HEAD
     print(f"Standard impute time: {end_time - start_time:.4f} seconds")
 
     # Test TTT (test-time training) imputation
@@ -1001,6 +1015,12 @@ if __name__ == "__main__":
         f"any NaN: {np.isnan(out_ttt_pp).any()}"
     )
 
+=======
+    print(f"Time taken: {end_time - start_time:.4f} seconds")
+    
+    exit()
+    
+>>>>>>> 4c655e0 (fixed dependencies, made them stable for fresh installs.)
     print(np.nanmean(X, axis=0))
     print(out)
     print(full)
