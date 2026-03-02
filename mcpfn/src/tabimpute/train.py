@@ -135,7 +135,7 @@ def train(model: TabImputeModel,
     return (model.module if multi_gpu else model), loss_missing.item()
 
 if __name__ == "__main__":
-    num_attention_heads = 16
+    num_attention_heads = 32
     embedding_size = 32 * num_attention_heads
     mlp_hidden_size = 1024
     num_cls = 12
