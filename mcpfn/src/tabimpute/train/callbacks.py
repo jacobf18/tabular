@@ -86,7 +86,7 @@ class WandbLoggerCallback(BaseLoggerCallback):
 
     def on_epoch_end(self, epoch: int, epoch_time: float, loss: float, model, **kwargs):
         log_dict = {'loss': loss, 'epoch_time': epoch_time, **kwargs['log_dict']}
-        self.wandb.log(log_dict)
+        self.wandb.log(log_dict, step=epoch)
 
     def close(self):
         self.wandb.finish()
