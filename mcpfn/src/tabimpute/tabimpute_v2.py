@@ -119,7 +119,7 @@ class TabImputeV2(ImputePFN):
             return X_normalized.copy(), X_full
 
         if optimizer is None:
-            optimizer = torch.optim.AdamW(self.model.parameters(), lr=1e-5)
+            optimizer = torch.optim.AdamW(self.model.parameters(), lr=2e-5)
 
         try:
             self.model.train()

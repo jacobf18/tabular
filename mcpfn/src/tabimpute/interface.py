@@ -531,7 +531,7 @@ class ImputePFN:
             return X_normalized.copy(), X_full
 
         if optimizer is None:
-            optimizer = torch.optim.AdamW(self.model.parameters(), lr=1e-5)
+            optimizer = torch.optim.AdamW(self.model.parameters(), lr=2e-5)
 
         # Save original weights to restore after inference
         state_before = {k: v.cpu().clone() for k, v in self.model.state_dict().items()}
