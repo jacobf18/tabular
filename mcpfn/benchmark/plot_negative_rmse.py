@@ -38,6 +38,8 @@ methods = [
     # "tabimpute_large_cls_8",
     # "tabimpute_75_75_rank_1_11",
     "tabimpute_50_50_rank_1_11_cls_12",
+    # "tabimpute_ttt_imputepfn",
+    # "tabimpute_v2_ttt",
     # "tabimpute_large_mcar_rank_1_11",
     # "column_mean", 
     "hyperimpute",
@@ -76,6 +78,8 @@ method_names.update({
     "tabimpute_large_cls_8": "TabImpute (CLS-8)",
     "tabimpute_75_75_rank_1_11": "TabImpute (75x75)",
     "tabimpute_50_50_rank_1_11_cls_12": "TabImpute (New)",
+    "tabimpute_ttt_imputepfn": "TabImpute TTT (ImputePFN)",
+    "tabimpute_v2_ttt": "TabImpute TTT (V2)",
 })
 
 method_colors.update({
@@ -85,6 +89,8 @@ method_colors.update({
     "TabImpute (CLS-8)": highlight_color,
     "TabImpute (75x75)": highlight_color,
     "TabImpute (New)": highlight_color,
+    "TabImpute TTT (ImputePFN)": highlight_color,
+    "TabImpute TTT (V2)": highlight_color,
 })
 
 # Add missing method colors that may appear in the data
@@ -190,9 +196,12 @@ for dataset in datasets:
         mask = np.isnan(X_missing)
         
         for method in methods:
-            X_imputed = np.load(f"{base_path}/{dataset}/{pattern_name}_{p}/{method}.npy")
+            out_path = f"{base_path}/{dataset}/{pattern_name}_{p}/{method}.npy"
+            if not os.path.exists(out_path):
+                continue
+            X_imputed = np.load(out_path)
             # print(dataset, config, method, X_imputed.shape, X_true.shape, mask.shape)
-            name = method_names[method]
+            name = method_names.get(method, method)
             # negative_rmse[(dataset, pattern_name, name)] = compute_negative_rmse(X_true, X_imputed, mask)
             # negative_rmse[(dataset, pattern_name, name)] = compute_normalized_rmse(X_true, X_imputed, mask)
             negative_rmse[(dataset, pattern_name, name)] = compute_normalized_rmse_columnwise(X_true, X_imputed, mask)

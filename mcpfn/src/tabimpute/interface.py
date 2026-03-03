@@ -3,6 +3,7 @@ from __future__ import annotations
 import torch
 
 from tabimpute.prior.splits import create_train_test_sets
+from tabimpute.prior.training_set_generation import LatentFactorPrior
 
 import numpy as np
 from tabimpute.model.mcpfn import MCPFN
@@ -11,10 +12,38 @@ from tabimpute.model.bar_distribution import FullSupportBarDistribution
 import importlib.resources as resources
 from huggingface_hub import hf_hub_download
 from tabimpute.model.encoders import normalize_data
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from tabimpute.prepreocess import Preprocess
+
+
+def _generate_synthetic_low_rank(
+    n_rows: int,
+    n_cols: int,
+    rank: int,
+    borders: torch.Tensor,
+) -> np.ndarray:
+    """Generate synthetic low-rank data for test-time training using LatentFactorPrior."""
+    rank = min(rank, n_rows, n_cols)
+    config = {
+        "num_rows_low": n_rows,
+        "num_rows_high": n_rows,
+        "num_cols_low": n_cols,
+        "num_cols_high": n_cols,
+        "latent_rank_low": rank,
+        "latent_rank_high": rank,
+        "apply_feature_warping_prob": 0,
+        "apply_quantization_prob": 0,
+    }
+    prior = LatentFactorPrior(config)
+    matrix = prior.generate_complete_matrix()
+    Y = matrix.values.astype(np.float32)
+    lo = float(borders[0].cpu().numpy())
+    hi = float(borders[-1].cpu().numpy())
+    Y = np.clip(Y, lo, hi)
+    return Y
+
 
 def get_model_from_huggingface() -> str:
     repo_id = "Tabimpute/TabImpute"
@@ -151,6 +180,75 @@ class ImputePFN:
         else:
             return X_imputed
         
+    def impute_with_test_time_training(
+        self,
+        X: np.ndarray,
+        mask: Optional[np.ndarray] = None,
+        k: int = 10,
+        optimizer: Optional[torch.optim.Optimizer] = None,
+        rank: Optional[int] = None,
+        return_full: bool = False,
+    ) -> np.ndarray:
+        """Impute missing values using test-time training on synthetic low-rank data.
+
+        Performs test-time training by: (1) using the given mask, (2) generating
+        synthetic low-rank data, (3) training for k steps with the given optimizer,
+        (4) outputting predictions from the fine-tuned model.
+
+        When preprocessors are set, runs TTT on each preprocessed view and averages
+        the inverse-transformed results (same as standard impute).
+
+        Args:
+            X: Input matrix of shape (T, H) with NaN for missing values.
+            mask: Boolean mask; True = observed, False = missing. If None, inferred
+                from ~np.isnan(X). Ignored when preprocessors are used (mask inferred
+                from preprocessed data).
+            k: Number of gradient steps for test-time training.
+            optimizer: Optimizer for fine-tuning. If None, uses AdamW with lr=1e-4.
+            rank: Rank for synthetic low-rank data. If None, min(n_rows, n_cols, 10).
+            return_full: If True, return (X_imputed, X_full); else return X_imputed.
+
+        Returns:
+            Imputed matrix, or (X_imputed, X_full) if return_full.
+        """
+        if X.ndim != 2:
+            raise ValueError("Input matrix must be 2-dimensional")
+
+        means = np.nanmean(X, axis=0)
+        stds = np.nanstd(X, axis=0)
+        stds = np.where(np.isnan(stds), 1, stds)
+        means = np.where(np.isnan(means), 0, means)
+
+        X_normalized = (X - means) / (stds + 1e-16)
+
+        if self.preprocessors is not None:
+            X_imputed = np.zeros_like(X_normalized)
+            X_full = np.zeros_like(X_normalized)
+            for preprocessor in self.preprocessors:
+                X_preprocessed = preprocessor.fit_transform(X_normalized)
+                imput, full = self._get_imputation_single_ttt(
+                    X_preprocessed,
+                    mask=None,  # infer from preprocessed data
+                    k=k,
+                    optimizer=optimizer,
+                    rank=rank,
+                )
+                X_imputed += preprocessor.inverse_transform(imput)
+                X_full += preprocessor.inverse_transform(full)
+            X_imputed /= len(self.preprocessors)
+            X_full /= len(self.preprocessors)
+        else:
+            X_imputed, X_full = self._get_imputation_single_ttt(
+                X_normalized, mask=mask, k=k, optimizer=optimizer, rank=rank
+            )
+
+        X_imputed = X_imputed * (stds + 1e-16) + means
+        X_full = X_full * (stds + 1e-16) + means
+
+        if return_full:
+            return X_imputed, X_full
+        return X_imputed
+
     def get_imputation(self, X_normalized: np.ndarray, num_repeats: int = 1) -> np.ndarray:
         """Get the imputation for the input matrix.
         If max_num_rows is not None, the input matrix is split into chunks of max_num_rows rows, 
@@ -383,6 +481,125 @@ class ImputePFN:
 
         return X_normalized, X_full
 
+    def _get_imputation_single_ttt(
+        self,
+        X_normalized: np.ndarray,
+        mask: Optional[np.ndarray] = None,
+        k: int = 10,
+        optimizer: Optional[torch.optim.Optimizer] = None,
+        rank: Optional[int] = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Single imputation with test-time training on synthetic low-rank data.
+
+        Performs test-time training by: (1) using the given mask to define
+        observed/missing pattern, (2) generating synthetic low-rank data,
+        (3) training the model for k steps on this data, (4) outputting
+        predictions from the fine-tuned model.
+
+        Args:
+            X_normalized: Input matrix of shape (T, H), normalized. NaN indicates
+                missing values if mask is not provided.
+            mask: Boolean mask of shape (T, H). True = observed, False = missing.
+                If None, inferred from ~np.isnan(X_normalized).
+            k: Number of gradient steps for test-time training.
+            optimizer: Optimizer for fine-tuning. If None, uses AdamW with lr=1e-4.
+            rank: Rank for synthetic low-rank data. If None, uses
+                min(n_rows, n_cols, 10).
+
+        Returns:
+            Tuple of (X_imputed, X_full) where X_imputed has missing values filled,
+            and X_full has both observed and imputed values (observed at their
+            original positions, imputed at missing).
+        """
+        n_rows, n_cols = X_normalized.shape
+        if mask is None:
+            mask = ~np.isnan(X_normalized)
+        else:
+            mask = np.asarray(mask, dtype=bool)
+            if mask.shape != (n_rows, n_cols):
+                raise ValueError(
+                    f"mask shape {mask.shape} must match X shape ({n_rows}, {n_cols})"
+                )
+
+        if rank is None:
+            rank = min(n_rows, n_cols, 10)
+
+        n_missing = np.sum(~mask)
+        if n_missing == 0:
+            # No missing values, return as-is
+            X_full = X_normalized.copy()
+            return X_normalized.copy(), X_full
+
+        if optimizer is None:
+            optimizer = torch.optim.AdamW(self.model.parameters(), lr=1e-5)
+
+        # Save original weights to restore after inference
+        state_before = {k: v.cpu().clone() for k, v in self.model.state_dict().items()}
+
+        try:
+            self.model.train()
+            for _ in range(k):
+                # Generate new synthetic low-rank matrix each step; mask stays the same
+                Y_syn = _generate_synthetic_low_rank(n_rows, n_cols, rank, self.borders)
+                X_syn = Y_syn.copy()
+                X_syn[~mask] = np.nan  # Apply mask: observed = mask True, missing = mask False
+
+                X_syn_tensor = torch.from_numpy(X_syn).to(self.device)
+                Y_syn_tensor = torch.from_numpy(Y_syn).to(self.device)
+
+                X_input, input_y, missing_indices, non_missing_indices, train_size = (
+                    self._get_input_tensors(X_syn_tensor)
+                )
+                _, train_y, _, test_y = create_train_test_sets(X_syn_tensor, Y_syn_tensor)
+                full_y = torch.cat((train_y, test_y), dim=0)
+
+                X_input = X_input.unsqueeze(0)
+                input_y = input_y.unsqueeze(0)
+                full_y = full_y.unsqueeze(0).to(torch.bfloat16)
+
+                obs_mask = torch.zeros(1, full_y.shape[1], dtype=torch.bool, device=self.device)
+                obs_mask[0, :train_size] = True
+
+                optimizer.zero_grad()
+                preds = self.model(X_input, input_y)
+                loss = self.bar_distribution(logits=preds, y=full_y)
+                missing_loss = loss[~obs_mask].mean()
+                missing_loss.backward()
+                optimizer.step()
+
+            self.model.eval()
+            with torch.no_grad():
+                # Run inference on the original sample (with its mask)
+                X_orig_tensor = torch.from_numpy(X_normalized.copy()).to(self.device)
+                (
+                    X_input_orig,
+                    input_y_orig,
+                    missing_indices_orig,
+                    non_missing_indices_orig,
+                    train_size_orig,
+                ) = self._get_input_tensors(X_orig_tensor)
+                X_input_orig = X_input_orig.unsqueeze(0)
+                input_y_orig = input_y_orig.unsqueeze(0)
+
+                preds = self.model(X_input_orig, input_y_orig)
+                medians = self.bar_distribution.median(logits=preds).flatten()
+
+            X_full = X_normalized.copy()
+            medians_train = medians[:train_size_orig].cpu().detach().numpy()
+            medians_test = medians[train_size_orig:].cpu().detach().numpy()
+
+            X_normalized_out = X_normalized.copy()
+            X_normalized_out[missing_indices_orig] = medians_test
+            X_full[missing_indices_orig] = medians_test
+            X_full[non_missing_indices_orig] = medians_train
+
+            return X_normalized_out, X_full
+        finally:
+            # Restore original weights so model is unchanged for subsequent calls
+            self.model.load_state_dict(
+                {k: v.to(self.device) for k, v in state_before.items()}
+            )
+
 _TABPFN_EXTENSIONS_IMPORT_ERROR = None
 try:
     from tabimpute.tabpfn_extensions_interface import (
@@ -568,28 +785,49 @@ if __name__ == "__main__":
     X[np.random.rand(*X.shape) < 0.1] = np.nan # Set 10% of values to NaN
     # print(X)
     start_time = time.time()
-    out, full = imputer.impute(X, return_full=True) # Impute the missing values
+    out, full = imputer.impute(X, return_full=True)  # Impute the missing values
     end_time = time.time()
-    print(f"Time taken: {end_time - start_time:.4f} seconds")
-    
-    exit()
-    
+    print(f"Standard impute time: {end_time - start_time:.4f} seconds")
+
+    # Test TTT (test-time training) imputation
+    X_ttt = np.random.randn(50, 8)
+    X_ttt = (X_ttt - X_ttt.mean(axis=0)) / X_ttt.std(axis=0)
+    X_ttt[np.random.rand(*X_ttt.shape) < 0.15] = np.nan
+    n_missing = np.isnan(X_ttt).sum()
+    print(f"\nTTT test: {X_ttt.shape[0]}x{X_ttt.shape[1]} matrix, {n_missing} missing values")
+    start_time = time.time()
+    out_ttt, full_ttt = imputer.impute_with_test_time_training(
+        X_ttt, k=5, return_full=True
+    )
+    end_time = time.time()
+    print(f"TTT impute time: {end_time - start_time:.4f} seconds")
+    print(f"TTT output shape: {out_ttt.shape}, any NaN: {np.isnan(out_ttt).any()}")
+
+    # Test TTT with preprocessors
+    from tabimpute.prepreocess import RandomRowColumnPermutation
+
+    preprocessors = [RandomRowColumnPermutation(), RandomRowColumnPermutation()]
+    imputer_pp = ImputePFN(device="cuda", preprocessors=preprocessors)
+    X_ttt_pp = np.random.randn(40, 7)
+    X_ttt_pp = (X_ttt_pp - X_ttt_pp.mean(axis=0)) / X_ttt_pp.std(axis=0)
+    X_ttt_pp[np.random.rand(*X_ttt_pp.shape) < 0.12] = np.nan
+    n_missing_pp = np.isnan(X_ttt_pp).sum()
+    print(
+        f"\nTTT with preprocessors: {X_ttt_pp.shape[0]}x{X_ttt_pp.shape[1]} matrix, "
+        f"{n_missing_pp} missing, {len(preprocessors)} preprocessors"
+    )
+    start_time = time.time()
+    out_ttt_pp, full_ttt_pp = imputer_pp.impute_with_test_time_training(
+        X_ttt_pp, k=3, return_full=True
+    )
+    end_time = time.time()
+    print(f"TTT+preprocessors time: {end_time - start_time:.4f} seconds")
+    print(
+        f"TTT+preprocessors output shape: {out_ttt_pp.shape}, "
+        f"any NaN: {np.isnan(out_ttt_pp).any()}"
+    )
+
     print(np.nanmean(X, axis=0))
     print(out)
     print(full)
     
-    
-    attn_weights = imputer.model.transformer_blocks[0].get_attention_weights(attention_type="datapoints")
-
-    # Look at the weights for a [MASK] token
-    # Attention weights shape: (batch*rows, num_heads, seq_len, seq_len) or (batch*rows, seq_len, seq_len)
-    if attn_weights is not None:
-        print(f"Attention weights shape: {attn_weights.shape}")
-        # If multi-head, average across heads or select first head
-        if attn_weights.dim() == 4:
-            # Multi-head: (batch*rows, num_heads, seq_len, seq_len)
-            attn_weights = attn_weights.mean(dim=1)  # Average across heads
-        # Now shape is (batch*rows, seq_len, seq_len)
-        print(attn_weights[0, 0, :])  # First row, first query position, attention to all keys
-    else:
-        print("Attention weights not available. Run a forward pass first.")

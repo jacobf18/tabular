@@ -63,31 +63,16 @@ class SinusoidalPositionalEmbedding(nn.Module):
         
         current_max_len = self.pe.size(0)
 
-        # 3. Dynamic Extrapolation
-        # If input is longer than our cache, extend the cache
-        if num_positions > current_max_len:
-            # Generate ONLY the new needed positions (e.g., from 100 to 150)
-            # This is more efficient than regenerating the whole matrix
-            new_positions = torch.arange(
-                current_max_len, num_positions, 
-                dtype=torch.float, 
-                device=self.pe.device
-            ).unsqueeze(1)
-            
-            new_pe = torch.zeros(
-                num_positions - current_max_len, 
-                self.embedding_size, 
-                device=self.pe.device
-            )
-            
-            new_pe[:, 0::2] = torch.sin(new_positions * self.div_term)
-            new_pe[:, 1::2] = torch.cos(new_positions * self.div_term)
-            
-            # Concatenate and update the buffer so next time it's fast
-            self.pe = torch.cat([self.pe, new_pe], dim=0)
+        # 3. Dynamic extrapolation for longer inputs
+        # We compute extended embeddings on-the-fly without mutating the buffer.
+        # Mutating self.pe would break load_state_dict() when restoring checkpoints
+        # (e.g. TTT restore in tabimpute_v2), since the checkpoint has fixed-size pe.
+        if num_positions <= current_max_len:
+            pos_embeddings = self.pe[:num_positions, :]
+        else:
+            pos_embeddings = self._generate_pe(num_positions)
 
-        # Slice the embeddings to the current number of positions
-        pos_embeddings = self.pe[:num_positions, :].unsqueeze(unsqueeze_dims[0]).unsqueeze(unsqueeze_dims[1]).to(x.device).to(x.dtype)
+        pos_embeddings = pos_embeddings.unsqueeze(unsqueeze_dims[0]).unsqueeze(unsqueeze_dims[1]).to(x.device).to(x.dtype)
         
         return x + pos_embeddings * self.damping_factor
 

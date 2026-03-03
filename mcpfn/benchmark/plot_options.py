@@ -73,6 +73,8 @@ METHOD_NAMES = {
     "mixed_perm_both_row_col": "MCPFN (Linear Permuted)",
     "tabpfn_impute": "Col-TabPFN",
     "tabpfn": "EWF-TabPFN",
+    "tabimpute_ttt_imputepfn": "TabImpute TTT (ImputePFN)",
+    "tabimpute_v2_ttt": "TabImpute TTT (V2)",
 }
 
 # Neutral and highlight colors
@@ -94,6 +96,8 @@ METHOD_COLORS = {
     "TabImpute (New Model)": HIGHLIGHT_COLOR,
     "TabImpute (MNAR)": HIGHLIGHT_COLOR,
     "TabImpute (New)": HIGHLIGHT_COLOR,
+    "TabImpute TTT (ImputePFN)": HIGHLIGHT_COLOR,
+    "TabImpute TTT (V2)": HIGHLIGHT_COLOR,
     "EWF-TabPFN": NEUTRAL_COLOR,
     "HyperImpute": NEUTRAL_COLOR,
     "MissForest": NEUTRAL_COLOR,

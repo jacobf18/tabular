@@ -4,7 +4,8 @@ import numpy as np
 import pandas as pd
 import torch
 from tqdm import tqdm
-from tabimpute.interface import ImputePFN, TabPFNImputer, TabPFNUnsupervisedModel, MCTabPFNEnsemble, TabImputeEnsemble, TabImputeRouter
+from tabimpute.interface import ImputePFN, TabPFNImputer, TabPFNUnsupervisedModel
+from tabimpute.tabimpute_v2 import TabImputeV2
 from tabimpute.prepreocess import (
     RandomRowColumnPermutation, 
     RandomRowPermutation, 
@@ -35,7 +36,9 @@ force_rerun = True
 
 # --- Choose which imputers to run ---
 imputers = set([
-    "mcpfn",
+    # "mcpfn",
+    "mcpfn_ttt",
+    "tabimpute_v2_ttt",
     # "mcpfn_ensemble",
     # "tabimpute_ensemble",
     # "knn",
@@ -82,64 +85,49 @@ missingness_levels = [
 num_repeats = 1
 
 # --- Initialize classes once ---
+MCPFN_CHECKPOINT = "/home/jacobf18/tabular/mcpfn/src/tabimpute/workdir/tabimpute-mcar_p0.4-num_cls_12-rank_1_11/checkpoint_85000.pth"
+
 if "mcpfn" in imputers:
     preprocessors = [
         RandomRowColumnPermutation(),
         RandomRowColumnPermutation(),
         RandomRowPermutation(),
         RandomColumnPermutation(),
-        # StandardizeWhiten(whiten=True),
     ]
-    
-    mcpfn = ImputePFN(
+    mcpfn = TabImputeV2(
         device="cuda",
-        # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/mnar_fixed/step-10000.ckpt",
-        # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/mixed_mcar_mar_mnar/step-13500.ckpt",
-        # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/mixed_mcar_mar_mnar_reweighted_zscore/step-85000.ckpt",
-        # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/mixed_mcar_mar_mnar_gradnorm/step-41000.ckpt",
-        # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/masters/mcar/step-117000.ckpt",
-        # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/masters/mcar_nonlinear/step-100000.ckpt",
-        # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/masters/mar/step-40000.ckpt",
-        # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/masters/mnar/step-40000.ckpt",
-        # checkpoint_path = "/mnt/mcpfn_data/checkpoints/mixed_nonlinear/step-7000.ckpt",
-        # checkpoint_path = "/mnt/mcpfn_data/checkpoints/mar_batch_size_64/step-49900.ckpt",
-        # checkpoint_path = "/mnt/mcpfn_data/checkpoints/mixed_adaptive_more_heads/step-100000.ckpt",
-        nhead=2,
+        checkpoint_path=MCPFN_CHECKPOINT,
         preprocessors=preprocessors,
-        entry_wise_features=False,
-        checkpoint_path='/home/jacobf18/tabular/mcpfn/src/tabimpute/workdir/tabimpute-mcar_p0.4-num_cls_12-rank_1_11/checkpoint_85000.pth'
-        # max_num_rows=100,
-        # max_num_chunks=2,
     )
     mcpfn_name = "tabimpute_50_50_rank_1_11_cls_12"
-    
-if "tabimpute_ensemble" in imputers:
+
+if "mcpfn_ttt" in imputers:
     preprocessors = [
         RandomRowColumnPermutation(),
         RandomRowColumnPermutation(),
         RandomRowPermutation(),
         RandomColumnPermutation(),
-        # StandardizeWhiten(whiten=True),
     ]
-    tabimpute_ensemble = TabImputeRouter(device="cuda", preprocessors=preprocessors, checkpoint_paths=[
-        "/home/jacobf18/mcpfn_data/checkpoints/masters/mcar/step-78500.ckpt",
-        "/home/jacobf18/mcpfn_data/checkpoints/masters/mar/step-60000.ckpt",
-        "/home/jacobf18/mcpfn_data/checkpoints/masters/mnar/step-60000.ckpt",
-    ], nhead=2)
-    mcpfn_name = "tabimpute_ensemble_router"
-    
-if "mcpfn_ensemble" in imputers:
+    mcpfn_ttt = ImputePFN(
+        device="cuda",
+        nhead=2,
+        preprocessors=preprocessors,
+    )
+    mcpfn_ttt_name = "tabimpute_ttt_imputepfn"
+
+if "tabimpute_v2_ttt" in imputers:
     preprocessors = [
         RandomRowColumnPermutation(),
         RandomRowColumnPermutation(),
         RandomRowPermutation(),
         RandomColumnPermutation(),
-        # StandardizeWhiten(whiten=True),
     ]
-    mcpfn_ensemble = MCTabPFNEnsemble(device="cuda", 
-                                    # checkpoint_path="/mnt/mcpfn_data/checkpoints/mixed_adaptive/step-125000.ckpt",
-                                      nhead=2,
-                                      preprocessors=preprocessors)
+    tabimpute_v2_ttt = TabImputeV2(
+        device="cuda",
+        checkpoint_path=MCPFN_CHECKPOINT,
+        preprocessors=preprocessors,
+    )
+    tabimpute_v2_ttt_name = "tabimpute_v2_ttt"
 
 if "tabpfn" in imputers:
     tabpfn = TabPFNImputer(device="cuda")
@@ -271,7 +259,35 @@ for name in pbar:
                         # save the imputation time
                         with open(f"{cfg_dir}/{mcpfn_name}_imputation_time.txt", "w") as f:
                             f.write(f"{end_time - start_time}\n")
-            
+
+            # --- MCPFN TTT (ImputePFN with test-time training) ---
+            if "mcpfn_ttt" in imputers:
+                out_path = f"{cfg_dir}/{mcpfn_ttt_name}.npy"
+                if not os.path.exists(out_path) or force_rerun:
+                    start_time = time.time()
+                    X_mcpfn_ttt = mcpfn_ttt.impute_with_test_time_training(
+                        X_missing.copy(), k=5, return_full=False
+                    )
+                    end_time = time.time()
+                    np.save(out_path, X_mcpfn_ttt)
+                    print(f"MCPFN TTT imputation time: {end_time - start_time} seconds for {cfg_dir}")
+                    with open(f"{cfg_dir}/{mcpfn_ttt_name}_imputation_time.txt", "w") as f:
+                        f.write(f"{end_time - start_time}\n")
+
+            # --- TabImputeV2 TTT (TabImputeV2 with test-time training) ---
+            if "tabimpute_v2_ttt" in imputers:
+                out_path = f"{cfg_dir}/{tabimpute_v2_ttt_name}.npy"
+                if not os.path.exists(out_path) or force_rerun:
+                    start_time = time.time()
+                    X_tabimpute_v2_ttt = tabimpute_v2_ttt.impute_with_test_time_training(
+                        X_missing.copy(), k=5, return_full=False
+                    )
+                    end_time = time.time()
+                    np.save(out_path, X_tabimpute_v2_ttt)
+                    print(f"TabImputeV2 TTT imputation time: {end_time - start_time} seconds for {cfg_dir}")
+                    with open(f"{cfg_dir}/{tabimpute_v2_ttt_name}_imputation_time.txt", "w") as f:
+                        f.write(f"{end_time - start_time}\n")
+
             # --- KNN ---
             if "knn" in imputers:
                 out_path = f"{cfg_dir}/knn.npy"
