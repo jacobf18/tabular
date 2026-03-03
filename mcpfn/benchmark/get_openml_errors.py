@@ -94,6 +94,7 @@ if "mcpfn" in imputers:
         RandomRowPermutation(),
         RandomColumnPermutation(),
     ]
+<<<<<<< HEAD
     mcpfn = TabImputeV2(
         device="cuda",
         checkpoint_path=MCPFN_CHECKPOINT,
@@ -113,6 +114,63 @@ if "mcpfn_ttt" in imputers:
         nhead=2,
         preprocessors=preprocessors,
     )
+=======
+<<<<<<< HEAD
+    # preprocessors = None
+    
+    mcpfn = ImputePFN(
+=======
+    mcpfn = TabImputeV2(
+>>>>>>> a577979 (added test time training)
+        device="cuda",
+        checkpoint_path=MCPFN_CHECKPOINT,
+        preprocessors=preprocessors,
+<<<<<<< HEAD
+        entry_wise_features=False,
+        # checkpoint_path='/home/jacobf18/tabular/mcpfn/src/tabimpute/workdir/tabimpute-mcar_p0.4-num_cls_12-rank_1_11/checkpoint_85000.pth'
+        checkpoint_path="/root/tabular/mcpfn/src/tabimpute/workdir/tabimpute-stable-deep-refine-25000-v1-20260309-trial_003/checkpoint_15000.pth",
+        json_config={"config": {
+            "embedding_size": 768,
+            "num_attention_heads": 16,
+            "mlp_hidden_size": 2048,
+            "num_layers": 12,
+            "num_outputs": 5000,
+            "num_cls": 12,
+            "use_rope": True,
+            "rope_base": 10000.0,
+            "rope_fraction": 0.5,
+            "use_absolute_positional_embeddings": False,
+            "positional_damping_factor": 0.1,
+            "attention_dropout": 0.01,
+            "ffn_dropout": 0.06,
+            "drop_path_rate": 0.05,
+            "residual_scale_init": 0.25,
+            "embedding_dropout": 0.0,
+            "rms_norm_eps": 1e-6,
+        }
+},
+        # max_num_rows=100,
+        # max_num_chunks=2,
+    )
+    mcpfn_name = "tabimpute_new_stable_deep_trial_3"
+    
+=======
+    )
+    mcpfn_name = "tabimpute_50_50_rank_1_11_cls_12"
+
+if "mcpfn_ttt" in imputers:
+    preprocessors = [
+        RandomRowColumnPermutation(),
+        RandomRowColumnPermutation(),
+        RandomRowPermutation(),
+        RandomColumnPermutation(),
+    ]
+    mcpfn_ttt = ImputePFN(
+        device="cuda",
+        nhead=2,
+        preprocessors=preprocessors,
+    )
+>>>>>>> 7f51224 (added test time training)
     mcpfn_ttt_name = "tabimpute_ttt_imputepfn"
 
 if "tabimpute_v2_ttt" in imputers:
@@ -129,6 +187,10 @@ if "tabimpute_v2_ttt" in imputers:
     )
     tabimpute_v2_ttt_name = "tabimpute_v2_ttt"
 
+<<<<<<< HEAD
+=======
+>>>>>>> a577979 (added test time training)
+>>>>>>> 7f51224 (added test time training)
 if "tabpfn" in imputers:
     tabpfn = TabPFNImputer(device="cuda")
     

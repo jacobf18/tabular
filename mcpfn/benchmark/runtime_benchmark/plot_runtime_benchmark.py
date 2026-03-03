@@ -68,6 +68,7 @@ def plot_runtime_benchmark(
                 capsize=5,
                 capthick=2,
                 linewidth=2,
+<<<<<<< HEAD
                 markersize=8)
     
     ax.errorbar(old_stats['num_rows'], old_stats['mean'], 
@@ -105,6 +106,24 @@ def plot_runtime_benchmark(
                    ha='center',
                    bbox=dict(boxstyle='round,pad=0.3', facecolor='yellow', alpha=0.5))
     
+=======
+                markersize=8,
+                color=colors.get((model_type, mode), None),
+            )
+
+    ax.set_xscale("log", base=10)
+    ax.set_yscale("log", base=10)
+    ax.set_xlabel("Number of Rows (log scale, base 10)", fontsize=12)
+    ax.set_ylabel("Runtime (seconds, log scale, base 10)", fontsize=12)
+    ax.set_title(
+        "Runtime Comparison: Old vs New Model (Standard & TTT)\n(Fixed Columns: 10)",
+        fontsize=14,
+        fontweight="bold",
+    )
+    ax.legend(fontsize=10)
+    ax.grid(True, alpha=0.3, linestyle="--")
+
+>>>>>>> a577979 (added test time training)
     plt.tight_layout()
     plt.savefig(output_file, dpi=300, bbox_inches="tight")
     print(f"Plot saved to {output_file}")

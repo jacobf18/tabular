@@ -20,7 +20,16 @@ from plot_options import (
 )
 
 # --- Plotting ---
+<<<<<<< HEAD
 # setup_latex_fonts()
+matplotlib.rcParams['font.family'] = 'serif'
+=======
+# Configure LaTeX rendering for all text in plots
+setup_latex_fonts()
+>>>>>>> a577979 (added test time training)
+
+# Ensure LaTeX is enabled (redundant but explicit)
+matplotlib.rcParams['text.usetex'] = True
 matplotlib.rcParams['font.family'] = 'serif'
 
 # Ensure LaTeX is enabled (redundant but explicit)
@@ -260,12 +269,20 @@ if plot_pattern:
         
         # Average across datasets
         # --- Barplot ---
+<<<<<<< HEAD
         plt.figure(figsize=FIGURE_SIZES['standard'])
 
         # sort methods by mean performance (best first)
         sorted_methods = df_norm.mean(axis=0).sort_values(ascending=False).index
         sorted_methods = [method for method in sorted_methods if method not in dont_plot_methods]
 
+=======
+        plt.figure(figsize=(4.5,4.5))
+        
+        # sort methods by mean performance (descending order - best first)
+        sorted_methods = df_norm.mean(axis=0).sort_values(ascending=False).index
+        
+>>>>>>> a577979 (added test time training)
         # Melt into long format
         df_long = df_norm.melt(var_name="method", value_name="score")
 
@@ -280,6 +297,7 @@ if plot_pattern:
             legend=False,
             **BARPLOT_STYLE
         )
+<<<<<<< HEAD
 
         # Set x-axis labels with 45-degree rotation (like plot_negative_rmse)
         labels_with_bold = [method for method in sorted_methods]
@@ -288,11 +306,26 @@ if plot_pattern:
         ax.set_xlabel("")
 
         # Set label colors to match bar colors and make TabImpute slightly larger
+=======
+        
+        # Set x-axis labels with 45-degree rotation
+        # Bold TabImpute using LaTeX \textbf{}
+        labels_with_bold = [r"\textbf{" + method + "}" if method == "TabImpute" else method for method in sorted_methods]
+        ax.set_xticks(range(len(sorted_methods)))
+        ax.set_xticklabels(labels_with_bold, rotation=45, ha='right')
+        ax.set_xlabel("")
+        
+        # Set label colors to match bar colors and make TabImpute even bolder
+>>>>>>> a577979 (added test time training)
         for i, label in enumerate(ax.get_xticklabels()):
             method_name = sorted_methods[i]
             if method_name in method_colors:
                 label.set_color(method_colors[method_name])
             if method_name == "TabImpute":
+<<<<<<< HEAD
+=======
+                # Make TabImpute slightly larger for extra boldness
+>>>>>>> a577979 (added test time training)
                 label.set_fontsize(label.get_fontsize() * 1.1)
 
         # Use LaTeX-formatted label
@@ -304,10 +337,16 @@ if plot_pattern:
         plt.close()
 
     # Average across datasets and patterns
+<<<<<<< HEAD
     fig = plt.figure(figsize=FIGURE_SIZES['standard'])
     # sort df_norm_all by the mean of the rows (best first)
     sorted_methods_all = df_norm_all.mean(axis=0).sort_values(ascending=False).index
     sorted_methods_all = [method for method in sorted_methods_all if method not in dont_plot_methods]
+=======
+    fig = plt.figure(figsize=(4.5,4.5))
+    # sort df_norm_all by the mean of the rows (descending order - best first)
+    sorted_methods_all = df_norm_all.mean(axis=0).sort_values(ascending=False).index
+>>>>>>> a577979 (added test time training)
 
     # Melt into long format
     df_long = df_norm_all.melt(var_name="method", value_name="score")
@@ -324,8 +363,14 @@ if plot_pattern:
         **BARPLOT_STYLE
     )
 
+<<<<<<< HEAD
     # Set x-axis labels with 45-degree rotation (like plot_negative_rmse)
     labels_with_bold = [method for method in sorted_methods_all]
+=======
+    # Set x-axis labels with 45-degree rotation
+    # Bold TabImpute using LaTeX \textbf{}
+    labels_with_bold = [r"\textbf{" + method + "}" if method == "TabImpute" else method for method in sorted_methods_all]
+>>>>>>> a577979 (added test time training)
     ax.set_xticks(range(len(sorted_methods_all)))
     ax.set_xticklabels(labels_with_bold, rotation=45, ha='right', fontsize=14)
     ax.set_xlabel("")
@@ -338,6 +383,7 @@ if plot_pattern:
             # Make TabImpute slightly larger for extra boldness
             label.set_fontsize(label.get_fontsize() * 1.1)
 
+<<<<<<< HEAD
     # Set label colors to match bar colors and make TabImpute slightly larger
     for i, label in enumerate(ax.get_xticklabels()):
         method_name = sorted_methods_all[i]
@@ -347,6 +393,10 @@ if plot_pattern:
             label.set_fontsize(label.get_fontsize() * 1.1)
 
     plt.ylabel("1 - Normalized RMSE (0–1)", fontsize=12)
+=======
+    # Use LaTeX-formatted label
+    plt.ylabel(r"1 - Normalized RMSE", fontsize=18)
+>>>>>>> a577979 (added test time training)
     # plt.title("Comparison of Imputation Algorithms | All Patterns")
     plt.ylim(0, 1.0)
     plt.tight_layout()

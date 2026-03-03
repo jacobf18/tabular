@@ -81,6 +81,7 @@ def main():
 
     # Initialize models
     print("Initializing models...")
+<<<<<<< HEAD
     new_model = ImputePFN(
         device="cuda",
         nhead=2,
@@ -97,13 +98,32 @@ def main():
     
     print(f"New Model size: {sum(p.numel() for p in new_model.model.parameters()):,}")
     print(f"Old Model size: {sum(p.numel() for p in old_model.model.parameters()):,}")
+=======
+    checkpoint_path = os.environ.get("TABIMPUTE_CHECKPOINT", os.path.abspath(CHECKPOINT_PATH))
+    if not os.path.exists(checkpoint_path):
+        raise FileNotFoundError(
+            f"Checkpoint not found at {checkpoint_path}. "
+            "Set TABIMPUTE_CHECKPOINT env var to a valid path."
+        )
+
+    new_model = TabImputeV2(device=device, checkpoint_path=checkpoint_path)
+    old_model = ImputePFN(device=device)
+
+    print(f"New Model (TabImputeV2) size: {sum(p.numel() for p in new_model.model.parameters()):,}")
+    print(f"Old Model (ImputePFN) size: {sum(p.numel() for p in old_model.model.parameters()):,}")
+>>>>>>> a577979 (added test time training)
     print()
 
     num_cols = 10
+<<<<<<< HEAD
     # Start with 10 rows, double each time up to a reasonable maximum
     row_sizes = [10, 25, 50, 100, 250, 500, 1000]
     
     # Results storage
+=======
+    row_sizes = [10, 25, 50, 100, 250, 500]
+    ttt_k = 5
+>>>>>>> a577979 (added test time training)
     results = []
 
     for num_rows in row_sizes:

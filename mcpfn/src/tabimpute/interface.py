@@ -4,14 +4,18 @@ import torch
 
 from tabimpute.prior.splits import create_train_test_sets
 <<<<<<< HEAD
+<<<<<<< HEAD
 from tabimpute.prior.training_set_generation import LatentFactorPrior
 =======
 >>>>>>> 4c655e0 (fixed dependencies, made them stable for fresh installs.)
+=======
+from tabimpute.prior.training_set_generation import LatentFactorPrior
+>>>>>>> 7f51224 (added test time training)
 
 import numpy as np
 from tabimpute.model.mcpfn import MCPFN
 from tabimpute.model.bar_distribution import FullSupportBarDistribution
-from typing import Any
+from typing import Any, Optional
 
 import importlib.resources as resources
 from huggingface_hub import hf_hub_download
@@ -21,9 +25,40 @@ from tabimpute.model.encoders import normalize_data
 from tabimpute.model.model_new_stable import TabImputeModel
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 
 =======
 >>>>>>> 4c655e0 (fixed dependencies, made them stable for fresh installs.)
+=======
+
+def _generate_synthetic_low_rank(
+    n_rows: int,
+    n_cols: int,
+    rank: int,
+    borders: torch.Tensor,
+) -> np.ndarray:
+    """Generate synthetic low-rank data for test-time training using LatentFactorPrior."""
+    rank = min(rank, n_rows, n_cols)
+    config = {
+        "num_rows_low": n_rows,
+        "num_rows_high": n_rows,
+        "num_cols_low": n_cols,
+        "num_cols_high": n_cols,
+        "latent_rank_low": rank,
+        "latent_rank_high": rank,
+        "apply_feature_warping_prob": 0,
+        "apply_quantization_prob": 0,
+    }
+    prior = LatentFactorPrior(config)
+    matrix = prior.generate_complete_matrix()
+    Y = matrix.values.astype(np.float32)
+    lo = float(borders[0].cpu().numpy())
+    hi = float(borders[-1].cpu().numpy())
+    Y = np.clip(Y, lo, hi)
+    return Y
+
+
+>>>>>>> 7f51224 (added test time training)
 def get_model_from_huggingface() -> str:
     repo_id = "Tabimpute/TabImpute"
     filename = "tabimpute_001.ckpt"
@@ -186,6 +221,7 @@ class ImputePFN:
 =======
 >>>>>>> 4c655e0 (fixed dependencies, made them stable for fresh installs.)
         
+<<<<<<< HEAD
     def impute(
         self,
         X: np.ndarray,
@@ -194,6 +230,54 @@ class ImputePFN:
         means: np.ndarray | None = None,
         stds: np.ndarray | None = None,
     ) -> np.ndarray:
+=======
+    def _resolve_normalization_stats(
+        self,
+        X: np.ndarray,
+        means: np.ndarray | None = None,
+        stds: np.ndarray | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        num_features = X.shape[1]
+
+        computed_means = np.nanmean(X, axis=0)
+        computed_stds = np.nanstd(X, axis=0)
+        computed_stds = np.where(np.isnan(computed_stds), 1, computed_stds)
+        computed_means = np.where(np.isnan(computed_means), 0, computed_means)
+
+        def _validate_stats(name: str, values: np.ndarray | None) -> np.ndarray | None:
+            if values is None:
+                return None
+
+            arr = np.asarray(values)
+            if arr.shape != (num_features,):
+                raise ValueError(
+                    f"`{name}` must have shape ({num_features},), got {arr.shape}."
+                )
+            return arr
+
+        means_arr = _validate_stats("means", means)
+        stds_arr = _validate_stats("stds", stds)
+
+        if means_arr is None:
+            resolved_means = computed_means
+        else:
+            resolved_means = np.where(np.isnan(means_arr), computed_means, means_arr)
+
+        if stds_arr is None:
+            resolved_stds = computed_stds
+        else:
+            resolved_stds = np.where(np.isnan(stds_arr), computed_stds, stds_arr)
+            resolved_stds = np.where(np.isnan(resolved_stds), 1, resolved_stds)
+
+        return resolved_means, resolved_stds
+
+        
+    def impute(self, X: np.ndarray, 
+               return_full: bool = False, 
+               num_repeats: int = 1,
+               means: np.ndarray | None = None,
+               stds: np.ndarray | None = None) -> np.ndarray:
+>>>>>>> 7f51224 (added test time training)
         """Impute missing values in the input matrix.
         Imputes the missing values in place.
 
@@ -213,7 +297,18 @@ class ImputePFN:
         if X.ndim != 2:
             raise ValueError("Input matrix must be 2-dimensional")
 
+<<<<<<< HEAD
         means, stds = self._resolve_normalization_stats(X, means=means, stds=stds)
+=======
+        # Get means and stds per column
+        means, stds = self._resolve_normalization_stats(X, means=means, stds=stds)
+        
+        # set stds to 1 if they are nan
+        stds = np.where(np.isnan(stds), 1, stds)
+        
+        # set means to 0 if they are nan
+        means = np.where(np.isnan(means), 0, means)
+>>>>>>> 7f51224 (added test time training)
 
         # Normalize the input matrix
         X_normalized = (X - means) / (stds + 1e-16)
@@ -221,50 +316,86 @@ class ImputePFN:
 
         # If any preprocessors, do ensemble of them
         X_imputed = np.zeros_like(X_normalized)
-        X_full = np.zeros_like(X_normalized)
-        X_full_list = [np.zeros_like(X_normalized) for _ in range(num_repeats)]
+        X_full = np.zeros_like(X_normalized) if return_full else None
         X_imputed_list = [np.zeros_like(X_normalized) for _ in range(num_repeats)]
+        X_full_list = (
+            [np.zeros_like(X_normalized) for _ in range(num_repeats)]
+            if return_full
+            else None
+        )
         if self.preprocessors is not None:
             for preprocessor in self.preprocessors:
                 X_preprocessed = preprocessor.fit_transform(X_normalized)
-                imput, X_full = self.get_imputation(X_preprocessed, num_repeats=num_repeats)
+                if return_full:
+                    imput, X_full_current = self.get_imputation(
+                        X_preprocessed,
+                        num_repeats=num_repeats,
+                        return_full=True,
+                    )
+                else:
+                    imput = self.get_imputation(
+                        X_preprocessed,
+                        num_repeats=num_repeats,
+                        return_full=False,
+                    )
                 if num_repeats > 1:
                     for i in range(num_repeats):
                         X_imputed_list[i] += preprocessor.inverse_transform(imput[i])
-                        X_full_list[i] += preprocessor.inverse_transform(X_full[i])
+                        if X_full_list is not None:
+                            X_full_list[i] += preprocessor.inverse_transform(
+                                X_full_current[i]
+                            )
                 else:
                     X_imputed += preprocessor.inverse_transform(imput)
-                    X_full += preprocessor.inverse_transform(X_full)
+                    if X_full is not None:
+                        X_full += preprocessor.inverse_transform(X_full_current)
             if num_repeats > 1:
                 for i in range(num_repeats):
                     X_imputed_list[i] /= num_repeats
-                    X_full_list[i] /= num_repeats
+                    if X_full_list is not None:
+                        X_full_list[i] /= num_repeats
             else:
                 X_imputed /= len(self.preprocessors)
-                X_full /= len(self.preprocessors)
+                if X_full is not None:
+                    X_full /= len(self.preprocessors)
         else:
-            imput, X_full_ = self.get_imputation(X_normalized, num_repeats=num_repeats)
+            if return_full:
+                imput, X_full_ = self.get_imputation(
+                    X_normalized,
+                    num_repeats=num_repeats,
+                    return_full=True,
+                )
+            else:
+                imput = self.get_imputation(
+                    X_normalized,
+                    num_repeats=num_repeats,
+                    return_full=False,
+                )
             if num_repeats > 1:
                 for i in range(num_repeats):
                     X_imputed_list[i] += imput[i]
-                    X_full_list[i] += X_full_[i]
+                    if X_full_list is not None:
+                        X_full_list[i] += X_full_[i]
             else:
                 X_imputed += imput
-                X_full += X_full_
+                if X_full is not None:
+                    X_full += X_full_
         torch.cuda.empty_cache()
         
         # Add back the means and stds
         if num_repeats > 1:
             for i in range(num_repeats):
                 X_imputed_list[i] = X_imputed_list[i] * (stds + 1e-16) + means
-                X_full_list[i] = X_full_list[i] * (stds + 1e-16) + means
+                if X_full_list is not None:
+                    X_full_list[i] = X_full_list[i] * (stds + 1e-16) + means
             if return_full:
                 return X_imputed_list, X_full_list
             else:
                 return X_imputed_list
         else:
             X_imputed = X_imputed * (stds + 1e-16) + means
-            X_full = X_full * (stds + 1e-16) + means
+            if X_full is not None:
+                X_full = X_full * (stds + 1e-16) + means
 
         if return_full:
             return X_imputed, X_full
@@ -300,10 +431,13 @@ class ImputePFN:
             optimizer: Optimizer for fine-tuning. If None, uses AdamW with lr=1e-4.
             rank: Rank for synthetic low-rank data. If None, min(n_rows, n_cols, 10).
             return_full: If True, return (X_imputed, X_full); else return X_imputed.
+<<<<<<< HEAD
             means: Optional per-column means to use for normalization. If None,
                 computed from `X`.
             stds: Optional per-column standard deviations to use for normalization.
                 If None, computed from `X`.
+=======
+>>>>>>> 7f51224 (added test time training)
 
         Returns:
             Imputed matrix, or (X_imputed, X_full) if return_full.
@@ -312,7 +446,11 @@ class ImputePFN:
             raise ValueError("Input matrix must be 2-dimensional")
 
         means, stds = self._resolve_normalization_stats(X, means=means, stds=stds)
+<<<<<<< HEAD
 
+=======
+        
+>>>>>>> 7f51224 (added test time training)
         X_normalized = (X - means) / (stds + 1e-16)
 
         if self.preprocessors is not None:
@@ -343,7 +481,16 @@ class ImputePFN:
             return X_imputed, X_full
         return X_imputed
 
+<<<<<<< HEAD
     def get_imputation(self, X_normalized: np.ndarray, num_repeats: int = 1) -> np.ndarray:
+=======
+    def get_imputation(
+        self,
+        X_normalized: np.ndarray,
+        num_repeats: int = 1,
+        return_full: bool = True,
+    ) -> np.ndarray:
+>>>>>>> 7f51224 (added test time training)
         """Get the imputation for the input matrix.
         If max_num_rows is not None, the input matrix is split into chunks of max_num_rows rows, 
         and the imputation is performed on each chunk.
@@ -359,10 +506,13 @@ class ImputePFN:
             np.ndarray: Imputed matrix of shape (T, H)
         """
         if self.max_num_rows is None:
-            return self._get_imputation_single(X_normalized, num_repeats=num_repeats)
+            result = self._get_imputation_single(X_normalized, num_repeats=num_repeats)
+            if return_full:
+                return result
+            return result[0]
         
         else:
-            X_full = X_normalized.copy()
+            X_full = X_normalized.copy() if return_full else None
             start_index = 0
             
             if self.verbose:
@@ -374,11 +524,17 @@ class ImputePFN:
                 if self.verbose:
                     pbar.update(end_index - start_index)
                 X_normalized_chunk = X_normalized[start_index:end_index, :]
-                X_normalized_chunk, X_full_chunk = self._get_imputation_chunk(X_normalized_chunk, num_repeats=num_repeats)
-                X_normalized[start_index:end_index, :] = X_normalized_chunk
-                X_full[start_index:end_index, :] = X_full_chunk
+                chunk_result = self._get_imputation_chunk(
+                    X_normalized_chunk,
+                    num_repeats=num_repeats,
+                )
+                X_normalized[start_index:end_index, :] = chunk_result[0]
+                if X_full is not None:
+                    X_full[start_index:end_index, :] = chunk_result[1]
                 start_index = end_index
-            return X_normalized, X_full
+            if return_full:
+                return X_normalized, X_full
+            return X_normalized
             
         
     def _get_input_tensors(self, X_normalized: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -442,10 +598,7 @@ class ImputePFN:
         Returns:
             tuple[np.ndarray, np.ndarray]: (X_imputed, X_full)
         """
-        if self.entry_wise_features:
-            return self._get_imputation_chunk_entry_wise(X_normalized, num_repeats=num_repeats)
-        else:
-            return self._get_imputation_chunk_direct(X_normalized, num_repeats=num_repeats)
+        return self._get_imputation_chunk_entry_wise(X_normalized, num_repeats=num_repeats)
 
     def _get_imputation_chunk_direct(self, X_normalized: np.ndarray, num_repeats: int = 1) -> tuple[np.ndarray, np.ndarray]:
         """Get imputation for a chunk when entry_wise_features=False.
@@ -634,6 +787,9 @@ class ImputePFN:
         return X_normalized, X_full
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 7f51224 (added test time training)
     def _get_imputation_single_ttt(
         self,
         X_normalized: np.ndarray,
@@ -753,8 +909,11 @@ class ImputePFN:
                 {k: v.to(self.device) for k, v in state_before.items()}
             )
 
+<<<<<<< HEAD
 =======
 >>>>>>> 4c655e0 (fixed dependencies, made them stable for fresh installs.)
+=======
+>>>>>>> 7f51224 (added test time training)
 _TABPFN_EXTENSIONS_IMPORT_ERROR = None
 try:
     from tabimpute.tabpfn_extensions_interface import (
@@ -975,6 +1134,9 @@ if __name__ == "__main__":
     out, full = imputer.impute(X, return_full=True)  # Impute the missing values
     end_time = time.time()
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 7f51224 (added test time training)
     print(f"Standard impute time: {end_time - start_time:.4f} seconds")
 
     # Test TTT (test-time training) imputation
@@ -1015,12 +1177,15 @@ if __name__ == "__main__":
         f"any NaN: {np.isnan(out_ttt_pp).any()}"
     )
 
+<<<<<<< HEAD
 =======
     print(f"Time taken: {end_time - start_time:.4f} seconds")
     
     exit()
     
 >>>>>>> 4c655e0 (fixed dependencies, made them stable for fresh installs.)
+=======
+>>>>>>> 7f51224 (added test time training)
     print(np.nanmean(X, axis=0))
     print(out)
     print(full)

@@ -37,6 +37,7 @@ methods = [
     # "tabimpute_dynamic_cls",
     # "tabimpute_large_cls_8",
     # "tabimpute_75_75_rank_1_11",
+<<<<<<< HEAD
     # "tabimpute_50_50_rank_1_11_cls_12",
     # "tabimpute_rope_v1",
     # "tabimpute_rope_trial_1",
@@ -62,6 +63,11 @@ methods = [
     "tabimpute_new_stable_shallow_trial_2",
     "tabimpute_new_stable_deep_trial_3",
     # "tabimpute_rope_trial_2",
+=======
+    "tabimpute_50_50_rank_1_11_cls_12",
+    # "tabimpute_ttt_imputepfn",
+    # "tabimpute_v2_ttt",
+>>>>>>> a577979 (added test time training)
     # "tabimpute_large_mcar_rank_1_11",
     # "column_mean", 
     "hyperimpute",
@@ -100,6 +106,7 @@ method_names.update({
     "tabimpute_large_cls_8": "TabImpute (CLS-8)",
     "tabimpute_75_75_rank_1_11": "TabImpute (75x75)",
     "tabimpute_50_50_rank_1_11_cls_12": "TabImpute (New)",
+<<<<<<< HEAD
     "tabimpute_rope_v1": "TabImpute (Rope v1)",
     "tabimpute_rope_trial_1": "TabImpute (Rope Trial 1)",
     "tabimpute_rope_trial_7": "TabImpute (Rope Trial 7)",
@@ -131,6 +138,22 @@ for method in method_names.values():
         method_colors[method] = highlight_color
     else:
         method_colors[method] = neutral_color
+=======
+    "tabimpute_ttt_imputepfn": "TabImpute TTT (ImputePFN)",
+    "tabimpute_v2_ttt": "TabImpute TTT (V2)",
+})
+
+method_colors.update({
+    "TabImpute (Lin. Emb.)": highlight_color,
+    "TabImpute (50x50)": highlight_color,
+    "TabImpute (Dynamic CLs)": highlight_color,
+    "TabImpute (CLS-8)": highlight_color,
+    "TabImpute (75x75)": highlight_color,
+    "TabImpute (New)": highlight_color,
+    "TabImpute TTT (ImputePFN)": highlight_color,
+    "TabImpute TTT (V2)": highlight_color,
+})
+>>>>>>> a577979 (added test time training)
 
 # Add missing method colors that may appear in the data
 

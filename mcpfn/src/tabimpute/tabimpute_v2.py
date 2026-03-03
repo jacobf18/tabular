@@ -8,7 +8,8 @@ from huggingface_hub import hf_hub_download
 
 from tabimpute.interface import ImputePFN, _generate_synthetic_low_rank
 from tabimpute.model.bar_distribution import FullSupportBarDistribution
-from tabimpute.model.model import TabImputeModel
+# from tabimpute.model.model import TabImputeModel
+from tabimpute.model.model_new_stable import TabImputeModel
 
 
 def get_v2_model_from_huggingface() -> str:
@@ -36,20 +37,28 @@ class TabImputeV2(ImputePFN):
             checkpoint_path = get_v2_model_from_huggingface()
 
         self.device = device
+        
+        model_cfg = {
+            "embedding_size": 768,
+            "num_attention_heads": 16,
+            "mlp_hidden_size": 1536,
+            "num_layers": 8,
+            "num_outputs": 5000,
+            "num_cls": 12,
+            "use_rope": True,
+            "rope_base": 10000.0,
+            "rope_fraction": 0.5,
+            "use_absolute_positional_embeddings": False,
+            "positional_damping_factor": 0.1,
+            "attention_dropout": 0.0,
+            "ffn_dropout": 0.03,
+            "drop_path_rate": 0.0,
+            "residual_scale_init": 0.7,
+            "embedding_dropout": 0.0,
+            "rms_norm_eps": 1e-6,
+        }
 
-        num_attention_heads = 32
-        embedding_size = 32 * num_attention_heads
-        mlp_hidden_size = 1024
-        num_cls = 12
-        num_layers = 12
-        self.model = TabImputeModel(
-            embedding_size=embedding_size,
-            num_attention_heads=num_attention_heads,
-            mlp_hidden_size=mlp_hidden_size,
-            num_layers=num_layers,
-            num_cls=num_cls,
-            num_outputs=5000,
-        ).to(self.device).to(torch.bfloat16)
+        self.model = TabImputeModel(**model_cfg).to(self.device).to(torch.bfloat16)
         self.model.eval()
 
         with resources.files("tabimpute.data").joinpath("borders.pt").open("rb") as f:
@@ -120,12 +129,19 @@ class TabImputeV2(ImputePFN):
         )
 
     def get_imputation(
-        self, X_normalized: np.ndarray, num_repeats: int = 1
+        self,
+        X_normalized: np.ndarray,
+        num_repeats: int = 1,
+        return_full: bool = True,
     ) -> np.ndarray:
         if self.max_num_rows is None:
-            return self._get_imputation_single(X_normalized, num_repeats=num_repeats)
+            return self._get_imputation_single(
+                X_normalized,
+                num_repeats=num_repeats,
+                return_full=return_full,
+            )
 
-        X_full = X_normalized.copy()
+        X_full = X_normalized.copy() if return_full else None
         start_index = 0
 
         if self.verbose:
@@ -142,17 +158,28 @@ class TabImputeV2(ImputePFN):
                 pbar.update(end_index - start_index)
 
             X_normalized_chunk = X_normalized[start_index:end_index, :]
-            X_normalized_chunk, X_full_chunk = self._get_imputation_chunk(
-                X_normalized_chunk, num_repeats=num_repeats
+            chunk_result = self._get_imputation_chunk(
+                X_normalized_chunk,
+                num_repeats=num_repeats,
+                return_full=return_full,
             )
+            if return_full:
+                X_normalized_chunk, X_full_chunk = chunk_result
+                X_full[start_index:end_index, :] = X_full_chunk
+            else:
+                X_normalized_chunk = chunk_result
             X_normalized[start_index:end_index, :] = X_normalized_chunk
-            X_full[start_index:end_index, :] = X_full_chunk
             start_index = end_index
 
-        return X_normalized, X_full
+        if return_full:
+            return X_normalized, X_full
+        return X_normalized
 
     def _get_imputation_single(
-        self, X_normalized: np.ndarray, num_repeats: int = 1
+        self,
+        X_normalized: np.ndarray,
+        num_repeats: int = 1,
+        return_full: bool = True,
     ) -> np.ndarray:
         if num_repeats > 1:
             raise ValueError("`num_repeats > 1` is not supported in TabImputeV2.")
@@ -167,11 +194,13 @@ class TabImputeV2(ImputePFN):
         X_imputed = medians.cpu().detach().numpy()
         missing_mask = np.isnan(X_normalized)
         X_normalized[missing_mask] = X_imputed[missing_mask]
-        return X_normalized, X_imputed
+        if return_full:
+            return X_normalized, X_imputed
+        return X_normalized
 
-    def _predict_chunks(self, chunks: list[np.ndarray]) -> list[np.ndarray]:
+    def _predict_chunks(self, chunks: list[np.ndarray]) -> torch.Tensor:
         if len(chunks) == 0:
-            return []
+            return torch.empty(0)
 
         chunk_batch = torch.stack(
             [torch.from_numpy(chunk) for chunk in chunks], dim=0
@@ -183,10 +212,13 @@ class TabImputeV2(ImputePFN):
             preds = self._postprocess_logits(preds)
             medians = self.bar_distribution.median(logits=preds)
 
-        return [median.cpu().detach().numpy() for median in medians]
+        return medians.cpu()
 
     def _get_imputation_chunk(
-        self, X_normalized: np.ndarray, num_repeats: int = 1
+        self,
+        X_normalized: np.ndarray,
+        num_repeats: int = 1,
+        return_full: bool = True,
     ) -> np.ndarray:
         if num_repeats > 1:
             raise ValueError("`num_repeats > 1` is not supported in TabImputeV2.")
@@ -195,42 +227,41 @@ class TabImputeV2(ImputePFN):
             X_normalized, self.max_num_rows
         )
         if len(row_chunks) == 0:
-            return X_normalized, X_normalized.copy()
+            if return_full:
+                return X_normalized, X_normalized.copy()
+            return X_normalized
 
-        X_full = X_normalized.copy()
-        full_predictions: list[Optional[np.ndarray]] = [None] * len(row_chunks)
+        X_full = X_normalized.copy() if return_full else None
+        split_last_chunk = (
+            len(row_chunks) > 1 and row_chunks[-1].shape[0] != row_chunks[-2].shape[0]
+        )
+        regular_chunk_count = len(row_chunks) - int(split_last_chunk)
 
-        regular_chunks = row_chunks
-        regular_indices = list(range(len(row_chunks)))
-        last_chunk = None
-        last_index = None
+        if regular_chunk_count > 0:
+            regular_predictions = self._predict_chunks(row_chunks[:regular_chunk_count])
+            for full_chunk, start_index, end_index in zip(
+                regular_predictions,
+                start_indices[:regular_chunk_count],
+                end_indices[:regular_chunk_count],
+            ):
+                chunk_slice = X_normalized[start_index:end_index, :]
+                full_chunk_np = full_chunk.numpy()
+                missing_mask = np.isnan(chunk_slice)
+                chunk_slice[missing_mask] = full_chunk_np[missing_mask]
+                if X_full is not None:
+                    X_full[start_index:end_index, :] = full_chunk_np
 
-        if len(row_chunks) > 1 and row_chunks[-1].shape[0] != row_chunks[-2].shape[0]:
-            regular_chunks = row_chunks[:-1]
-            regular_indices = list(range(len(row_chunks) - 1))
-            last_chunk = row_chunks[-1]
-            last_index = len(row_chunks) - 1
+        if split_last_chunk:
+            last_prediction = self._predict_chunks([row_chunks[-1]])[0].numpy()
+            chunk_slice = X_normalized[start_indices[-1] : end_indices[-1], :]
+            missing_mask = np.isnan(chunk_slice)
+            chunk_slice[missing_mask] = last_prediction[missing_mask]
+            if X_full is not None:
+                X_full[start_indices[-1] : end_indices[-1], :] = last_prediction
 
-        for chunk_idx, full_chunk in zip(
-            regular_indices, self._predict_chunks(regular_chunks)
-        ):
-            full_predictions[chunk_idx] = full_chunk
-
-        if last_chunk is not None and last_index is not None:
-            full_predictions[last_index] = self._predict_chunks([last_chunk])[0]
-
-        for i, (start_index, end_index) in enumerate(zip(start_indices, end_indices)):
-            full_chunk = full_predictions[i]
-            if full_chunk is None:
-                raise RuntimeError("Missing full predictions for a TabImputeV2 chunk.")
-
-            missing_mask = np.isnan(X_normalized[start_index:end_index, :])
-            X_normalized[start_index:end_index, :][missing_mask] = full_chunk[
-                missing_mask
-            ]
-            X_full[start_index:end_index, :] = full_chunk
-
-        return X_normalized, X_full
+        if return_full:
+            return X_normalized, X_full
+        return X_normalized
 
     def _get_imputation_single_ttt(
         self,
@@ -342,6 +373,12 @@ if __name__ == "__main__":
     X[np.random.rand(*X.shape) < 0.2] = np.nan
     print(X)
     
+<<<<<<< HEAD
     tabimpute_v2 = TabImputeV2(device=device, checkpoint_path=checkpoint_path)
     X_imputed = tabimpute_v2.impute(X.copy())
     print(X_imputed)
+=======
+    tabimpute_v2 = TabImputeV2(device=device, checkpoint_path=checkpoint_path, max_num_rows=2)
+    X_imputed = tabimpute_v2.impute(X.copy())
+    print(X_imputed)
+>>>>>>> 7f51224 (added test time training)
