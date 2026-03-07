@@ -4,10 +4,17 @@ import importlib.resources as resources
 import numpy as np
 import torch
 from typing import Any, Optional
+from huggingface_hub import hf_hub_download
 
 from tabimpute.interface import ImputePFN, _generate_synthetic_low_rank
 from tabimpute.model.bar_distribution import FullSupportBarDistribution
 from tabimpute.model.model import TabImputeModel
+
+
+def get_v2_model_from_huggingface() -> str:
+    repo_id = "Tabimpute/TabImpute"
+    filename = "tabimputev2.ckpt"
+    return hf_hub_download(repo_id=repo_id, filename=filename)
 
 
 class TabImputeV2(ImputePFN):
@@ -24,10 +31,7 @@ class TabImputeV2(ImputePFN):
         verbose: bool = False,
     ):
         if checkpoint_path is None:
-            raise ValueError(
-                "`checkpoint_path` is required for TabImputeV2 "
-                "(the model used when entry_wise_features=False)."
-            )
+            checkpoint_path = get_v2_model_from_huggingface()
 
         self.device = device
 
