@@ -18,6 +18,12 @@ def get_v2_model_from_huggingface() -> str:
     return hf_hub_download(repo_id=repo_id, filename=filename)
 
 
+def get_v2_model_from_huggingface() -> str:
+    repo_id = "Tabimpute/TabImpute"
+    filename = "tabimputev2.ckpt"
+    return hf_hub_download(repo_id=repo_id, filename=filename)
+
+
 class TabImputeV2(ImputePFN):
     """TabImpute V2 using the non-entry-wise-features model."""
 
