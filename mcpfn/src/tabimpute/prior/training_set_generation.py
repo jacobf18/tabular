@@ -285,6 +285,9 @@ class MCARPattern(BaseMissingness):
     def _induce_missingness(self, X):
         X[torch.rand(*X.shape) < self.config.get("p_missing", 0.6)] = torch.nan
         return X
+    
+    def __str__(self):
+        return "MCAR"
 
 
 class MARPattern(BaseMissingness):
@@ -300,6 +303,9 @@ class MARPattern(BaseMissingness):
         for col_idx in target_indices:
             X[torch.rand(len(X)) < probs, col_idx] = torch.nan
         return X
+    
+    def __str__(self):
+        return "MAR"
 
 
 class MNARPattern(BaseMissingness):
@@ -316,6 +322,9 @@ class MNARPattern(BaseMissingness):
                 probs = torch.sigmoid(log_odds + beta_0)
                 X[torch.rand(len(X)) < probs, col_idx] = torch.nan
         return X
+    
+    def __str__(self):
+        return "MNAR"
 
 
 class MNARRecSysPattern(BaseMissingness):

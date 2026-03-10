@@ -53,11 +53,11 @@ def plot_runtime_benchmark(csv_file='runtime_benchmark_results.csv', output_file
                 markersize=8)
     
     # Set log scale for x-axis (since rows grow exponentially)
-    ax.set_xscale('log', base=2)
-    # ax.set_yscale('log')
+    ax.set_xscale('log', base=10)
+    ax.set_yscale('log', base=10)
     
     # Labels and title
-    ax.set_xlabel('Number of Rows (log scale, base 2)', fontsize=12)
+    ax.set_xlabel('Number of Rows (log scale, base 10)', fontsize=12)
     ax.set_ylabel('Runtime (seconds, log scale)', fontsize=12)
     ax.set_title('Runtime Comparison: Old vs New Model\n(Fixed Columns: 10)', fontsize=14, fontweight='bold')
     ax.legend(fontsize=11)

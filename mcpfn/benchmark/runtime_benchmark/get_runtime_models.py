@@ -53,9 +53,12 @@ def main():
     # Initialize models
     print("Initializing models...")
     new_model = ImputePFN(
-        device='cuda',
+        device="cuda",
+        nhead=2,
+        preprocessors=None,
         entry_wise_features=False,
-        checkpoint_path='/home/jacobf18/tabular/mcpfn/src/tabimpute/workdir/tabimpute-mcar_p0.4-num_cls_8-rank_1_11/checkpoint_60000.pth'
+        checkpoint_path="/root/tabular/mcpfn/src/tabimpute/workdir/tabimpute-anchorpair14-mcar-p04-20260305-20k-trial_012/checkpoint_15000.pth",
+        json_config={"trial_id": 12, "run_name": "tabimpute-anchorpair14-mcar-p04-20260305-20k-trial_012", "num_params": 78016904, "seconds": 2205.53, "config": {"embedding_size": 768, "num_attention_heads": 16, "num_layers": 8, "num_cls": 12, "rope_fraction": 0.5, "lr": 0.0002, "weight_decay": 0.03, "grad_clip_norm": 0.5, "optimizer_name": "adamw", "scheduler_name": "warmup_cosine", "warmup_ratio": 0.06, "min_lr_ratio": 0.05, "mlp_hidden_size": 1536}}
     )
     
     old_model = ImputePFN(
@@ -70,7 +73,7 @@ def main():
     # Define matrix sizes: fixed columns (10), exponentially growing rows
     num_cols = 10
     # Start with 10 rows, double each time up to a reasonable maximum
-    row_sizes = [10, 25, 50, 100, 250, 500]
+    row_sizes = [10, 25, 50, 100, 250, 500, 1000]
     
     # Results storage
     results = []

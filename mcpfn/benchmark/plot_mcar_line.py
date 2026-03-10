@@ -19,8 +19,8 @@ from plot_options import (
 # Configure LaTeX rendering for all text in plots
 setup_latex_fonts()
 
-# Ensure LaTeX is enabled (redundant but explicit)
-matplotlib.rcParams['text.usetex'] = True
+# Ensure LaTeX is disabled (redundant but explicit)
+matplotlib.rcParams['text.usetex'] = False
 matplotlib.rcParams['font.family'] = 'serif'
 
 base_path = "datasets/openml"

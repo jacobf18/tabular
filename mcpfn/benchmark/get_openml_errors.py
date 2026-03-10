@@ -90,6 +90,7 @@ if "mcpfn" in imputers:
         RandomColumnPermutation(),
         # StandardizeWhiten(whiten=True),
     ]
+    # preprocessors = None
     
     mcpfn = ImputePFN(
         device="cuda",
@@ -107,40 +108,33 @@ if "mcpfn" in imputers:
         nhead=2,
         preprocessors=preprocessors,
         entry_wise_features=False,
-        checkpoint_path='/home/jacobf18/tabular/mcpfn/src/tabimpute/workdir/tabimpute-mcar_p0.4-num_cls_12-rank_1_11/checkpoint_85000.pth'
+        # checkpoint_path='/home/jacobf18/tabular/mcpfn/src/tabimpute/workdir/tabimpute-mcar_p0.4-num_cls_12-rank_1_11/checkpoint_85000.pth'
+        checkpoint_path="/root/tabular/mcpfn/src/tabimpute/workdir/tabimpute-stable-deep-refine-25000-v1-20260309-trial_003/checkpoint_15000.pth",
+        json_config={"config": {
+            "embedding_size": 768,
+            "num_attention_heads": 16,
+            "mlp_hidden_size": 2048,
+            "num_layers": 12,
+            "num_outputs": 5000,
+            "num_cls": 12,
+            "use_rope": True,
+            "rope_base": 10000.0,
+            "rope_fraction": 0.5,
+            "use_absolute_positional_embeddings": False,
+            "positional_damping_factor": 0.1,
+            "attention_dropout": 0.01,
+            "ffn_dropout": 0.06,
+            "drop_path_rate": 0.05,
+            "residual_scale_init": 0.25,
+            "embedding_dropout": 0.0,
+            "rms_norm_eps": 1e-6,
+        }
+},
         # max_num_rows=100,
         # max_num_chunks=2,
     )
-    mcpfn_name = "tabimpute_50_50_rank_1_11_cls_12"
+    mcpfn_name = "tabimpute_new_stable_deep_trial_3"
     
-if "tabimpute_ensemble" in imputers:
-    preprocessors = [
-        RandomRowColumnPermutation(),
-        RandomRowColumnPermutation(),
-        RandomRowPermutation(),
-        RandomColumnPermutation(),
-        # StandardizeWhiten(whiten=True),
-    ]
-    tabimpute_ensemble = TabImputeRouter(device="cuda", preprocessors=preprocessors, checkpoint_paths=[
-        "/home/jacobf18/mcpfn_data/checkpoints/masters/mcar/step-78500.ckpt",
-        "/home/jacobf18/mcpfn_data/checkpoints/masters/mar/step-60000.ckpt",
-        "/home/jacobf18/mcpfn_data/checkpoints/masters/mnar/step-60000.ckpt",
-    ], nhead=2)
-    mcpfn_name = "tabimpute_ensemble_router"
-    
-if "mcpfn_ensemble" in imputers:
-    preprocessors = [
-        RandomRowColumnPermutation(),
-        RandomRowColumnPermutation(),
-        RandomRowPermutation(),
-        RandomColumnPermutation(),
-        # StandardizeWhiten(whiten=True),
-    ]
-    mcpfn_ensemble = MCTabPFNEnsemble(device="cuda", 
-                                    # checkpoint_path="/mnt/mcpfn_data/checkpoints/mixed_adaptive/step-125000.ckpt",
-                                      nhead=2,
-                                      preprocessors=preprocessors)
-
 if "tabpfn" in imputers:
     tabpfn = TabPFNImputer(device="cuda")
     

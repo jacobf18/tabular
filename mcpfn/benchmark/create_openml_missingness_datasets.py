@@ -34,9 +34,9 @@ p_mar = 0.4
 p_mnar = 0.4
 
 patterns = {
-    "MCAR": MCARPattern(config={"p_missing": p_mcar}),
-    # "MAR": MARPattern(config={"p_missing": p_mar}),
-    # "MNAR": MNARPattern(config={"p_missing": p_mnar}),
+    # "MCAR": MCARPattern(config={"p_missing": p_mcar}),
+    "MAR": MARPattern(config={"p_missing": p_mar}),
+    "MNAR": MNARPattern(config={"p_missing": p_mnar}),
     # "MAR_Neural": MARNeuralNetwork(config={
     #     "p_missing": p_mar, 
     #     'mar_config': {

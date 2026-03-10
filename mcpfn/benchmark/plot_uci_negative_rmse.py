@@ -1,4 +1,5 @@
 import seaborn as sns
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -19,7 +20,8 @@ from plot_options import (
 )
 
 # --- Plotting ---
-setup_latex_fonts()
+# setup_latex_fonts()
+matplotlib.rcParams['font.family'] = 'serif'
 
 base_path = "datasets/uci"
 
@@ -31,11 +33,32 @@ methods = [
     "missforest",
     "ice",
     # "mice",
-    # "gain",
+    "gain",
     # "miwae",
     "masters_mcar",
     # "tabimpute_mcar_p0.4_num_cls_8_rank_1_11",
-    "tabimpute_mcar_p0.4_num_cls_12_rank_1_11",
+    # "tabimpute_mcar_p0.4_num_cls_12_rank_1_11",
+    # "tabimpute_rope_v1",
+    # "tabimpute_rope_trial_6_chunking",
+    "tabimpute_rope_trial_14_no_permute",
+    # "tabimpute_new_stable_v1_100k",
+    # "tabimpute_new_stable_v1_100k_w_permute",
+    "tabimpute_rope_trial_12_no_permute",
+    # "tabimpute_new_stable_v4_27500_no_permute",
+    # "tabimpute_new_stable_v3_15000",
+    # "tabimpute_new_stable_v6_25000",
+    # "tabimpute_new_stable_v3_15000_300_rows",
+    # "tabimpute_new_stable_v3_15000_250_rows",
+    # "tabimpute_new_stable_v3_15000_100_rows",
+    "tabimpute_new_stable_round2_trial_3",
+    "tabimpute_new_stable_round2_trial_2",
+    "tabimpute_new_stable_round2_trial_6",
+    "tabimpute_new_stable_round2_trial_10",
+    "tabimpute_new_stable_shallow_trial_3",
+    "tabimpute_new_stable_shallow_trial_6",
+    "tabimpute_new_stable_shallow_trial_2",
+    "tabimpute_new_stable_deep_trial_3",
+    # "tabimpute_rope_trial_12",
     # "tabimpute_large_mcar",
     # "tabimpute_large_mcar_rank_1_11",
     # "tabimpute_large_mcar_mnar",
@@ -80,12 +103,33 @@ method_names = METHOD_NAMES.copy()
 # Add any UCI-specific method name mappings if needed
 method_names["tabimpute_mcar_p0.4_num_cls_8_rank_1_11"] = "TabImpute (CLS-8)"
 method_names["tabimpute_mcar_p0.4_num_cls_12_rank_1_11"] = "TabImpute (New)"
-
+method_names["tabimpute_rope_v1"] = "TabImpute (Rope no chunks)"
+method_names["tabimpute_rope_trial_6_chunking"] = "TabImpute (Rope w/ Chunks)"
+method_names["tabimpute_rope_trial_14_no_permute"] = "TabImpute (Rope Trial 14 No Permute)"
+method_names["tabimpute_rope_trial_12_no_permute"] = "TabImpute (Rope Trial 12 No Permute)"
+method_names["tabimpute_rope_trial_12"] = "TabImpute (Rope Trial 12 w/ Permute)"
+method_names["tabimpute_new_stable_v1_100k"] = "TabImpute (New Stable v1 100k)"
+method_names["tabimpute_new_stable_v1_100k_w_permute"] = "TabImpute (New Stable v1 100k w/ Permute)"
+method_names["tabimpute_new_stable_v4_27500_no_permute"] = "TabImpute (New Stable v4 27500 No Permute)"
+method_names["tabimpute_new_stable_v3_15000"] = "TabImpute (New Stable v3 15000)"
+method_names["tabimpute_new_stable_v6_25000"] = "TabImpute (New Stable v6 25000)"
+method_names["tabimpute_new_stable_v3_15000_300_rows"] = "TabImpute (New Stable v3 15000 300 Rows)"
+method_names["tabimpute_new_stable_v3_15000_250_rows"] = "TabImpute (New Stable v3 15000 250 Rows)"
+method_names["tabimpute_new_stable_v3_15000_100_rows"] = "TabImpute (New Stable v3 15000 100 Rows)"
+method_names["tabimpute_new_stable_round2_trial_3"] = "TabImpute (New Stable Round 2 Trial 3)"
+method_names["tabimpute_new_stable_round2_trial_2"] = "TabImpute (New Stable Round 2 Trial 2)"
+method_names["tabimpute_new_stable_round2_trial_6"] = "TabImpute (New Stable Round 2 Trial 6)"
+method_names["tabimpute_new_stable_round2_trial_10"] = "TabImpute (New Stable Round 2 Trial 10)"
+method_names["tabimpute_new_stable_shallow_trial_3"] = "TabImpute (New Stable Shallow Trial 3)"
+method_names["tabimpute_new_stable_shallow_trial_6"] = "TabImpute (New Stable Shallow Trial 6)"
+method_names["tabimpute_new_stable_shallow_trial_2"] = "TabImpute (New Stable Shallow Trial 2)"
+method_names["tabimpute_new_stable_deep_trial_3"] = "TabImpute (New Stable Deep Trial 3)"
 # Use method colors from plot_options
 method_colors = METHOD_COLORS
 
-method_colors["TabImpute (CLS-8)"] = HIGHLIGHT_COLOR
-method_colors["TabImpute (New)"] = HIGHLIGHT_COLOR
+for method in method_names.values():
+    if "TabImpute" in method:
+        method_colors[method] = HIGHLIGHT_COLOR
 
 negative_rmse = {}
 
@@ -195,6 +239,7 @@ df_norm = 1.0 - (df - df.min(axis=1).values[:, None]) / (df.max(axis=1) - df.min
 # print(df_norm)
 
 plot_pattern = True
+dont_plot_methods = []
 
 # Plot for all patterns combined
 # Get dataframe for all patterns
@@ -213,14 +258,15 @@ if plot_pattern:
         
         # Average across datasets
         # --- Barplot ---
-        plt.figure(figsize=(4.5,4.5))
-        
-        # sort methods by mean performance
-        sorted_methods = df_norm.mean(axis=0).sort_values(ascending=True).index
-        
+        plt.figure(figsize=FIGURE_SIZES['standard'])
+
+        # sort methods by mean performance (best first)
+        sorted_methods = df_norm.mean(axis=0).sort_values(ascending=False).index
+        sorted_methods = [method for method in sorted_methods if method not in dont_plot_methods]
+
         # Melt into long format
         df_long = df_norm.melt(var_name="method", value_name="score")
-        
+
         # Use method_colors from plot_options for consistent mapping
         ax = sns.barplot(
             data=df_long,
@@ -228,25 +274,24 @@ if plot_pattern:
             y="score",
             hue="method",
             order=sorted_methods,
-            palette=method_colors,   # <- consistent colors from plot_options
+            palette=method_colors,
             legend=False,
             **BARPLOT_STYLE
         )
-        
-        # Remove x-axis labels
-        ax.set_xticklabels([])
+
+        # Set x-axis labels with 45-degree rotation (like plot_negative_rmse)
+        labels_with_bold = [method for method in sorted_methods]
+        ax.set_xticks(range(len(sorted_methods)))
+        ax.set_xticklabels(labels_with_bold, rotation=45, ha='right')
         ax.set_xlabel("")
 
-        
-        # Add method names inside bars
-        for i, method in enumerate(sorted_methods):
-            # Get the bar height (mean value across datasets)
-            bar_height = df_norm[method].mean()
-            # Position the text at the bottom of the bar
-            # Use larger font size and position at bottom for better readability
-            ax.text(i, 0.02, method, ha='center', va='bottom', 
-                fontsize=15.0, rotation=90, color='white', weight='bold',
-                bbox=dict(boxstyle='round,pad=0.1', facecolor='black', alpha=0.0))
+        # Set label colors to match bar colors and make TabImpute slightly larger
+        for i, label in enumerate(ax.get_xticklabels()):
+            method_name = sorted_methods[i]
+            if method_name in method_colors:
+                label.set_color(method_colors[method_name])
+            if method_name == "TabImpute":
+                label.set_fontsize(label.get_fontsize() * 1.1)
 
         plt.ylabel("1 - Normalized RMSE", fontsize=15)
         # plt.title(f"Comparison of Imputation Algorithms | {pattern_name}")
@@ -256,13 +301,13 @@ if plot_pattern:
         plt.close()
 
     # Average across datasets and patterns
-    fig = plt.figure(figsize=(4.5,4.5))
-    # sort df_norm_all by the mean of the rows
-    sorted_methods_all = df_norm_all.mean(axis=0).sort_values(ascending=True).index
+    fig = plt.figure(figsize=FIGURE_SIZES['standard'])
+    # sort df_norm_all by the mean of the rows (best first)
+    sorted_methods_all = df_norm_all.mean(axis=0).sort_values(ascending=False).index
+    sorted_methods_all = [method for method in sorted_methods_all if method not in dont_plot_methods]
 
     # Melt into long format
     df_long = df_norm_all.melt(var_name="method", value_name="score")
-    df_norm_all = df_norm_all
 
     # Use method_colors from plot_options for consistent mapping
     ax = sns.barplot(
@@ -271,30 +316,29 @@ if plot_pattern:
         y="score",
         hue="method",
         order=sorted_methods_all,
-        palette=method_colors,   # <- consistent colors from plot_options
+        palette=method_colors,
         legend=False,
         **BARPLOT_STYLE
     )
 
-    # Remove x-axis labels
-    ax.set_xticklabels([])
+    # Set x-axis labels with 45-degree rotation (like plot_negative_rmse)
+    labels_with_bold = [method for method in sorted_methods_all]
+    ax.set_xticks(range(len(sorted_methods_all)))
+    ax.set_xticklabels(labels_with_bold, rotation=45, ha='right', fontsize=14)
     ax.set_xlabel("")
 
-    # Add method names inside bars
-    for i, method in enumerate(sorted_methods_all):
-        # Get the bar height (mean value across datasets and patterns)
-        bar_height = df_norm_all[method].mean()
-        # Position the text at the bottom of the bar
-        ax.text(i, 0.02, method, ha='center', va='bottom', 
-                fontsize=15.0, rotation=90, color='white', weight='bold',
-                bbox=dict(boxstyle='round,pad=0.1', facecolor='black', alpha=0.0))
+    # Set label colors to match bar colors and make TabImpute slightly larger
+    for i, label in enumerate(ax.get_xticklabels()):
+        method_name = sorted_methods_all[i]
+        if method_name in method_colors:
+            label.set_color(method_colors[method_name])
+        if method_name == "TabImpute":
+            label.set_fontsize(label.get_fontsize() * 1.1)
 
-    plt.ylabel("1 - Normalized RMSE (0–1)", fontsize=18)
+    plt.ylabel("1 - Normalized RMSE (0–1)", fontsize=12)
     # plt.title("Comparison of Imputation Algorithms | All Patterns")
     plt.ylim(0, 1.0)
-    # plt.tight_layout()
-    
-    fig.subplots_adjust(left=0.2, right=0.95, bottom=0.05, top=0.95)
+    plt.tight_layout()
     
     plt.savefig(f"figures/uci_negative_rmse_overall.pdf", **PLOT_PARAMS)
     plt.close()

@@ -25,7 +25,9 @@ from huggingface_hub import hf_hub_download
 from scipy.optimize import minimize
 from scipy.special import softmax
 from tabimpute.model.encoders import normalize_data
-from tabimpute.model.model import TabImputeModel
+# from tabimpute.model.model_new import TabImputeModel
+# from tabimpute.model.model import TabImputeModel
+from tabimpute.model.model_new_stable import TabImputeModel
 
 import matplotlib.pyplot as plt
 
@@ -77,6 +79,7 @@ class ImputePFN:
         max_num_chunks: int = None,
         verbose: bool = False,
         entry_wise_features: bool = True,
+        json_config: dict = None,
     ):
         self.device = device
 
@@ -84,18 +87,64 @@ class ImputePFN:
         if entry_wise_features:
             self.model = MCPFN(nhead=nhead).to(self.device).to(torch.bfloat16)
         else:
-            num_attention_heads = 32
-            embedding_size = 32 * num_attention_heads
-            mlp_hidden_size = 1024
-            num_cls = 12
-            num_layers = 12
-            self.model = TabImputeModel(embedding_size=embedding_size, 
-                                        num_attention_heads=num_attention_heads, 
-                                        mlp_hidden_size=mlp_hidden_size, 
-                                        num_layers=num_layers,
-                                        num_cls=num_cls,
-                                        num_outputs=5000).to(self.device).to(torch.bfloat16)
-        self.model.eval()
+            # num_attention_heads = 32
+            # embedding_size = 32 * num_attention_heads
+            # mlp_hidden_size = 1024
+            # num_cls = 12
+            # num_layers = 12
+            # self.model = TabImputeModel(embedding_size=embedding_size, 
+            #                             num_attention_heads=num_attention_heads, 
+            #                             mlp_hidden_size=mlp_hidden_size, 
+            #                             num_layers=num_layers,
+            #                             num_cls=num_cls,
+            #                             num_outputs=5000).to(self.device).to(torch.bfloat16)
+            num_attention_heads = json_config["config"]["num_attention_heads"]
+            embedding_size = json_config["config"]["embedding_size"]
+            mlp_hidden_size = json_config["config"]["mlp_hidden_size"]
+            num_cls = json_config["config"]["num_cls"]
+            num_layers = json_config["config"]["num_layers"]
+            rope_base = 10000.0
+            rope_fraction = json_config["config"]["rope_fraction"]
+            attention_dropout = json_config["config"]["attention_dropout"]
+            ffn_dropout = json_config["config"]["ffn_dropout"]
+            drop_path_rate = json_config["config"]["drop_path_rate"]
+            residual_scale_init = json_config["config"]["residual_scale_init"]
+            embedding_dropout = json_config["config"]["embedding_dropout"]
+            
+            # self.model = TabImputeModel(
+            #                 embedding_size=embedding_size,
+            #                 num_attention_heads=num_attention_heads,
+            #                 mlp_hidden_size=mlp_hidden_size,
+            #                 num_layers=num_layers,
+            #                 num_outputs=5000,
+            #                 num_cls=num_cls,
+            #                 use_rope=True,
+            #                 rope_base=10000.0,
+            #                 rope_fraction=json_config["config"]["rope_fraction"],
+            #                 use_absolute_positional_embeddings=False,
+            #                 positional_damping_factor=0.1,
+            #             ).to('cuda').to(torch.bfloat16)
+
+            self.model = TabImputeModel(
+                embedding_size=embedding_size,
+                num_attention_heads=num_attention_heads,
+                mlp_hidden_size=mlp_hidden_size,
+                num_layers=num_layers,
+                num_outputs=5000,
+                num_cls=num_cls,
+                use_rope=True,
+                rope_base=rope_base,
+                rope_fraction=rope_fraction,
+                use_absolute_positional_embeddings=False,
+                positional_damping_factor=0.1,
+                attention_dropout=attention_dropout,
+                ffn_dropout=ffn_dropout,
+                drop_path_rate=drop_path_rate,
+                residual_scale_init=residual_scale_init,
+                rms_norm_eps=1e-6,
+                embedding_dropout=embedding_dropout,
+            ).to("cuda", dtype=torch.bfloat16)
+            self.model.eval()
         # torch.compile(self.model)
 
         # Load borders tensor for outputting continuous values
@@ -113,7 +162,7 @@ class ImputePFN:
             self.model.load_state_dict(checkpoint["state_dict"])
         else:
             checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=True)
-            self.model.load_state_dict(checkpoint['model'], strict=False)
+            self.model.load_state_dict(checkpoint['model'], strict=True)
 
         self.preprocessors = preprocessors
         self.max_num_rows = max_num_rows
@@ -296,16 +345,88 @@ class ImputePFN:
             chunks.append(arr[start_indices[-1]:end_indices[-1]])
         return chunks, start_indices, end_indices
     
-    def _get_imputation_chunk(self, X_normalized: np.ndarray, num_repeats: int = 1) -> np.ndarray:
+    def _get_imputation_chunk(self, X_normalized: np.ndarray, num_repeats: int = 1) -> tuple[np.ndarray, np.ndarray]:
         """Get the imputation for a chunk of the input matrix.
+        Dispatches to entry-wise or direct implementation based on entry_wise_features.
         Args:
             X_normalized (np.ndarray): Input matrix of shape (T, H) where:
              - T is the number of samples (rows)
              - H is the number of features (columns)
             num_repeats (int, optional): Number of times to repeat the imputation. Defaults to 1.
         Returns:
-            np.ndarray: Imputed matrix of shape (T, H)
+            tuple[np.ndarray, np.ndarray]: (X_imputed, X_full)
         """
+        if self.entry_wise_features:
+            return self._get_imputation_chunk_entry_wise(X_normalized, num_repeats=num_repeats)
+        else:
+            return self._get_imputation_chunk_direct(X_normalized, num_repeats=num_repeats)
+
+    def _get_imputation_chunk_direct(self, X_normalized: np.ndarray, num_repeats: int = 1) -> tuple[np.ndarray, np.ndarray]:
+        """Get imputation for a chunk when entry_wise_features=False.
+        Passes data directly to model (no train/test split), similar to _get_imputation_single.
+        """
+        row_chunks, start_indices, end_indices = self.split_into_chunks(X_normalized, self.max_num_rows)
+        chunk_tensors = [
+            torch.from_numpy(chunk).to(self.device).to(torch.bfloat16)
+            for chunk in row_chunks
+        ]
+        X_batch_chunks, X_last_chunk = self._stack_chunks_for_batch(chunk_tensors)
+        medians_chunks, medians_last_chunk = self._run_model_direct(X_batch_chunks, X_last_chunk)
+
+        X_full = X_normalized.copy()
+        for i, (start_idx, end_idx) in enumerate(zip(start_indices, end_indices)):
+            medians = (
+                medians_last_chunk[0].cpu().numpy()
+                if i == len(start_indices) - 1 and medians_last_chunk is not None
+                else medians_chunks[i].cpu().numpy()
+            )
+            chunk_slice = X_normalized[start_idx:end_idx, :]
+            missing_mask = np.isnan(chunk_slice)
+            chunk_slice[missing_mask] = medians[missing_mask]
+            X_full[start_idx:end_idx, :] = medians
+
+        return X_normalized, X_full
+
+    def _stack_chunks_for_batch(
+        self, chunk_tensors: list[torch.Tensor]
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+        """Stack chunk tensors for batched inference, handling variable-sized last chunk."""
+        if len(chunk_tensors) == 1:
+            return torch.stack(chunk_tensors, dim=0), None
+        if chunk_tensors[-1].shape[0] != chunk_tensors[-2].shape[0]:
+            return torch.stack(chunk_tensors[:-1], dim=0), chunk_tensors[-1].unsqueeze(0)
+        return torch.stack(chunk_tensors, dim=0), None
+
+    def _stack_input_and_y_for_batch(
+        self, X_list: list[torch.Tensor], y_list: list[torch.Tensor]
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
+        """Stack (X, y) chunk pairs for batched inference, handling variable-sized last chunk."""
+        if len(X_list) > 1 and X_list[-1].shape[0] != X_list[-2].shape[0]:
+            X_batch = torch.stack(X_list[:-1], dim=0)
+            y_batch = torch.stack(y_list[:-1], dim=0)
+            return X_batch, y_batch, X_list[-1], y_list[-1]
+        return (
+            torch.stack(X_list, dim=0),
+            torch.stack(y_list, dim=0),
+            None,
+            None,
+        )
+
+    def _run_model_direct(
+        self, X_batch: torch.Tensor, X_last: torch.Tensor | None
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+        """Run model (entry_wise_features=False) on batched chunks and return medians."""
+        with torch.no_grad():
+            preds = self.model(X_batch)
+            medians_chunks = self.bar_distribution.median(logits=preds)
+            medians_last = None
+            if X_last is not None:
+                preds_last = self.model(X_last)
+                medians_last = self.bar_distribution.median(logits=preds_last)
+        return medians_chunks, medians_last
+
+    def _get_imputation_chunk_entry_wise(self, X_normalized: np.ndarray, num_repeats: int = 1) -> tuple[np.ndarray, np.ndarray]:
+        """Get imputation for a chunk when entry_wise_features=True (MCPFN with train/test split)."""
         row_chunks, start_indices, end_indices = self.split_into_chunks(X_normalized, self.max_num_rows)
         row_chunks_normalized = []
         means = []
@@ -332,26 +453,10 @@ class ImputePFN:
             non_missing_indices_list.append(non_missing_indices)
             train_size_list.append(train_size)
             
-        # All of the row chunks should be the same size except for maybe the last one if the number of rows is not a multiple of the chunk size
-        X_batch_chunks = None
-        input_y_batch_chunks = None
-        X_last_chunk = None
-        input_y_last_chunk = None
-        
-        # parallelize the imputation with batching
-        if len(X_input_list) > 1:
-            if X_input_list[-1].shape[0] != X_input_list[-2].shape[0]:
-                # Run this one separately
-                X_last_chunk = X_input_list[-1]
-                input_y_last_chunk = input_y_list[-1]
-                X_batch_chunks = torch.stack(X_input_list[:-1], dim=0) # shape: (num_chunks, T, H)
-                input_y_batch_chunks = torch.stack(input_y_list[:-1], dim=0)
-            else:
-                X_batch_chunks = torch.stack(X_input_list, dim=0) # shape: (num_chunks, T, H)
-                input_y_batch_chunks = torch.stack(input_y_list, dim=0)
-        else:
-            X_batch_chunks = torch.stack(X_input_list, dim=0) # shape: (num_chunks, T, H)
-            input_y_batch_chunks = torch.stack(input_y_list, dim=0)
+        # Stack chunks for batched inference (handle variable-sized last chunk)
+        X_batch_chunks, input_y_batch_chunks, X_last_chunk, input_y_last_chunk = (
+            self._stack_input_and_y_for_batch(X_input_list, input_y_list)
+        )
             
         medians_chunks = None
         medians_last_chunk = None
@@ -362,7 +467,9 @@ class ImputePFN:
             medians_chunks = self.bar_distribution.median(logits=preds)
             
             if X_last_chunk is not None:
-                preds_last = self.model(X_last_chunk.unsqueeze(0), input_y_list[-1].unsqueeze(0)) # shape: (1, T, H)
+                preds_last = self.model(
+                    X_last_chunk.unsqueeze(0), input_y_last_chunk.unsqueeze(0)
+                )
                 medians_last_chunk = self.bar_distribution.median(logits=preds_last)
                 
         X_full = X_normalized.copy()
@@ -857,10 +964,36 @@ print(out)
 
 import time
 if __name__ == "__main__":
-    imputer = ImputePFN(device='cuda', 
-                        entry_wise_features=False, 
-                        checkpoint_path='/home/jacobf18/tabular/mcpfn/src/tabimpute/workdir/tabimpute-mcar_p0.4-num_cls_8-rank_1_11/checkpoint_60000.pth')
+    # --- Test new chunking (entry_wise_features=True, no checkpoint needed) ---
+    print("Testing chunking path (entry_wise_features=True)...")
+    np.random.seed(42)
+    X_test = np.random.randn(80, 8)
+    X_test = (X_test - X_test.mean(axis=0)) / (X_test.std(axis=0) + 1e-8)
+    X_test[np.random.rand(*X_test.shape) < 0.15] = np.nan
+
+    imputer_no_chunk = ImputePFN(device="cpu", entry_wise_features=True, max_num_rows=None)
+    imputer_chunk = ImputePFN(device="cpu", entry_wise_features=True, max_num_rows=25)
+
+    out_no_chunk, full_no_chunk = imputer_no_chunk.impute(X_test.copy(), return_full=True)
+    out_chunk, full_chunk = imputer_chunk.impute(X_test.copy(), return_full=True)
+
+    assert out_no_chunk.shape == out_chunk.shape == X_test.shape
+    assert full_no_chunk.shape == full_chunk.shape == X_test.shape
+    assert not np.any(np.isnan(out_chunk)), "Chunked output should have no NaN"
+    assert not np.any(np.isnan(full_chunk)), "Chunked full should have no NaN"
+    print("  Chunking test passed: shapes correct, no NaN in output.")
     
+    exit()
+
+    # --- Benchmark (requires checkpoint for entry_wise_features=False) ---
+    try:
+        imputer = ImputePFN(device='cuda', 
+                            entry_wise_features=False, 
+                            checkpoint_path='/home/jacobf18/tabular/mcpfn/src/tabimpute/workdir/tabimpute-mcar_p0.4-num_cls_8-rank_1_11/checkpoint_60000.pth')
+    except FileNotFoundError:
+        print("Skipping benchmark: checkpoint not found.")
+        exit(0)
+
     imputer_old = ImputePFN(device='cuda', entry_wise_features=True)
     
     print(f"New Model size: {sum(p.numel() for p in imputer.model.parameters()):,}")

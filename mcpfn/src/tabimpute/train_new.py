@@ -1,0 +1,263 @@
+import torch
+from torch import nn
+from tqdm import tqdm
+import time
+from typing import Dict
+from tabimpute.model.bar_distribution import FullSupportBarDistribution
+import schedulefree
+import os
+import importlib.resources
+
+from tabimpute.model.model_new import TabImputeModel
+from tabimpute.prior.training_set_generation import MissingnessPrior
+from tabimpute.train.callbacks import Callback, WandbLoggerCallback
+
+# os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+
+def train(model: TabImputeModel, 
+          prior: MissingnessPrior, 
+          bar_distribution: FullSupportBarDistribution,
+          criterion: nn.Module,
+          epochs: int, 
+          lr: float = 1e-4, 
+          weight_decay: float = 1e-2,
+          grad_clip_norm: float | None = 1.0,
+          device: torch.device = None,
+          callbacks: list[Callback] = None, 
+          ckpt: Dict[str, torch.Tensor] = None, 
+          multi_gpu: bool = False,
+          run_name: str = 'tabimpute-new'):
+    """
+    Trains our model on the given prior using the given criterion.
+
+    Args:
+        model: (TabImputeModel) our PyTorch model
+        prior: (MissingnessPrior) Missingness prior
+        bar_distribution: (FullSupportBarDistribution) our bar distribution
+        epochs: (int) the number of epochs we train for, the number of steps that constitute an epoch are decided by the prior
+        device: (torch.device) the device we are using
+        callbacks: A list of callback instances to execute at the end of each epoch. These can be used for
+            logging, validation, or other custom actions.
+        ckpt (Dict[str, torch.Tensor], optional): A checkpoint dictionary containing the model and optimizer states,
+            as well as the last completed epoch. If provided, training resumes from this checkpoint.
+
+    Returns:
+        (TabImputeModel) trained model
+    """
+    work_dir = 'workdir/'+run_name
+    os.makedirs(work_dir, exist_ok=True)
+    if callbacks is None:
+        callbacks = []
+    if not device:
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model.to(device)
+    
+    optimizer = schedulefree.AdamWScheduleFree(model.parameters(), lr=lr, weight_decay=weight_decay)
+    
+    if ckpt:
+        optimizer.load_state_dict(ckpt['optimizer'])
+        model.load_state_dict(ckpt['model'])
+        print(f"Resuming training from epoch {ckpt['epoch'] + 1}")
+    model.train()
+    optimizer.train()
+    
+    # Compile model for faster training (1.5-2x speedup on modern GPUs)
+    # Compile after all setup is complete (device, checkpoint, train mode)
+    # This matches the pattern used in model.py where train() is set before compilation
+    # Must compile before DataParallel wrapping (if used)
+    # If compilation fails (e.g., missing Python.h, unsupported GPU architecture), continue with uncompiled model
+    if multi_gpu:
+        model = nn.DataParallel(model)
+
+    try:
+        for epoch in tqdm(range(ckpt['epoch'] + 1 if ckpt else 1, epochs + 1)):
+            # torch.cuda.empty_cache()
+            epoch_start_time = time.time()
+            
+            (batch_X, batch_target, _, _, _), _ = prior.get_batch()
+            
+            batch_X = batch_X.to(torch.bfloat16)
+            batch_target = batch_target.to(torch.bfloat16)
+            
+            batch_X = batch_X.to(device)
+            batch_target = batch_target.to(device)
+            
+            output = model(batch_X)
+            
+            missing_mask = torch.isnan(batch_X)
+            
+            losses = criterion(output, batch_target)
+            
+            loss_missing = losses[missing_mask].mean()
+            
+            with torch.no_grad():
+                loss_total = losses.mean()
+                medians = bar_distribution.median(output)
+                missing_mae = (medians[missing_mask] - batch_target[missing_mask]).abs().mean()
+                total_mae = (medians - batch_target).abs().mean()
+            
+            loss_missing.backward()
+            if grad_clip_norm is not None:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
+            
+            optimizer.step()
+            optimizer.zero_grad()
+            
+            end_time = time.time()
+            
+            log_dict = {
+                'loss_missing': loss_missing.item(),
+                'loss_total': loss_total.item(),
+                'mae_missing': missing_mae.item(),
+                'mae_total': total_mae.item()
+            }
+            
+            # print(f"Step {epoch}: Loss: {loss_total.item()}, Missing loss: {loss_missing.item()}")
+
+            if epoch % 5000 == 0:
+                training_state = {
+                    'epoch': epoch,
+                    'model': (model.module if multi_gpu else model).state_dict(),
+                    'optimizer': optimizer.state_dict()
+                }
+                torch.save(training_state, work_dir+'/checkpoint_'+str(epoch)+'.pth')
+
+            for callback in callbacks:
+                if type(criterion) is FullSupportBarDistribution:
+                    callback.on_epoch_end(epoch, end_time - epoch_start_time, loss_missing.item(), None, dist=criterion, log_dict=log_dict)
+                else:
+                    callback.on_epoch_end(epoch, end_time - epoch_start_time, loss_missing.item(), None, log_dict=log_dict)
+        
+
+    except KeyboardInterrupt:
+        pass
+    finally:
+        for callback in callbacks:
+            callback.close()
+
+    return (model.module if multi_gpu else model), loss_missing.item()
+
+if __name__ == "__main__":
+    # High-capacity preset aligned with train.py for strong performance.
+    # Note: model_new has a different block design, so total params are slightly higher.
+    num_attention_heads = 32
+    embedding_size = 32 * num_attention_heads  # 1024
+    mlp_hidden_size = 1024
+    num_cls = 12
+    num_layers = 12
+    epochs = 100000
+    lr = 2e-4
+    weight_decay = 1e-2
+    grad_clip_norm = 1.0
+    
+    model = TabImputeModel(
+        embedding_size=embedding_size,
+        num_attention_heads=num_attention_heads,
+        mlp_hidden_size=mlp_hidden_size,
+        num_layers=num_layers,
+        num_outputs=5000,
+        num_cls=num_cls,
+        use_rope=True,
+        rope_base=10000.0,
+        rope_fraction=1.0,
+        use_absolute_positional_embeddings=False,
+        positional_damping_factor=0.1,
+    ).to('cuda')
+    
+    model = model.to(torch.bfloat16)
+    
+    # Note: Model compilation happens in train() function after full setup
+    # This ensures consistent behavior whether called from __main__ or elsewhere
+    
+    p_missing = 0.4
+    config = {
+        "num_rows_low": 10,
+        "num_rows_high": 50,
+        "num_cols_low": 5,
+        "num_cols_high": 50,
+        "p_missing": p_missing,
+        "apply_feature_warping_prob": 0.0,
+        "apply_quantization_prob": 0.0,
+        # Latent Factor configs
+        "latent_rank_low": 1,
+        "latent_rank_high": 11,
+        "latent_spike_p": 0.3,
+        "latent_slab_sigma": 2.0,
+    }
+
+    # Example, specify one data generation type and one missingness pattern
+    prior = MissingnessPrior(
+        generator_type="latent_factor",
+        missingness_type="mcar",
+        config=config,
+        batch_size=16,
+        verbose=False,
+        entry_wise_features=False,
+    )
+    
+    # (X_full, y_full, d, seq_lens, train_sizes), _ = prior.get_batch()
+    
+    print(f"Number of parameters: {sum(p.numel() for p in model.parameters()):,}")
+    
+    borders_path = importlib.resources.files('tabimpute') / 'data' / 'borders.pt'
+    with importlib.resources.as_file(borders_path) as path:
+        bar_distribution = FullSupportBarDistribution(borders=torch.load(path).to(torch.device('cuda')))
+    
+    model.train()
+    
+    name = f"tabimpute-new-rope_v1-large-mcar_p{p_missing}-num_cls_{num_cls}-rank_1_11"
+    # NOTE: a directory with the name of the run will be created in the workdir directory
+    
+    # NOTE: If not resuming training, set ckpt to None
+    ckpt_path = '/home/jacobf18/tabular/mcpfn/src/tabimpute/workdir/tabimpute-new-rope_v1-large-mcar_p0.4-num_cls_12-rank_1_11/checkpoint_60000.pth'
+    # ckpt = torch.load(ckpt_path)
+    ckpt = None
+    
+    if ckpt is None:
+        id_name = None
+    else:
+        id_name = ckpt_path.split('/')[-1].split('.')[0]
+    
+    callbacks = [
+        WandbLoggerCallback(
+            project="tabimpute",
+            name=name,
+            # id='tabimpute-mcar_p0.4-num_cls_8-rank_1_1120260211_124242',
+            id=id_name,
+            config={
+                "embedding_size": embedding_size,
+                "num_attention_heads": num_attention_heads,
+                "mlp_hidden_size": mlp_hidden_size,
+                "num_layers": num_layers,
+                "batch_size": 16,
+                "lr": lr,
+                "weight_decay": weight_decay,
+                "grad_clip_norm": grad_clip_norm,
+                "epochs": epochs,
+                "num_cls": num_cls,
+                "use_rope": True,
+                "rope_base": 10000.0,
+                "rope_fraction": 1.0,
+                "use_absolute_positional_embeddings": False,
+            },
+            log_dir='./wandb'
+        )
+    ]
+    
+    # mse_criterion = nn.MSELoss()
+    
+    train(
+        model,
+        prior,
+        bar_distribution,
+        bar_distribution,
+        epochs=epochs,
+        lr=lr,
+        weight_decay=weight_decay,
+        grad_clip_norm=grad_clip_norm,
+        device='cuda',
+        callbacks=callbacks,
+        run_name=name,
+        ckpt=ckpt,
+    )
+    print("Training complete")

@@ -191,7 +191,7 @@ def create_plots(imputation_data, dataset_info):
     
     # Configure LaTeX rendering for all text in plots
     setup_latex_fonts()
-    matplotlib.rcParams['text.usetex'] = True
+    matplotlib.rcParams['text.usetex'] = False
     matplotlib.rcParams['font.family'] = 'serif'
     
     # Create efficiency bar plot (runtime per dataset size) using seaborn
@@ -235,8 +235,8 @@ def create_plots(imputation_data, dataset_info):
                 legend=False)
     
     # Set x-axis labels with 45-degree rotation
-    # Bold TabImpute methods using LaTeX \textbf{}
-    labels_with_bold = [r"\textbf{" + method + "}" if "TabImpute" in method else method for method in efficiency_means.index]
+    # TabImpute shown with same styling as others (LaTeX off)
+    labels_with_bold = [method for method in efficiency_means.index]
     ax.set_xticks(range(len(efficiency_means.index)))
     ax.set_xticklabels(labels_with_bold, rotation=45, ha='right', fontsize=14)
     ax.set_xlabel('')
