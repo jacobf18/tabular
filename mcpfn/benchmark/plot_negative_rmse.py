@@ -20,10 +20,10 @@ from plot_options import (
 
 # --- Plotting ---
 # Configure LaTeX rendering for all text in plots
-setup_latex_fonts()
+# setup_latex_fonts()
 
 # Ensure LaTeX is enabled (redundant but explicit)
-matplotlib.rcParams['text.usetex'] = True
+# matplotlib.rcParams['text.usetex'] = True
 matplotlib.rcParams['font.family'] = 'serif'
 
 base_path = "datasets/openml"
@@ -37,9 +37,31 @@ methods = [
     # "tabimpute_dynamic_cls",
     # "tabimpute_large_cls_8",
     # "tabimpute_75_75_rank_1_11",
-    "tabimpute_50_50_rank_1_11_cls_12",
-    # "tabimpute_ttt_imputepfn",
-    # "tabimpute_v2_ttt",
+    # "tabimpute_50_50_rank_1_11_cls_12",
+    # "tabimpute_rope_v1",
+    # "tabimpute_rope_trial_1",
+    "tabimpute_rope_trial_7",
+    # "tabimpute_rope_trial_6",
+    "tabimpute_rope_trial_14",
+    # "tabimpute_rope_trial_14_no_permute",
+    # "tabimpute_rope_trial_10",
+    # "tabimpute_rope_trial_12",
+    "tabimpute_rope_trial_12_w_permute",
+    # "tabimpute_new_stable_v1_100k",
+    # "tabimpute_new_stable_v1_15k",
+    # "tabimpute_new_stable_v4_7500",
+    # "tabimpute_new_stable_v4_27500",
+    # "tabimpute_new_stable_v3_15000",
+    # "tabimpute_new_stable_v6_25000",
+    "tabimpute_new_stable_round2_trial_3",
+    "tabimpute_new_stable_round2_trial_2",
+    "tabimpute_new_stable_round2_trial_6",
+    "tabimpute_new_stable_round2_trial_10",
+    "tabimpute_new_stable_shallow_trial_3",
+    "tabimpute_new_stable_shallow_trial_6",
+    "tabimpute_new_stable_shallow_trial_2",
+    "tabimpute_new_stable_deep_trial_3",
+    # "tabimpute_rope_trial_2",
     # "tabimpute_large_mcar_rank_1_11",
     # "column_mean", 
     "hyperimpute",
@@ -78,20 +100,37 @@ method_names.update({
     "tabimpute_large_cls_8": "TabImpute (CLS-8)",
     "tabimpute_75_75_rank_1_11": "TabImpute (75x75)",
     "tabimpute_50_50_rank_1_11_cls_12": "TabImpute (New)",
-    "tabimpute_ttt_imputepfn": "TabImpute TTT (ImputePFN)",
-    "tabimpute_v2_ttt": "TabImpute TTT (V2)",
+    "tabimpute_rope_v1": "TabImpute (Rope v1)",
+    "tabimpute_rope_trial_1": "TabImpute (Rope Trial 1)",
+    "tabimpute_rope_trial_7": "TabImpute (Rope Trial 7)",
+    "tabimpute_rope_trial_6": "TabImpute (Rope Trial 6)",
+    "tabimpute_rope_trial_14": "TabImpute (Rope Trial 14)",
+    "tabimpute_rope_trial_2": "TabImpute (Rope Trial 2)",
+    "tabimpute_rope_trial_14_no_permute": "TabImpute (Rope Trial 14 No Permute)",
+    "tabimpute_rope_trial_10": "TabImpute (Rope Trial 10 no permute)",
+    "tabimpute_rope_trial_12": "TabImpute (Rope Trial 12 no permute)",
+    "tabimpute_rope_trial_12_w_permute": "TabImpute (Rope Trial 12 w/ Permute)",
+    "tabimpute_new_stable_v1_100k": "TabImpute (New Stable v1 100k)",
+    "tabimpute_new_stable_v1_15k": "TabImpute (New Stable v1 15k)",
+    "tabimpute_new_stable_v4_7500": "TabImpute (New Stable v4 7500)",
+    "tabimpute_new_stable_v4_27500": "TabImpute (New Stable v4 27500)",
+    "tabimpute_new_stable_v3_15000": "TabImpute (New Stable v3 15000)",
+    "tabimpute_new_stable_v6_25000": "TabImpute (New Stable v6 25000)",
+    "tabimpute_new_stable_round2_trial_3": "TabImpute (New Stable Round 2 Trial 3)",
+    "tabimpute_new_stable_round2_trial_2": "TabImpute (New Stable Round 2 Trial 2)",
+    "tabimpute_new_stable_round2_trial_6": "TabImpute (New Stable Round 2 Trial 6)",
+    "tabimpute_new_stable_round2_trial_10": "TabImpute (New Stable Round 2 Trial 10)",
+    "tabimpute_new_stable_shallow_trial_3": "TabImpute (New Stable Shallow Trial 3)",
+    "tabimpute_new_stable_shallow_trial_6": "TabImpute (New Stable Shallow Trial 6)",
+    "tabimpute_new_stable_shallow_trial_2": "TabImpute (New Stable Shallow Trial 2)",
+    "tabimpute_new_stable_deep_trial_3": "TabImpute (New Stable Deep Trial 3)",
 })
 
-method_colors.update({
-    "TabImpute (Lin. Emb.)": highlight_color,
-    "TabImpute (50x50)": highlight_color,
-    "TabImpute (Dynamic CLs)": highlight_color,
-    "TabImpute (CLS-8)": highlight_color,
-    "TabImpute (75x75)": highlight_color,
-    "TabImpute (New)": highlight_color,
-    "TabImpute TTT (ImputePFN)": highlight_color,
-    "TabImpute TTT (V2)": highlight_color,
-})
+for method in method_names.values():
+    if "TabImpute" in method:
+        method_colors[method] = highlight_color
+    else:
+        method_colors[method] = neutral_color
 
 # Add missing method colors that may appear in the data
 
@@ -225,7 +264,7 @@ df = pd.Series(negative_rmse).unstack()
 plot_pattern = True
 
 dont_plot_methods = [
-    "EWF-TabPFN",
+    # "EWF-TabPFN",
 ]
 
 # Plot for all patterns combined
@@ -265,8 +304,8 @@ if plot_pattern:
         )
         
         # Set x-axis labels with 45-degree rotation
-        # Bold TabImpute using LaTeX \textbf{}
-        labels_with_bold = [r"\textbf{" + method + "}" if method == "TabImpute" else method for method in sorted_methods]
+        # TabImpute shown with same styling as others (LaTeX off)
+        labels_with_bold = [method for method in sorted_methods]
         ax.set_xticks(range(len(sorted_methods)))
         ax.set_xticklabels(labels_with_bold, rotation=45, ha='right')
         ax.set_xlabel("")
@@ -289,7 +328,7 @@ if plot_pattern:
         plt.close()
 
     # Average across datasets and patterns
-    fig = plt.figure(figsize=FIGURE_SIZES['standard'])
+    fig = plt.figure(figsize=FIGURE_SIZES['wide'])
     # sort df_norm_all by the mean of the rows
     sorted_methods_all = df_norm_all.mean(axis=0).sort_values(ascending=False).index
 
@@ -309,8 +348,8 @@ if plot_pattern:
     )
 
     # Set x-axis labels with 45-degree rotation
-    # Bold TabImpute using LaTeX \textbf{}
-    labels_with_bold = [r"\textbf{" + method + "}" if method == "TabImpute" else method for method in sorted_methods_all]
+    # TabImpute shown with same styling as others (LaTeX off)
+    labels_with_bold = [method for method in sorted_methods_all]
     ax.set_xticks(range(len(sorted_methods_all)))
     ax.set_xticklabels(labels_with_bold, rotation=45, ha='right', fontsize=14)
     ax.set_xlabel("")

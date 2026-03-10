@@ -68,22 +68,43 @@ def plot_runtime_benchmark(
                 capsize=5,
                 capthick=2,
                 linewidth=2,
-                markersize=8,
-                color=colors.get((model_type, mode), None),
-            )
-
-    ax.set_xscale("log", base=10)
-    ax.set_yscale("log", base=10)
-    ax.set_xlabel("Number of Rows (log scale, base 10)", fontsize=12)
-    ax.set_ylabel("Runtime (seconds, log scale, base 10)", fontsize=12)
-    ax.set_title(
-        "Runtime Comparison: Old vs New Model (Standard & TTT)\n(Fixed Columns: 10)",
-        fontsize=14,
-        fontweight="bold",
-    )
-    ax.legend(fontsize=10)
-    ax.grid(True, alpha=0.3, linestyle="--")
-
+                markersize=8)
+    
+    ax.errorbar(old_stats['num_rows'], old_stats['mean'], 
+                yerr=old_stats['std_error'], 
+                label='Old Model', 
+                marker='s', 
+                linestyle='--', 
+                capsize=5,
+                capthick=2,
+                linewidth=2,
+                markersize=8)
+    
+    # Set log scale for x-axis (since rows grow exponentially)
+    ax.set_xscale('log', base=10)
+    ax.set_yscale('log', base=10)
+    
+    # Labels and title
+    ax.set_xlabel('Number of Rows (log scale, base 10)', fontsize=12)
+    ax.set_ylabel('Runtime (seconds, log scale)', fontsize=12)
+    ax.set_title('Runtime Comparison: Old vs New Model\n(Fixed Columns: 10)', fontsize=14, fontweight='bold')
+    ax.legend(fontsize=11)
+    ax.grid(True, alpha=0.3, linestyle='--')
+    
+    # Add speedup annotations
+    for num_rows in new_stats['num_rows'].unique():
+        new_mean = new_stats[new_stats['num_rows'] == num_rows]['mean'].values[0]
+        old_mean = old_stats[old_stats['num_rows'] == num_rows]['mean'].values[0]
+        speedup = old_mean / new_mean if new_mean > 0 else 0
+        
+        # Position annotation above the old model point
+        ax.annotate(f'{speedup:.1f}x', 
+                   xy=(num_rows, old_mean),
+                   xytext=(num_rows, old_mean * 1.5),
+                   fontsize=9,
+                   ha='center',
+                   bbox=dict(boxstyle='round,pad=0.3', facecolor='yellow', alpha=0.5))
+    
     plt.tight_layout()
     plt.savefig(output_file, dpi=300, bbox_inches="tight")
     print(f"Plot saved to {output_file}")

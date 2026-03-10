@@ -11,7 +11,7 @@ import seaborn as sns
 import numpy as np
 
 # Configure matplotlib to use LaTeX for text rendering
-matplotlib.rcParams['text.usetex'] = True
+matplotlib.rcParams['text.usetex'] = False
 matplotlib.rcParams['font.family'] = 'serif'
 matplotlib.rcParams['font.serif'] = ['Computer Modern Roman', 'Times New Roman', 'DejaVu Serif']
 matplotlib.rcParams['font.size'] = 10
@@ -190,7 +190,7 @@ def setup_latex_fonts():
     Configure matplotlib to use LaTeX fonts.
     Call this function at the beginning of plotting scripts.
     """
-    matplotlib.rcParams['text.usetex'] = True
+    matplotlib.rcParams['text.usetex'] = False
     matplotlib.rcParams['font.family'] = 'serif'
     matplotlib.rcParams['font.serif'] = ['Computer Modern Roman', 'Times New Roman', 'DejaVu Serif']
     sns.set(style="whitegrid")

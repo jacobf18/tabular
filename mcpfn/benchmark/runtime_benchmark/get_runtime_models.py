@@ -81,23 +81,29 @@ def main():
 
     # Initialize models
     print("Initializing models...")
-    checkpoint_path = os.environ.get("TABIMPUTE_CHECKPOINT", os.path.abspath(CHECKPOINT_PATH))
-    if not os.path.exists(checkpoint_path):
-        raise FileNotFoundError(
-            f"Checkpoint not found at {checkpoint_path}. "
-            "Set TABIMPUTE_CHECKPOINT env var to a valid path."
-        )
-
-    new_model = TabImputeV2(device=device, checkpoint_path=checkpoint_path)
-    old_model = ImputePFN(device=device)
-
-    print(f"New Model (TabImputeV2) size: {sum(p.numel() for p in new_model.model.parameters()):,}")
-    print(f"Old Model (ImputePFN) size: {sum(p.numel() for p in old_model.model.parameters()):,}")
+    new_model = ImputePFN(
+        device="cuda",
+        nhead=2,
+        preprocessors=None,
+        entry_wise_features=False,
+        checkpoint_path="/root/tabular/mcpfn/src/tabimpute/workdir/tabimpute-anchorpair14-mcar-p04-20260305-20k-trial_012/checkpoint_15000.pth",
+        json_config={"trial_id": 12, "run_name": "tabimpute-anchorpair14-mcar-p04-20260305-20k-trial_012", "num_params": 78016904, "seconds": 2205.53, "config": {"embedding_size": 768, "num_attention_heads": 16, "num_layers": 8, "num_cls": 12, "rope_fraction": 0.5, "lr": 0.0002, "weight_decay": 0.03, "grad_clip_norm": 0.5, "optimizer_name": "adamw", "scheduler_name": "warmup_cosine", "warmup_ratio": 0.06, "min_lr_ratio": 0.05, "mlp_hidden_size": 1536}}
+    )
+    
+    old_model = ImputePFN(
+        device='cuda',
+        entry_wise_features=True
+    )
+    
+    print(f"New Model size: {sum(p.numel() for p in new_model.model.parameters()):,}")
+    print(f"Old Model size: {sum(p.numel() for p in old_model.model.parameters()):,}")
     print()
 
     num_cols = 10
-    row_sizes = [10, 25, 50, 100, 250, 500]
-    ttt_k = 5
+    # Start with 10 rows, double each time up to a reasonable maximum
+    row_sizes = [10, 25, 50, 100, 250, 500, 1000]
+    
+    # Results storage
     results = []
 
     for num_rows in row_sizes:
