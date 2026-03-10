@@ -76,8 +76,28 @@ build-backend = "hatchling.build"
 [tool.hatch.version]
 path = "src/tabimpute/__about__.py"
 
+[tool.hatch.build.targets.sdist]
+only-include = [
+    "src/tabimpute",
+    "README.md",
+    "pyproject.toml",
+]
+exclude = [
+    "/src/tabimpute/.workdir",
+    "/src/tabimpute/workdir",
+    "/src/tabimpute/wandb",
+    "/src/tabimpute/__pycache__",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/tabimpute"]
+exclude = [
+    "src/tabimpute/.wandb",
+    "src/tabimpute/.workdir",
+    "src/tabimpute/workdir",
+    "src/tabimpute/wandb",
+    "src/tabimpute/__pycache__",
+]
 
 [tool.hatch.envs.default]
 installer = "uv"

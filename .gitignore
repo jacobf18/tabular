@@ -27,5 +27,6 @@ dist/
 
 **/figures/
 **/workdir/
+**/wandb/
 **/.workdir/
 **/.wandb/
