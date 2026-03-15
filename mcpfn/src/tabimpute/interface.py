@@ -97,8 +97,55 @@ class ImputePFN:
         borders = self.borders.to(self.device)
         self.bar_distribution = FullSupportBarDistribution(borders=borders)
         self.verbose = verbose
+
+    def _resolve_normalization_stats(
+        self,
+        X: np.ndarray,
+        means: np.ndarray | None = None,
+        stds: np.ndarray | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        num_features = X.shape[1]
+
+        computed_means = np.nanmean(X, axis=0)
+        computed_stds = np.nanstd(X, axis=0)
+        computed_stds = np.where(np.isnan(computed_stds), 1, computed_stds)
+        computed_means = np.where(np.isnan(computed_means), 0, computed_means)
+
+        def _validate_stats(name: str, values: np.ndarray | None) -> np.ndarray | None:
+            if values is None:
+                return None
+
+            arr = np.asarray(values)
+            if arr.shape != (num_features,):
+                raise ValueError(
+                    f"`{name}` must have shape ({num_features},), got {arr.shape}."
+                )
+            return arr
+
+        means_arr = _validate_stats("means", means)
+        stds_arr = _validate_stats("stds", stds)
+
+        if means_arr is None:
+            resolved_means = computed_means
+        else:
+            resolved_means = np.where(np.isnan(means_arr), computed_means, means_arr)
+
+        if stds_arr is None:
+            resolved_stds = computed_stds
+        else:
+            resolved_stds = np.where(np.isnan(stds_arr), computed_stds, stds_arr)
+            resolved_stds = np.where(np.isnan(resolved_stds), 1, resolved_stds)
+
+        return resolved_means, resolved_stds
         
-    def impute(self, X: np.ndarray, return_full: bool = False, num_repeats: int = 1) -> np.ndarray:
+    def impute(
+        self,
+        X: np.ndarray,
+        return_full: bool = False,
+        num_repeats: int = 1,
+        means: np.ndarray | None = None,
+        stds: np.ndarray | None = None,
+    ) -> np.ndarray:
         """Impute missing values in the input matrix.
         Imputes the missing values in place.
 
@@ -106,6 +153,10 @@ class ImputePFN:
             X (np.ndarray): Input matrix of shape (T, H) where:
              - T is the number of samples (rows)
              - H is the number of features (columns)
+            means (np.ndarray | None): Optional per-column means to use for
+                normalization. If None, computed from `X`.
+            stds (np.ndarray | None): Optional per-column standard deviations to
+                use for normalization. If None, computed from `X`.
 
         Returns:
             np.ndarray: Imputed matrix of shape (T, H)
@@ -114,15 +165,7 @@ class ImputePFN:
         if X.ndim != 2:
             raise ValueError("Input matrix must be 2-dimensional")
 
-        # Get means and stds per column
-        means = np.nanmean(X, axis=0)
-        stds = np.nanstd(X, axis=0)
-        
-        # set stds to 1 if they are nan
-        stds = np.where(np.isnan(stds), 1, stds)
-        
-        # set means to 0 if they are nan
-        means = np.where(np.isnan(means), 0, means)
+        means, stds = self._resolve_normalization_stats(X, means=means, stds=stds)
 
         # Normalize the input matrix
         X_normalized = (X - means) / (stds + 1e-16)
@@ -188,6 +231,8 @@ class ImputePFN:
         optimizer: Optional[torch.optim.Optimizer] = None,
         rank: Optional[int] = None,
         return_full: bool = False,
+        means: np.ndarray | None = None,
+        stds: np.ndarray | None = None,
     ) -> np.ndarray:
         """Impute missing values using test-time training on synthetic low-rank data.
 
@@ -207,6 +252,10 @@ class ImputePFN:
             optimizer: Optimizer for fine-tuning. If None, uses AdamW with lr=1e-4.
             rank: Rank for synthetic low-rank data. If None, min(n_rows, n_cols, 10).
             return_full: If True, return (X_imputed, X_full); else return X_imputed.
+            means: Optional per-column means to use for normalization. If None,
+                computed from `X`.
+            stds: Optional per-column standard deviations to use for normalization.
+                If None, computed from `X`.
 
         Returns:
             Imputed matrix, or (X_imputed, X_full) if return_full.
@@ -214,10 +263,7 @@ class ImputePFN:
         if X.ndim != 2:
             raise ValueError("Input matrix must be 2-dimensional")
 
-        means = np.nanmean(X, axis=0)
-        stds = np.nanstd(X, axis=0)
-        stds = np.where(np.isnan(stds), 1, stds)
-        means = np.where(np.isnan(means), 0, means)
+        means, stds = self._resolve_normalization_stats(X, means=means, stds=stds)
 
         X_normalized = (X - means) / (stds + 1e-16)
 

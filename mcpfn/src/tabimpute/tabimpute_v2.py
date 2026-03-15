@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib.resources as resources
 import numpy as np
 import torch
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 from huggingface_hub import hf_hub_download
 
 from tabimpute.interface import ImputePFN, _generate_synthetic_low_rank
@@ -25,6 +25,8 @@ class TabImputeV2(ImputePFN):
         device: str = "cpu",
         nhead: int = 2,
         preprocessors: list[Any] = None,
+        postprocessor: Optional[Callable[..., torch.Tensor]] = None,
+        postprocessor_kwargs: Optional[dict[str, Any]] = None,
         checkpoint_path: str = None,
         max_num_rows: int = None,
         max_num_chunks: int = None,
@@ -59,6 +61,8 @@ class TabImputeV2(ImputePFN):
         self.model.load_state_dict(self.checkpoint["model"], strict=False)
 
         self.preprocessors = preprocessors
+        self.postprocessor = postprocessor
+        self.postprocessor_kwargs = postprocessor_kwargs or {}
         self.max_num_rows = max_num_rows
         if max_num_chunks is None:
             max_num_chunks = float("inf")
@@ -67,12 +71,85 @@ class TabImputeV2(ImputePFN):
         self.bar_distribution = FullSupportBarDistribution(borders=borders)
         self.verbose = verbose
 
+    def impute(
+        self,
+        X: np.ndarray,
+        return_full: bool = False,
+        num_repeats: int = 1,
+        means: np.ndarray | None = None,
+        stds: np.ndarray | None = None,
+    ) -> np.ndarray:
+        return super().impute(
+            X,
+            return_full=return_full,
+            num_repeats=num_repeats,
+            means=means,
+            stds=stds,
+        )
+
+    def impute_with_test_time_training(
+        self,
+        X: np.ndarray,
+        mask: Optional[np.ndarray] = None,
+        k: int = 10,
+        optimizer: Optional[torch.optim.Optimizer] = None,
+        rank: Optional[int] = None,
+        return_full: bool = False,
+        means: np.ndarray | None = None,
+        stds: np.ndarray | None = None,
+    ) -> np.ndarray:
+        return super().impute_with_test_time_training(
+            X,
+            mask=mask,
+            k=k,
+            optimizer=optimizer,
+            rank=rank,
+            return_full=return_full,
+            means=means,
+            stds=stds,
+        )
+
+    def _postprocess_logits(self, logits: torch.Tensor) -> torch.Tensor:
+        if self.postprocessor is None:
+            return logits
+
+        return self.postprocessor(
+            logits=logits,
+            borders=self.borders,
+            **self.postprocessor_kwargs,
+        )
+
     def get_imputation(
         self, X_normalized: np.ndarray, num_repeats: int = 1
     ) -> np.ndarray:
-        if self.max_num_rows is not None:
-            raise ValueError("`max_num_rows` is not supported in TabImputeV2.")
-        return self._get_imputation_single(X_normalized, num_repeats=num_repeats)
+        if self.max_num_rows is None:
+            return self._get_imputation_single(X_normalized, num_repeats=num_repeats)
+
+        X_full = X_normalized.copy()
+        start_index = 0
+
+        if self.verbose:
+            from tqdm import tqdm
+
+            pbar = tqdm(total=X_normalized.shape[0], desc="Processed rows")
+
+        while start_index < X_normalized.shape[0]:
+            end_index = min(
+                start_index + (self.max_num_rows * self.max_num_chunks),
+                X_normalized.shape[0],
+            )
+            if self.verbose:
+                pbar.update(end_index - start_index)
+
+            X_normalized_chunk = X_normalized[start_index:end_index, :]
+            X_normalized_chunk, X_full_chunk = self._get_imputation_chunk(
+                X_normalized_chunk, num_repeats=num_repeats
+            )
+            X_normalized[start_index:end_index, :] = X_normalized_chunk
+            X_full[start_index:end_index, :] = X_full_chunk
+            start_index = end_index
+
+        return X_normalized, X_full
 
     def _get_imputation_single(
         self, X_normalized: np.ndarray, num_repeats: int = 1
@@ -84,12 +161,76 @@ class TabImputeV2(ImputePFN):
         with torch.no_grad():
             X_normalized_tensor = X_normalized_tensor.unsqueeze(0).to(torch.bfloat16)
             preds = self.model(X_normalized_tensor)
+            preds = self._postprocess_logits(preds)
             medians = self.bar_distribution.median(logits=preds).squeeze(0)
 
         X_imputed = medians.cpu().detach().numpy()
         missing_mask = np.isnan(X_normalized)
         X_normalized[missing_mask] = X_imputed[missing_mask]
         return X_normalized, X_imputed
+
+    def _predict_chunks(self, chunks: list[np.ndarray]) -> list[np.ndarray]:
+        if len(chunks) == 0:
+            return []
+
+        chunk_batch = torch.stack(
+            [torch.from_numpy(chunk) for chunk in chunks], dim=0
+        ).to(self.device)
+
+        with torch.no_grad():
+            chunk_batch = chunk_batch.to(torch.bfloat16)
+            preds = self.model(chunk_batch)
+            preds = self._postprocess_logits(preds)
+            medians = self.bar_distribution.median(logits=preds)
+
+        return [median.cpu().detach().numpy() for median in medians]
+
+    def _get_imputation_chunk(
+        self, X_normalized: np.ndarray, num_repeats: int = 1
+    ) -> np.ndarray:
+        if num_repeats > 1:
+            raise ValueError("`num_repeats > 1` is not supported in TabImputeV2.")
+
+        row_chunks, start_indices, end_indices = self.split_into_chunks(
+            X_normalized, self.max_num_rows
+        )
+        if len(row_chunks) == 0:
+            return X_normalized, X_normalized.copy()
+
+        X_full = X_normalized.copy()
+        full_predictions: list[Optional[np.ndarray]] = [None] * len(row_chunks)
+
+        regular_chunks = row_chunks
+        regular_indices = list(range(len(row_chunks)))
+        last_chunk = None
+        last_index = None
+
+        if len(row_chunks) > 1 and row_chunks[-1].shape[0] != row_chunks[-2].shape[0]:
+            regular_chunks = row_chunks[:-1]
+            regular_indices = list(range(len(row_chunks) - 1))
+            last_chunk = row_chunks[-1]
+            last_index = len(row_chunks) - 1
+
+        for chunk_idx, full_chunk in zip(
+            regular_indices, self._predict_chunks(regular_chunks)
+        ):
+            full_predictions[chunk_idx] = full_chunk
+
+        if last_chunk is not None and last_index is not None:
+            full_predictions[last_index] = self._predict_chunks([last_chunk])[0]
+
+        for i, (start_index, end_index) in enumerate(zip(start_indices, end_indices)):
+            full_chunk = full_predictions[i]
+            if full_chunk is None:
+                raise RuntimeError("Missing full predictions for a TabImputeV2 chunk.")
+
+            missing_mask = np.isnan(X_normalized[start_index:end_index, :])
+            X_normalized[start_index:end_index, :][missing_mask] = full_chunk[
+                missing_mask
+            ]
+            X_full[start_index:end_index, :] = full_chunk
+
+        return X_normalized, X_full
 
     def _get_imputation_single_ttt(
         self,
@@ -148,6 +289,7 @@ class TabImputeV2(ImputePFN):
 
                 optimizer.zero_grad()
                 preds = self.model(X_syn_tensor)
+                preds = self._postprocess_logits(preds)
                 loss = self.bar_distribution(logits=preds, y=loss_y)
                 missing_mask_t = ~mask_t.unsqueeze(0).expand(1, n_rows, n_cols)
                 missing_loss = loss[missing_mask_t].mean()
@@ -163,6 +305,7 @@ class TabImputeV2(ImputePFN):
                     .to(torch.bfloat16)
                 )
                 preds = self.model(X_orig_tensor)
+                preds = self._postprocess_logits(preds)
                 medians = self.bar_distribution.median(logits=preds).squeeze(0)
                 X_imputed = medians.cpu().detach().numpy()
 
@@ -180,89 +323,25 @@ if __name__ == "__main__":
     import os
     import sys
     import time
+    import numpy as np
 
     checkpoint_path = (
         os.environ.get("TABIMPUTE_V2_CHECKPOINT")
         or (sys.argv[1] if len(sys.argv) > 1 else None)
-        or os.path.join(
-            os.path.dirname(__file__),
-            "workdir",
-            "tabimpute-mcar_p0.4-num_cls_12-rank_1_11",
-            "checkpoint_85000.pth",
-        )
     )
-    if not os.path.exists(checkpoint_path):
-        print(
-            f"TabImputeV2 requires a checkpoint. Set TABIMPUTE_V2_CHECKPOINT env var "
-            f"or pass path as first arg: python -m tabimpute.tabimpute_v2 <path>"
-        )
-        sys.exit(1)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    imputer = TabImputeV2(device=device, checkpoint_path=checkpoint_path)
-    print(f"Model size: {sum(p.numel() for p in imputer.model.parameters()):,}")
+    print(f"Using device: {device}")
+    if checkpoint_path is not None:
+        print(f"Using checkpoint: {checkpoint_path}")
+    else:
+        print("No checkpoint provided; using Hugging Face fallback.")
 
-    X = np.random.randn(50, 8)
-    X = (X - X.mean(axis=0)) / X.std(axis=0)
-    X[np.random.rand(*X.shape) < 0.1] = np.nan
-
-    start_time = time.time()
-    out, full = imputer.impute(X, return_full=True)
-    end_time = time.time()
-    print(f"Standard impute time: {end_time - start_time:.4f} seconds")
-
-    X_ttt = np.random.randn(40, 6)
-    X_ttt = (X_ttt - X_ttt.mean(axis=0)) / X_ttt.std(axis=0)
-    X_ttt[np.random.rand(*X_ttt.shape) < 0.15] = np.nan
-    n_missing = np.isnan(X_ttt).sum()
-    print(
-        f"\nTTT test: {X_ttt.shape[0]}x{X_ttt.shape[1]} matrix, {n_missing} missing values"
-    )
-    start_time = time.time()
-    out_ttt, full_ttt = imputer.impute_with_test_time_training(
-        X_ttt, k=5, return_full=True
-    )
-    end_time = time.time()
-    print(f"TTT impute time: {end_time - start_time:.4f} seconds")
-    print(f"TTT output shape: {out_ttt.shape}, any NaN: {np.isnan(out_ttt).any()}")
-
-    # Test TTT with preprocessors
-    from tabimpute.prepreocess import RandomRowColumnPermutation
-
-    preprocessors = [RandomRowColumnPermutation(), RandomRowColumnPermutation()]
-    imputer_pp = TabImputeV2(
-        device=device, checkpoint_path=checkpoint_path, preprocessors=preprocessors
-    )
-    X_ttt_pp = np.random.randn(35, 6)
-    X_ttt_pp = (X_ttt_pp - X_ttt_pp.mean(axis=0)) / X_ttt_pp.std(axis=0)
-    X_ttt_pp[np.random.rand(*X_ttt_pp.shape) < 0.12] = np.nan
-    n_missing_pp = np.isnan(X_ttt_pp).sum()
-    print(
-        f"\nTTT with preprocessors: {X_ttt_pp.shape[0]}x{X_ttt_pp.shape[1]} matrix, "
-        f"{n_missing_pp} missing, {len(preprocessors)} preprocessors"
-    )
-    start_time = time.time()
-    out_ttt_pp, full_ttt_pp = imputer_pp.impute_with_test_time_training(
-        X_ttt_pp, k=3, return_full=True
-    )
-    end_time = time.time()
-    print(f"TTT+preprocessors time: {end_time - start_time:.4f} seconds")
-    print(
-        f"TTT+preprocessors output shape: {out_ttt_pp.shape}, "
-        f"any NaN: {np.isnan(out_ttt_pp).any()}"
-    )
-
-    # Test TTT with matrix larger than default max_len (100) to exercise positional
-    # extrapolation and verify load_state_dict restore works (previously failed with
-    # "size mismatch for feature_encoder.row_embedding.pe" when pe was mutated)
-    X_large = np.random.randn(214, 8)
-    X_large = (X_large - X_large.mean(axis=0)) / (X_large.std(axis=0) + 1e-8)
-    X_large[np.random.rand(*X_large.shape) < 0.2] = np.nan
-    print(
-        f"\nTTT large (>{100} rows): {X_large.shape[0]}x{X_large.shape[1]} matrix, "
-        f"{np.isnan(X_large).sum()} missing"
-    )
-    out_large, _ = imputer.impute_with_test_time_training(
-        X_large.copy(), k=3, return_full=True
-    )
-    print(f"TTT large output shape: {out_large.shape}, any NaN: {np.isnan(out_large).any()}")
+    X = np.random.randn(7, 5).astype(np.float32)
+    X = (X - X.mean(axis=0)) / (X.std(axis=0) + 1e-8)
+    X[np.random.rand(*X.shape) < 0.2] = np.nan
+    print(X)
+    
+    tabimpute_v2 = TabImputeV2(device=device, checkpoint_path=checkpoint_path)
+    X_imputed = tabimpute_v2.impute(X.copy())
+    print(X_imputed)
