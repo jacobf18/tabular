@@ -18,12 +18,6 @@ def get_v2_model_from_huggingface() -> str:
     return hf_hub_download(repo_id=repo_id, filename=filename)
 
 
-def get_v2_model_from_huggingface() -> str:
-    repo_id = "Tabimpute/TabImpute"
-    filename = "tabimputev2.ckpt"
-    return hf_hub_download(repo_id=repo_id, filename=filename)
-
-
 class TabImputeV2(ImputePFN):
     """TabImpute V2 using the non-entry-wise-features model."""
 
@@ -269,6 +263,69 @@ class TabImputeV2(ImputePFN):
             return X_normalized, X_full
         return X_normalized
 
+    def _predict_chunks(self, chunks: list[np.ndarray]) -> list[np.ndarray]:
+        if len(chunks) == 0:
+            return []
+
+        chunk_batch = torch.stack(
+            [torch.from_numpy(chunk) for chunk in chunks], dim=0
+        ).to(self.device)
+
+        with torch.no_grad():
+            chunk_batch = chunk_batch.to(torch.bfloat16)
+            preds = self.model(chunk_batch)
+            preds = self._postprocess_logits(preds)
+            medians = self.bar_distribution.median(logits=preds)
+
+        return [median.cpu().detach().numpy() for median in medians]
+
+    def _get_imputation_chunk(
+        self, X_normalized: np.ndarray, num_repeats: int = 1
+    ) -> np.ndarray:
+        if num_repeats > 1:
+            raise ValueError("`num_repeats > 1` is not supported in TabImputeV2.")
+
+        row_chunks, start_indices, end_indices = self.split_into_chunks(
+            X_normalized, self.max_num_rows
+        )
+        if len(row_chunks) == 0:
+            return X_normalized, X_normalized.copy()
+
+        X_full = X_normalized.copy()
+        full_predictions: list[Optional[np.ndarray]] = [None] * len(row_chunks)
+
+        regular_chunks = row_chunks
+        regular_indices = list(range(len(row_chunks)))
+        last_chunk = None
+        last_index = None
+
+        if len(row_chunks) > 1 and row_chunks[-1].shape[0] != row_chunks[-2].shape[0]:
+            regular_chunks = row_chunks[:-1]
+            regular_indices = list(range(len(row_chunks) - 1))
+            last_chunk = row_chunks[-1]
+            last_index = len(row_chunks) - 1
+
+        for chunk_idx, full_chunk in zip(
+            regular_indices, self._predict_chunks(regular_chunks)
+        ):
+            full_predictions[chunk_idx] = full_chunk
+
+        if last_chunk is not None and last_index is not None:
+            full_predictions[last_index] = self._predict_chunks([last_chunk])[0]
+
+        for i, (start_index, end_index) in enumerate(zip(start_indices, end_indices)):
+            full_chunk = full_predictions[i]
+            if full_chunk is None:
+                raise RuntimeError("Missing full predictions for a TabImputeV2 chunk.")
+
+            missing_mask = np.isnan(X_normalized[start_index:end_index, :])
+            X_normalized[start_index:end_index, :][missing_mask] = full_chunk[
+                missing_mask
+            ]
+            X_full[start_index:end_index, :] = full_chunk
+
+        return X_normalized, X_full
+
     def _get_imputation_single_ttt(
         self,
         X_normalized: np.ndarray,
@@ -378,13 +435,3 @@ if __name__ == "__main__":
     X = (X - X.mean(axis=0)) / (X.std(axis=0) + 1e-8)
     X[np.random.rand(*X.shape) < 0.2] = np.nan
     print(X)
-    
-<<<<<<< HEAD
-    tabimpute_v2 = TabImputeV2(device=device, checkpoint_path=checkpoint_path)
-    X_imputed = tabimpute_v2.impute(X.copy())
-    print(X_imputed)
-=======
-    tabimpute_v2 = TabImputeV2(device=device, checkpoint_path=checkpoint_path, max_num_rows=2)
-    X_imputed = tabimpute_v2.impute(X.copy())
-    print(X_imputed)
->>>>>>> 7f51224 (added test time training)

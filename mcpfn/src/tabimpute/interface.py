@@ -178,6 +178,9 @@ class ImputePFN:
         self.bar_distribution = FullSupportBarDistribution(borders=borders)
         self.verbose = verbose
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 1a28414 (updated interface)
 
     def _resolve_normalization_stats(
         self,
@@ -218,6 +221,7 @@ class ImputePFN:
             resolved_stds = np.where(np.isnan(resolved_stds), 1, resolved_stds)
 
         return resolved_means, resolved_stds
+<<<<<<< HEAD
 =======
 >>>>>>> 4c655e0 (fixed dependencies, made them stable for fresh installs.)
         
@@ -231,6 +235,10 @@ class ImputePFN:
         stds: np.ndarray | None = None,
     ) -> np.ndarray:
 =======
+=======
+        
+<<<<<<< HEAD
+>>>>>>> 1a28414 (updated interface)
     def _resolve_normalization_stats(
         self,
         X: np.ndarray,
@@ -277,7 +285,20 @@ class ImputePFN:
                num_repeats: int = 1,
                means: np.ndarray | None = None,
                stds: np.ndarray | None = None) -> np.ndarray:
+<<<<<<< HEAD
 >>>>>>> 7f51224 (added test time training)
+=======
+=======
+    def impute(
+        self,
+        X: np.ndarray,
+        return_full: bool = False,
+        num_repeats: int = 1,
+        means: np.ndarray | None = None,
+        stds: np.ndarray | None = None,
+    ) -> np.ndarray:
+>>>>>>> f66ba64 (updated interface)
+>>>>>>> 1a28414 (updated interface)
         """Impute missing values in the input matrix.
         Imputes the missing values in place.
 
@@ -298,8 +319,11 @@ class ImputePFN:
             raise ValueError("Input matrix must be 2-dimensional")
 
 <<<<<<< HEAD
+<<<<<<< HEAD
         means, stds = self._resolve_normalization_stats(X, means=means, stds=stds)
 =======
+=======
+>>>>>>> 1a28414 (updated interface)
         # Get means and stds per column
         means, stds = self._resolve_normalization_stats(X, means=means, stds=stds)
         
@@ -308,7 +332,13 @@ class ImputePFN:
         
         # set means to 0 if they are nan
         means = np.where(np.isnan(means), 0, means)
+<<<<<<< HEAD
 >>>>>>> 7f51224 (added test time training)
+=======
+=======
+        means, stds = self._resolve_normalization_stats(X, means=means, stds=stds)
+>>>>>>> f66ba64 (updated interface)
+>>>>>>> 1a28414 (updated interface)
 
         # Normalize the input matrix
         X_normalized = (X - means) / (stds + 1e-16)
@@ -432,12 +462,18 @@ class ImputePFN:
             rank: Rank for synthetic low-rank data. If None, min(n_rows, n_cols, 10).
             return_full: If True, return (X_imputed, X_full); else return X_imputed.
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 1a28414 (updated interface)
             means: Optional per-column means to use for normalization. If None,
                 computed from `X`.
             stds: Optional per-column standard deviations to use for normalization.
                 If None, computed from `X`.
+<<<<<<< HEAD
 =======
 >>>>>>> 7f51224 (added test time training)
+=======
+>>>>>>> 1a28414 (updated interface)
 
         Returns:
             Imputed matrix, or (X_imputed, X_full) if return_full.
@@ -447,10 +483,17 @@ class ImputePFN:
 
         means, stds = self._resolve_normalization_stats(X, means=means, stds=stds)
 <<<<<<< HEAD
+<<<<<<< HEAD
 
 =======
         
 >>>>>>> 7f51224 (added test time training)
+=======
+        
+=======
+
+>>>>>>> f66ba64 (updated interface)
+>>>>>>> 1a28414 (updated interface)
         X_normalized = (X - means) / (stds + 1e-16)
 
         if self.preprocessors is not None:
