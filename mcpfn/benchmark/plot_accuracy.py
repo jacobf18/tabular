@@ -281,7 +281,7 @@ latex_table = auc_pivot_formatted.to_latex(
 )
 
 # Write LaTeX table to file
-output_file = "auc_table.tex"
+output_file = "figures/auc_table.tex"
 with open(output_file, 'w') as f:
     f.write(latex_table)
 

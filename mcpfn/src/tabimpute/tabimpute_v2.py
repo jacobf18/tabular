@@ -412,6 +412,191 @@ class TabImputeV2(ImputePFN):
         finally:
             self.model.load_state_dict(self.checkpoint["model"], strict=False)
 
+    def _get_imputation_single_acs_ttt(
+        self,
+        X_normalized: np.ndarray,
+        mask: Optional[np.ndarray] = None,
+        k: int = 10,
+        optimizer: Optional[torch.optim.Optimizer] = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """TTT using the ACS region (fully-observed rows) as real training data.
+
+        Instead of synthetic low-rank matrices, adapts the model to the actual
+        data distribution using the ACS patches — the rows where every feature
+        is observed.  For each gradient step a random column-wise (feature-wise)
+        missing mask is sampled whose per-feature drop probability matches the
+        actual missingness rate seen in non-ACS rows.  This teaches the model to
+        recover masked features from the joint ACS distribution before it is
+        asked to impute the full matrix.
+
+        Args:
+            X_normalized: Normalized matrix of shape (n_patches, n_features)
+                with NaN for missing entries.  Rows = patches, cols = S-matrix
+                features (i.e. already transposed for tab_impute).
+            mask: Boolean array (True = observed).  Inferred from X_normalized
+                if None.
+            k: Number of gradient steps.
+            optimizer: Optimizer for fine-tuning.  Defaults to AdamW lr=1e-5.
+
+        Returns:
+            (X_imputed, X_full) both of shape (n_patches, n_features).
+        """
+        n_rows, n_cols = X_normalized.shape
+        if mask is None:
+            mask = ~np.isnan(X_normalized)
+        else:
+            mask = np.asarray(mask, dtype=bool)
+            if mask.shape != (n_rows, n_cols):
+                raise ValueError(
+                    f"mask shape {mask.shape} must match X shape ({n_rows}, {n_cols})"
+                )
+
+        # Identify ACS rows: every feature is observed.
+        acs_row_mask = np.all(mask, axis=1)
+        X_acs = X_normalized[acs_row_mask].astype(np.float32)
+        n_acs = X_acs.shape[0]
+
+        n_missing = np.sum(~mask)
+        if n_missing == 0 or n_acs == 0:
+            X_full = X_normalized.copy()
+            return X_normalized.copy(), X_full
+
+        # Per-feature missing probability from non-ACS rows.
+        non_acs_mask = mask[~acs_row_mask]  # (n_non_acs, n_cols)
+        if non_acs_mask.shape[0] > 0:
+            feature_missing_prob = 1.0 - non_acs_mask.mean(axis=0)  # (n_cols,)
+        else:
+            feature_missing_prob = np.full(n_cols, 0.3, dtype=np.float64)
+
+        if optimizer is None:
+            optimizer = torch.optim.AdamW(self.model.parameters(), lr=1e-5)
+
+        # Determine training batch size so we stay within max_num_rows.
+        batch_rows = n_acs
+        if self.max_num_rows is not None and n_acs > self.max_num_rows:
+            batch_rows = self.max_num_rows
+
+        try:
+            self.model.train()
+            for _ in range(k):
+                # Subsample ACS rows if needed.
+                if batch_rows < n_acs:
+                    row_idx = np.random.choice(n_acs, size=batch_rows, replace=False)
+                    Y_batch = X_acs[row_idx]
+                else:
+                    Y_batch = X_acs
+
+                # Sample a column-wise missing mask matching the actual drop rate.
+                feature_missing = np.random.rand(n_cols) < feature_missing_prob
+                # Guard: need at least one missing and one observed column.
+                if not feature_missing.any():
+                    feature_missing[np.random.randint(n_cols)] = True
+                if feature_missing.all():
+                    feature_missing[np.random.randint(n_cols)] = False
+
+                X_batch = Y_batch.copy()
+                X_batch[:, feature_missing] = np.nan
+
+                X_batch_t = (
+                    torch.from_numpy(X_batch).to(self.device).unsqueeze(0).to(torch.bfloat16)
+                )
+                Y_batch_t = (
+                    torch.from_numpy(Y_batch).to(self.device).unsqueeze(0).to(torch.bfloat16)
+                )
+
+                # Compute loss only on the artificially masked (missing) features.
+                feat_miss_t = (
+                    torch.from_numpy(feature_missing)
+                    .to(self.device)
+                    .view(1, 1, n_cols)
+                    .expand_as(Y_batch_t)
+                )
+                loss_y = torch.where(
+                    feat_miss_t,
+                    Y_batch_t,
+                    torch.full_like(Y_batch_t, float("nan")),
+                )
+
+                optimizer.zero_grad()
+                preds = self.model(X_batch_t)
+                preds = self._postprocess_logits(preds)
+                loss = self.bar_distribution(logits=preds, y=loss_y)
+                missing_loss = loss[feat_miss_t].mean()
+                missing_loss.backward()
+                optimizer.step()
+
+            # Inference on the full matrix.
+            self.model.eval()
+            with torch.no_grad():
+                X_orig_tensor = (
+                    torch.from_numpy(X_normalized.copy())
+                    .to(self.device)
+                    .unsqueeze(0)
+                    .to(torch.bfloat16)
+                )
+                preds = self.model(X_orig_tensor)
+                preds = self._postprocess_logits(preds)
+                medians = self.bar_distribution.median(logits=preds).squeeze(0)
+                X_imputed = medians.cpu().detach().numpy()
+
+            X_normalized_out = X_normalized.copy()
+            X_normalized_out[~mask] = X_imputed[~mask]
+            X_full = X_imputed.copy()
+            X_full[mask] = X_normalized[mask]
+
+            return X_normalized_out, X_full
+        finally:
+            self.model.load_state_dict(self.checkpoint["model"], strict=False)
+
+    def impute_with_acs_ttt(
+        self,
+        X: np.ndarray,
+        mask: Optional[np.ndarray] = None,
+        k: int = 10,
+        optimizer: Optional[torch.optim.Optimizer] = None,
+        return_full: bool = False,
+        means: np.ndarray | None = None,
+        stds: np.ndarray | None = None,
+    ) -> np.ndarray:
+        """Impute with test-time training conditioned on the ACS region.
+
+        Fine-tunes the model for ``k`` steps on the fully-observed rows of
+        ``X`` (the ACS patches) before imputing the full matrix.  Each training
+        step masks a random subset of features according to the actual per-feature
+        missingness rate observed in non-ACS rows, so the model learns to
+        recover exactly the kind of missing structure it will face at inference.
+
+        Args:
+            X: Input matrix of shape (n_patches, n_features) with NaN for
+                missing entries (already transposed for tab_impute convention).
+            mask: Boolean mask; True = observed.  Inferred from ~np.isnan(X)
+                if None.
+            k: Number of gradient steps for test-time training.
+            optimizer: Optimizer for fine-tuning.  Defaults to AdamW lr=1e-5.
+            return_full: If True, return (X_imputed, X_full); else X_imputed.
+            means: Optional per-column means for normalization.
+            stds: Optional per-column standard deviations for normalization.
+
+        Returns:
+            Imputed matrix, or (X_imputed, X_full) if return_full is True.
+        """
+        if X.ndim != 2:
+            raise ValueError("Input matrix must be 2-dimensional.")
+
+        means, stds = self._resolve_normalization_stats(X, means=means, stds=stds)
+        X_normalized = (X - means) / (stds + 1e-16)
+
+        X_imputed, X_full = self._get_imputation_single_acs_ttt(
+            X_normalized, mask=mask, k=k, optimizer=optimizer
+        )
+
+        X_imputed = X_imputed * (stds + 1e-16) + means
+        X_full = X_full * (stds + 1e-16) + means
+
+        if return_full:
+            return X_imputed, X_full
+        return X_imputed
+
 
 if __name__ == "__main__":
     import os
