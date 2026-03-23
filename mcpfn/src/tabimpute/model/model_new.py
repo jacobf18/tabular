@@ -172,7 +172,7 @@ class TabImputeModelNew(nn.Module):
         )
         self.decoder = DecoderNew(embedding_size, mlp_hidden_size, num_outputs)
 
-    def forward(self, src: torch.Tensor) -> torch.Tensor:
+    def forward(self, src: torch.Tensor, return_embeddings: bool = False) -> torch.Tensor:
         src = self.feature_encoder(src)
 
         num_cls_rows = self.feature_encoder.last_num_cls_rows
@@ -180,8 +180,13 @@ class TabImputeModelNew(nn.Module):
 
         for block in self.transformer_blocks:
             src = block(src, num_cls_rows=num_cls_rows, num_cls_cols=num_cls_cols)
-
-        return self.decoder(src[:, num_cls_rows:, num_cls_cols:, :])
+            
+        embeddings = src[:, :num_cls_rows, :num_cls_cols, :]
+        
+        if return_embeddings:
+            return self.decoder(embeddings), embeddings
+        else:
+            return self.decoder(embeddings)
 
 
 class FeatureEncoderNew(nn.Module):

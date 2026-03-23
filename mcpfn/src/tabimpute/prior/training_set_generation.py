@@ -18,7 +18,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 from torch.utils.data import IterableDataset
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 import warnings
 from pathlib import Path
 from tqdm import tqdm
@@ -272,6 +272,276 @@ class RobustPCAPrior(LatentFactorPrior):
         return pd.DataFrame(Y, columns=L_df.columns)
 
 
+def _loraks_phase_encoding_observed_from_rng(
+    ny: int, accel: int, acs_lines: int, rng: np.random.Generator
+) -> np.ndarray:
+    """1D phase mask: True where a phase-encoding line is observed (LORAKS convention)."""
+    phase_observed = np.zeros(ny, dtype=bool)
+    offset = int(rng.integers(0, accel))
+    phase_observed[offset::accel] = True
+    if acs_lines > 0:
+        center = ny // 2
+        half = acs_lines // 2
+        lo = max(0, center - half)
+        hi = min(ny, lo + acs_lines)
+        phase_observed[lo:hi] = True
+    return phase_observed
+
+
+def loraks_cartesian_phase_encoding_observed(
+    ny: int,
+    accel: int,
+    acs_lines: int,
+    seed: int = 0,
+) -> np.ndarray:
+    """Boolean length-``ny``; True = k-space observed on that phase line.
+
+    Matches the 1D slice underlying ``mcbench.workflows.loraks._cartesian_mask``
+    for the same ``ny``, ``accel``, ``acs_lines``, and ``seed``.
+    """
+    if accel < 1:
+        raise ValueError("accel must be >= 1.")
+    if acs_lines < 0 or acs_lines > ny:
+        raise ValueError("acs_lines must be in [0, ny].")
+    rng = np.random.default_rng(seed)
+    return _loraks_phase_encoding_observed_from_rng(ny, accel, acs_lines, rng)
+
+
+def loraks_cartesian_kspace_observed_mask(
+    shape: Tuple[int, int, int],
+    accel: int,
+    acs_lines: int,
+    seed: int = 0,
+) -> np.ndarray:
+    """K-space observed mask, shape ``(nx, ny, ncoils)``, identical to LORAKS ``_cartesian_mask``."""
+    nx, ny, ncoils = shape
+    phase = loraks_cartesian_phase_encoding_observed(ny, accel, acs_lines, seed)
+    return np.broadcast_to(phase[None, :, None], (nx, ny, ncoils)).copy()
+
+
+def _loraks_build_patch_indices(
+    shape_2d: Tuple[int, int], patch_shape: Tuple[int, int]
+) -> Tuple[np.ndarray, Tuple[int, int]]:
+    """Patch index grid for LORAKS ``S``-operator (same as ``mcbench.workflows.loraks``)."""
+    nx, ny = shape_2d
+    px, py = patch_shape
+    if px < 2 or py < 2 or px > nx or py > ny:
+        raise ValueError(f"Invalid patch shape {patch_shape} for shape {shape_2d}.")
+    n_samples_x = nx - px + 1
+    n_samples_y = ny - py + 1
+    n_samples = n_samples_x * n_samples_y
+    patch_entries = px * py
+    indices = np.empty((patch_entries, n_samples), dtype=np.int64)
+    col = 0
+    for x0 in range(n_samples_x):
+        for y0 in range(n_samples_y):
+            patch = [
+                (x0 + dx) * ny + (y0 + dy)
+                for dx in range(px)
+                for dy in range(py)
+            ]
+            indices[:, col] = np.asarray(patch, dtype=np.int64)
+            col += 1
+    return indices, (patch_entries, n_samples)
+
+
+def _loraks_s_operator(
+    kspace: np.ndarray,
+    indices: np.ndarray,
+    matrix_shape: Optional[Tuple[int, int]] = None,
+) -> np.ndarray:
+    """LORAKS ``S``-matrix construction (same as ``mcbench.workflows.loraks.loraks_s_operator``)."""
+    data = np.asarray(kspace)
+    if data.ndim != 3:
+        raise ValueError("kspace must have shape (nx, ny, ncoils).")
+    nx, ny, ncoils = data.shape
+    patch_entries, n_samples = indices.shape if matrix_shape is None else matrix_shape
+    if indices.shape != (patch_entries, n_samples):
+        raise ValueError(
+            f"indices shape {indices.shape} does not match matrix shape {matrix_shape}."
+        )
+
+    k_flat = np.transpose(data, (2, 0, 1)).reshape(ncoils, nx * ny)
+    s_p = k_flat[:, indices.reshape(-1)].reshape(ncoils, patch_entries, n_samples)
+    indices_rev = np.flip(indices, axis=0)
+    s_m = k_flat[:, indices_rev.reshape(-1)].reshape(ncoils, patch_entries, n_samples)
+
+    spm = s_p - s_m
+    s_u = np.concatenate([spm.real, -spm.imag], axis=1)
+    spp = s_p + s_m
+    s_d = np.concatenate([spp.imag, spp.real], axis=1)
+    s = np.concatenate([s_u, s_d], axis=2)
+    return s.reshape(ncoils * 2 * patch_entries, 2 * n_samples).astype(np.float64, copy=False)
+
+
+def loraks_lifted_finite_mask(
+    shape: Tuple[int, int, int],
+    patch_radius: int,
+    accel: int,
+    acs_lines: int,
+    seed: int = 0,
+) -> Tuple[np.ndarray, Tuple[int, int]]:
+    """Where the lifted LORAKS ``S``-matrix is finite given Cartesian undersampling.
+
+    Builds k-space with ``NaN`` on missing samples (as in ``generate_loraks_benchmark``),
+    applies ``loraks_s_operator``, and returns ``numpy.isfinite(lifted)``.
+
+    Returns
+    -------
+    finite
+        Boolean array, shape ``(ncoils * 2 * patch_entries, 2 * n_samples)``.
+    matrix_shape
+        ``(patch_entries, n_samples)`` for use with LORAKS utilities.
+    """
+    if patch_radius < 1:
+        raise ValueError("patch_radius must be >= 1.")
+    nx, ny, _ = shape
+    px = py = 2 * patch_radius + 1
+    observed = loraks_cartesian_kspace_observed_mask(shape, accel, acs_lines, seed)
+    nan_c = np.complex64(complex(np.nan, np.nan))
+    one_c = np.complex64(1.0)
+    kspace = np.where(observed, one_c, nan_c)
+    indices, matrix_shape = _loraks_build_patch_indices((nx, ny), (px, py))
+    lifted = _loraks_s_operator(kspace, indices, matrix_shape)
+    return np.isfinite(lifted), matrix_shape
+
+
+def save_loraks_lifted_mask_png(
+    path: Union[str, Path],
+    shape: Tuple[int, int, int] = (128, 128, 1),
+    patch_radius: int = 3,
+    accel: int = 4,
+    acs_lines: int = 24,
+    seed: int = 0,
+    *,
+    channel: str = "observed",
+    max_display_side: int = 16000,
+) -> Path:
+    """Save a PNG of the **lifted** LORAKS ``S``-matrix finiteness mask.
+
+    White means finite entries (patch fully in observed k-space when
+    ``channel="observed"``); black means NaN in ``lifted_observed`` from
+    ``loraks_lift``. For ``channel="missing"``, the colors are swapped.
+
+    Large matrices are stride-subsampled **per axis** for the image only (wide
+    S-matrices keep full row resolution).
+
+    Requires matplotlib.
+    """
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError as e:
+        raise ImportError(
+            "save_loraks_lifted_mask_png requires matplotlib. "
+            "Install with: pip install matplotlib  (or tabimpute[benchmark])"
+        ) from e
+
+    path = Path(path).expanduser().resolve()
+    finite, _ = loraks_lifted_finite_mask(shape, patch_radius, accel, acs_lines, seed)
+    plane = finite.astype(np.float32)
+    if channel == "missing":
+        plane = 1.0 - plane
+    elif channel != "observed":
+        raise ValueError("channel must be 'observed' or 'missing'.")
+
+    h_full, w_full = plane.shape
+    step_h = (
+        (h_full + max_display_side - 1) // max_display_side
+        if h_full > max_display_side
+        else 1
+    )
+    step_w = (
+        (w_full + max_display_side - 1) // max_display_side
+        if w_full > max_display_side
+        else 1
+    )
+    if step_h > 1 or step_w > 1:
+        plane = plane[::step_h, ::step_w]
+    h_d, w_d = plane.shape
+
+    nx, ny, ncoils = shape
+    pr = patch_radius
+    fig_w = min(48.0, max(10.0, w_d / 70.0))
+    fig_h = min(24.0, max(4.0, h_d / 12.0))
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+    ax.imshow(plane, cmap="gray", interpolation="nearest", aspect="auto", vmin=0.0, vmax=1.0)
+    title = (
+        f"LORAKS lifted S-matrix ({channel})  full shape {h_full}×{w_full}  "
+        f"nx={nx} ny={ny} ncoils={ncoils}  patch_radius={pr}  "
+        f"accel={accel}  acs_lines={acs_lines}  seed={seed}"
+    )
+    if step_h > 1 or step_w > 1:
+        title += f"  (display subsample row:{step_h} col:{step_w} → {h_d}×{w_d})"
+    ax.set_title(title)
+    ax.set_xlabel("2 * n_patch_samples (column index in lifted matrix)")
+    ax.set_ylabel("ncoils * 2 * patch_entries (row index in lifted matrix)")
+    fig.tight_layout()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
+def save_loraks_cartesian_mask_png(
+    path: Union[str, Path],
+    shape: Tuple[int, int, int] = (128, 128, 1),
+    accel: int = 4,
+    acs_lines: int = 24,
+    seed: int = 0,
+    *,
+    channel: str = "observed",
+) -> Path:
+    """Save a PNG visualization of the LORAKS Cartesian mask for visual inspection.
+
+    The image is a single readout–phase plane (first coil). White pixels are
+    observed k-space samples when ``channel="observed"``; black are missing.
+    Use ``channel="missing"`` to invert (white = missing).
+
+    Requires matplotlib (e.g. ``pip install matplotlib`` or ``tabimpute[benchmark]``).
+
+    Parameters
+    ----------
+    path
+        Output ``.png`` path.
+    shape
+        ``(nx, ny, ncoils)`` as in ``generate_loraks_benchmark``.
+    accel, acs_lines, seed
+        Same as the LORAKS benchmark generator.
+    channel
+        ``"observed"`` or ``"missing"``.
+    """
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError as e:
+        raise ImportError(
+            "save_loraks_cartesian_mask_png requires matplotlib. "
+            "Install with: pip install matplotlib  (or tabimpute[benchmark])"
+        ) from e
+
+    path = Path(path).expanduser().resolve()
+    observed = loraks_cartesian_kspace_observed_mask(shape, accel, acs_lines, seed)
+    plane = observed[:, :, 0].astype(np.float32)
+    if channel == "missing":
+        plane = 1.0 - plane
+    elif channel != "observed":
+        raise ValueError("channel must be 'observed' or 'missing'.")
+
+    nx, ny, _ = shape
+    fig, ax = plt.subplots(figsize=(max(6, ny / 32), max(6, nx / 32)))
+    ax.imshow(plane, cmap="gray", interpolation="nearest", aspect="auto", vmin=0.0, vmax=1.0)
+    ax.set_title(
+        f"LORAKS Cartesian ({channel})  nx={nx} ny={ny}  accel={accel}  "
+        f"acs_lines={acs_lines}  seed={seed}"
+    )
+    ax.set_xlabel("phase encoding (ny)")
+    ax.set_ylabel("readout (nx)")
+    fig.tight_layout()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
 # Missingness Patterns
 class BaseMissingness:
     def __init__(self, config: dict):
@@ -325,6 +595,59 @@ class MNARPattern(BaseMissingness):
     
     def __str__(self):
         return "MNAR"
+
+
+class LoraksCartesianPattern(BaseMissingness):
+    """Cartesian undersampling with a central ACS band, as in LORAKS MRI benchmarks.
+
+    Mirrors ``_cartesian_mask`` in ``mcbench/workflows/loraks.py``: phase-encoding
+    lines are sampled every ``accel``-th index with a random offset, and a
+    contiguous block of lines around the center is fully observed (ACS).
+
+    For tabular matrices, **columns** play the role of phase-encoding lines (the
+    ``ny`` axis in k-space): each column is either entirely observed or entirely
+    missing, matching the broadcast mask structure ``(nx, ny, ncoils)`` in the
+    benchmark (readout and coil dimensions fully observed per line).
+
+    Config keys (all optional): ``loraks_accel`` or ``accel`` (default 4),
+    ``loraks_acs_lines`` or ``acs_lines`` (default 24), ``loraks_seed`` or
+    ``seed`` (optional). When a seed is set, the undersampling offset matches
+    ``numpy.random.default_rng(seed)`` as in ``generate_loraks_benchmark``; when
+    omitted, a new unseeded generator is used each call (random offset per batch).
+    """
+
+    def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
+        _, n_cols = X.shape
+        accel = int(self.config.get("loraks_accel", self.config.get("accel", 4)))
+        acs_lines = int(
+            self.config.get("loraks_acs_lines", self.config.get("acs_lines", 24))
+        )
+        if accel < 1:
+            raise ValueError("loraks_accel / accel must be >= 1.")
+        if n_cols == 0:
+            return X
+
+        acs_lines = max(0, min(acs_lines, n_cols))
+
+        seed = self.config.get("loraks_seed", self.config.get("seed", None))
+        rng = (
+            np.random.default_rng(int(seed))
+            if seed is not None
+            else np.random.default_rng()
+        )
+        phase_observed = _loraks_phase_encoding_observed_from_rng(
+            n_cols, accel, acs_lines, rng
+        )
+
+        col_observed = torch.from_numpy(phase_observed).to(
+            device=X.device, dtype=torch.bool
+        )
+        out = X.clone()
+        out[:, ~col_observed] = torch.nan
+        return out
+
+    def __str__(self):
+        return "LoraksCartesian"
 
 
 class MNARRecSysPattern(BaseMissingness):
@@ -1074,6 +1397,8 @@ class MissingnessPrior(IterableDataset):
         "mnar_two_phase_subset": MNARTwoPhaseSubsetPattern,
         "mnar_skip_logic": MNARSkipLogicPattern,
         "mnar_cold_start": MNARColdStartPattern,
+        # MRI / matrix-completion benchmark: LORAKS Cartesian mask
+        "loraks_cartesian": LoraksCartesianPattern,
         # Diffusion-based MAR pattern (lazy import to avoid circular dependency)
         "mar_diffusion": (
             lambda cfg: __import__(

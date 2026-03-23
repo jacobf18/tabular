@@ -3,7 +3,6 @@ from __future__ import annotations
 import torch
 
 from tabimpute.prior.splits import create_train_test_sets
-from tabimpute.prior.training_set_generation import LatentFactorPrior
 
 import numpy as np
 from tabimpute.model.mcpfn import MCPFN
@@ -554,7 +553,7 @@ class ImputePFN:
         return X_normalized, X_full
         
 
-    def _get_imputation_single(self, X_normalized: np.ndarray, num_repeats: int = 1) -> np.ndarray:
+    def _get_imputation_single(self, X_normalized: np.ndarray, num_repeats: int = 1, return_full: bool = True) -> np.ndarray:
         X_normalized_tensor = torch.from_numpy(X_normalized).to(self.device)
 
         X_input, input_y, missing_indices, non_missing_indices, train_size = self._get_input_tensors(X_normalized_tensor)
@@ -584,6 +583,8 @@ class ImputePFN:
                     out_full.append(X_full)
                     out_normalized.append(X_imputed)
                 
+                if return_full:
+                    return out_full, out_normalized
                 return out_normalized, out_full
 
         X_full = X_normalized.copy()
@@ -595,7 +596,9 @@ class ImputePFN:
         X_full[missing_indices] = medians_test.cpu().detach().numpy()
         X_full[non_missing_indices] = medians_train.cpu().detach().numpy()
 
-        return X_normalized, X_full
+        if return_full:
+            return X_normalized, X_full
+        return X_normalized
 
 _TABPFN_EXTENSIONS_IMPORT_ERROR = None
 try:
