@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -7,7 +8,14 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
+from tqdm import tqdm
 
+from tabimpute.prepreocess import (
+    RandomColumnPermutation,
+    RandomRowColumnPermutation,
+    RandomRowPermutation,
+    SequentialPreprocess,
+)
 from tabimpute.tabimpute_v2 import TabImputeV2
 
 
@@ -85,11 +93,22 @@ class TabImputeCategoricalAdapter(TabImputeV2):
     Each categorical column gets its own paired encoder/decoder, so the values
     may be of arbitrary Python types as long as they are hashable.
 
+    If ``preprocessors`` is set (same as ``TabImputeV2`` / ``ImputePFN``), after
+    adapter training the inference step mirrors ``ImputePFN.impute``: each
+    preprocessor gets an independent ``fit_transform`` on the normalized
+    inference matrix, the frozen model + adapters run in that view, then
+    ``inverse_transform`` and averaging (numeric in normalized space; categorical
+    predictions are majority-voted across preprocessor draws).
+
     Assumptions
     -----------
     - Target categorical columns may contain arbitrary hashable values plus missing values.
     - All non-target columns must be numeric (or missing) so they can be passed
       through the pretrained numeric feature encoder.
+
+    Hyperparameters: adapter heads are small; use AdamW learning rates on the order
+    of 1e-3–1e-2 with enough steps (hundreds). Much smaller rates with few steps
+    typically underfit versus a full one-hot TabImpute forward.
     """
 
     @staticmethod
@@ -255,6 +274,58 @@ class TabImputeCategoricalAdapter(TabImputeV2):
             for target_col, prepared in prepared_columns.items()
         }
 
+    @staticmethod
+    def _spatial_row_col_maps_from_preprocessor(
+        preprocessor: Any,
+        n_rows: int,
+        n_cols: int,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Map preprocessed indices back to original row/column indices.
+
+        For transforms where ``X_pre[i, j] = X[cum_r[i], cum_c[j]]`` (row/column
+        permutations only), ``cum_r`` and ``cum_c`` record which original row/col
+        each preprocessed slot corresponds to. Non-spatial preprocessors
+        (e.g. whitening) leave the identity mapping.
+        """
+        cum_r = np.arange(n_rows, dtype=np.int64)
+        cum_c = np.arange(n_cols, dtype=np.int64)
+
+        def _compose(subs: list[Any]) -> None:
+            nonlocal cum_r, cum_c
+            for sub in subs:
+                if isinstance(sub, RandomRowColumnPermutation):
+                    cum_r = cum_r[np.asarray(sub.row_perm, dtype=np.int64)]
+                    cum_c = cum_c[np.asarray(sub.col_perm, dtype=np.int64)]
+                elif isinstance(sub, RandomRowPermutation):
+                    cum_r = cum_r[np.asarray(sub.perm, dtype=np.int64)]
+                elif isinstance(sub, RandomColumnPermutation):
+                    cum_c = cum_c[np.asarray(sub.perm, dtype=np.int64)]
+
+        if isinstance(preprocessor, SequentialPreprocess):
+            _compose(list(preprocessor.preprocessors))
+        else:
+            _compose([preprocessor])
+        return cum_r, cum_c
+
+    @staticmethod
+    def _remap_prepared_columns_for_permutation(
+        prepared_columns: dict[int, _PreparedCategoricalColumn],
+        cum_r: np.ndarray,
+        cum_c: np.ndarray,
+    ) -> dict[int, _PreparedCategoricalColumn]:
+        """Rebuild prepared column metadata in permuted column / row order."""
+        out: dict[int, _PreparedCategoricalColumn] = {}
+        for old_col, prep in prepared_columns.items():
+            new_col = int(np.flatnonzero(cum_c == old_col)[0])
+            out[new_col] = _PreparedCategoricalColumn(
+                target_col=new_col,
+                categories=prep.categories,
+                category_to_index=prep.category_to_index,
+                category_ids=prep.category_ids[cum_r],
+                observed_mask=prep.observed_mask[cum_r],
+            )
+        return out
+
     def _encode_with_categorical_adapters(
         self,
         X_normalized: torch.Tensor,
@@ -381,10 +452,11 @@ class TabImputeCategoricalAdapter(TabImputeV2):
         *,
         max_steps: int = 200,
         mask_prob: float = 0.35,
-        lr: float = 1e-2,
-        weight_decay: float = 0.0,
+        lr: float = 1e-3,
+        weight_decay: float = 1e-4,
         batch_rows: Optional[int] = None,
         random_state: int = 0,
+        verbose: bool = False,
     ) -> CategoricalAdapterState:
         _, X_normalized, _, _, prepared_columns = self._prepare_categorical_inputs(
             X, target_cols
@@ -409,7 +481,14 @@ class TabImputeCategoricalAdapter(TabImputeV2):
                 adapter.train()
 
             if any(len(prepared.categories) > 1 for prepared in prepared_columns.values()):
+                if verbose:
+                    pbar = tqdm(
+                        total=max_steps,
+                        desc=f"Training column adapters for {len(prepared_columns)} cols",
+                    )
                 for _ in range(max_steps):
+                    if verbose:
+                        pbar.update(1)
                     input_observed_by_col: dict[int, np.ndarray] = {}
                     masked_rows_by_col: dict[int, np.ndarray] = {}
                     active_cols: list[int] = []
@@ -476,6 +555,8 @@ class TabImputeCategoricalAdapter(TabImputeV2):
                         losses_by_col[target_col].append(float(loss.detach().cpu()))
 
                     total_loss = torch.stack(losses).mean()
+                    if verbose:
+                        pbar.set_postfix(loss=float(total_loss.detach().cpu()))
                     optimizer.zero_grad()
                     total_loss.backward()
                     optimizer.step()
@@ -511,8 +592,8 @@ class TabImputeCategoricalAdapter(TabImputeV2):
         *,
         max_steps: int = 200,
         mask_prob: float = 0.35,
-        lr: float = 1e-2,
-        weight_decay: float = 0.0,
+        lr: float = 1e-3,
+        weight_decay: float = 1e-4,
         batch_rows: Optional[int] = None,
         random_state: int = 0,
     ) -> SingleCategoricalColumnState:
@@ -548,11 +629,12 @@ class TabImputeCategoricalAdapter(TabImputeV2):
         train_adapter: bool = True,
         max_steps: int = 200,
         mask_prob: float = 0.35,
-        lr: float = 1e-2,
-        weight_decay: float = 0.0,
+        lr: float = 1e-3,
+        weight_decay: float = 1e-4,
         batch_rows: Optional[int] = None,
         random_state: int = 0,
         return_probabilities: bool = False,
+        verbose: bool = False,
     ) -> (
         tuple[np.ndarray, CategoricalAdapterState]
         | tuple[np.ndarray, CategoricalAdapterState, dict[int, np.ndarray]]
@@ -574,6 +656,7 @@ class TabImputeCategoricalAdapter(TabImputeV2):
                 weight_decay=weight_decay,
                 batch_rows=batch_rows,
                 random_state=random_state,
+                verbose=verbose,
             )
 
         expected_cols = sorted(prepared_columns)
@@ -601,57 +684,171 @@ class TabImputeCategoricalAdapter(TabImputeV2):
         for target_col, prepared in prepared_columns.items():
             X_infer[~prepared.observed_mask, target_col] = np.nan
 
-        adapters = {
-            target_col: state.column_states[target_col].adapter
-            for target_col in prepared_columns
-        }
-        with torch.no_grad():
-            contextual = self._forward_contextual_embeddings(
-                X_infer,
-                prepared_columns=prepared_columns,
-                category_input_observed=input_observed_by_col,
-                adapters=adapters,
-            )
-            logits_by_col = self._forward_categorical_logits(
-                contextual,
-                prepared_columns=prepared_columns,
-                adapters=adapters,
-            )
-            probs_by_col = {
-                target_col: torch.softmax(logits, dim=-1)[0].detach().cpu().numpy()
-                for target_col, logits in logits_by_col.items()
-            }
-            numeric_logits = self._postprocess_logits(self.model.decoder(contextual))
-            numeric_medians = (
-                self.bar_distribution.median(logits=numeric_logits)
-                .squeeze(0)
-                .detach()
-                .cpu()
-                .numpy()
-            )
+        categorical_cols = set(prepared_columns)
+        numeric_orig_cols = [
+            c for c in range(X_obj.shape[1]) if c not in categorical_cols
+        ]
+        preprocessors_list = getattr(self, "preprocessors", None) or []
+        n_pre = len(preprocessors_list)
 
         X_imputed = X_obj.copy()
-        categorical_cols = set(prepared_columns)
+        probs_by_col: dict[int, np.ndarray] = {}
 
-        # Non-categorical columns still use the pretrained numeric decoder, with
-        # the same mean/std normalization as the regular TabImpute path.
-        for col_idx in range(X_obj.shape[1]):
-            if col_idx in categorical_cols:
-                continue
-            missing_rows = np.where(np.isnan(X_numeric[:, col_idx]))[0]
-            if missing_rows.size == 0:
-                continue
-            denormalized = numeric_medians[:, col_idx] * stds[col_idx] + means[col_idx]
-            for row_idx in missing_rows:
-                X_imputed[row_idx, col_idx] = float(denormalized[row_idx])
+        if n_pre == 0:
+            adapters = {
+                target_col: state.column_states[target_col].adapter
+                for target_col in prepared_columns
+            }
+            with torch.no_grad():
+                contextual = self._forward_contextual_embeddings(
+                    X_infer,
+                    prepared_columns=prepared_columns,
+                    category_input_observed=input_observed_by_col,
+                    adapters=adapters,
+                )
+                logits_by_col = self._forward_categorical_logits(
+                    contextual,
+                    prepared_columns=prepared_columns,
+                    adapters=adapters,
+                )
+                probs_by_col = {
+                    target_col: torch.softmax(logits, dim=-1)[0].detach().cpu().numpy()
+                    for target_col, logits in logits_by_col.items()
+                }
+                numeric_logits = self._postprocess_logits(self.model.decoder(contextual))
+                numeric_medians = (
+                    self.bar_distribution.median(logits=numeric_logits)
+                    .squeeze(0)
+                    .detach()
+                    .cpu()
+                    .numpy()
+                )
 
-        for target_col, prepared in prepared_columns.items():
-            pred_ids = probs_by_col[target_col].argmax(axis=-1)
-            missing_rows = np.where(~prepared.observed_mask)[0]
-            for row_idx in missing_rows:
-                X_imputed[row_idx, target_col] = state.column_states[target_col].categories[
-                    int(pred_ids[row_idx])
-                ]
+            for col_idx in numeric_orig_cols:
+                missing_rows = np.where(np.isnan(X_numeric[:, col_idx]))[0]
+                if missing_rows.size == 0:
+                    continue
+                denormalized = numeric_medians[:, col_idx] * stds[col_idx] + means[col_idx]
+                for row_idx in missing_rows:
+                    X_imputed[row_idx, col_idx] = float(denormalized[row_idx])
+
+            for target_col, prepared in prepared_columns.items():
+                pred_ids = probs_by_col[target_col].argmax(axis=-1)
+                missing_rows = np.where(~prepared.observed_mask)[0]
+                for row_idx in missing_rows:
+                    X_imputed[row_idx, target_col] = state.column_states[
+                        target_col
+                    ].categories[int(pred_ids[row_idx])]
+        else:
+            # Same ensemble pattern as ``ImputePFN.impute`` / ``TabImputeV2.impute``:
+            # independent preprocessor draws, forward in transformed space, inverse,
+            # then average in the normalized (pre-inverse) layout of ``X_infer``.
+            acc_norm = np.zeros_like(X_infer, dtype=np.float64)
+            cat_votes: dict[tuple[int, int], list[Any]] = defaultdict(list)
+            probs_acc: Optional[dict[int, np.ndarray]] = None
+            if return_probabilities:
+                probs_acc = {
+                    old_col: np.zeros(
+                        (
+                            X_infer.shape[0],
+                            len(state.column_states[old_col].categories),
+                        ),
+                        dtype=np.float64,
+                    )
+                    for old_col in prepared_columns
+                }
+
+            for pre in preprocessors_list:
+                X_pre = pre.fit_transform(np.asarray(X_infer, dtype=np.float64))
+                cum_r, cum_c = self._spatial_row_col_maps_from_preprocessor(
+                    pre, X_infer.shape[0], X_infer.shape[1]
+                )
+                prepared_pre = self._remap_prepared_columns_for_permutation(
+                    prepared_columns, cum_r, cum_c
+                )
+                input_observed_pre = {
+                    col: prepared_pre[col].observed_mask.copy() for col in prepared_pre
+                }
+                adapters_perm = {
+                    int(np.flatnonzero(cum_c == old_col)[0]): state.column_states[
+                        old_col
+                    ].adapter
+                    for old_col in prepared_columns
+                }
+                with torch.no_grad():
+                    contextual = self._forward_contextual_embeddings(
+                        X_pre.astype(np.float32),
+                        prepared_columns=prepared_pre,
+                        category_input_observed=input_observed_pre,
+                        adapters=adapters_perm,
+                    )
+                    logits_by_col = self._forward_categorical_logits(
+                        contextual,
+                        prepared_columns=prepared_pre,
+                        adapters=adapters_perm,
+                    )
+                    probs_by_pre = {
+                        col: torch.softmax(logits, dim=-1)[0].detach().cpu().numpy()
+                        for col, logits in logits_by_col.items()
+                    }
+                    numeric_logits = self._postprocess_logits(
+                        self.model.decoder(contextual)
+                    )
+                    numeric_medians_pre = (
+                        self.bar_distribution.median(logits=numeric_logits)
+                        .squeeze(0)
+                        .detach()
+                        .cpu()
+                        .numpy()
+                    )
+
+                X_hat_pre = np.asarray(X_pre, dtype=np.float64).copy()
+                for orig_c in numeric_orig_cols:
+                    j = int(np.flatnonzero(cum_c == orig_c)[0])
+                    miss = np.isnan(X_hat_pre[:, j])
+                    X_hat_pre[miss, j] = numeric_medians_pre[miss, j].astype(np.float64)
+
+                X_back = pre.inverse_transform(X_hat_pre)
+                acc_norm += np.asarray(X_back, dtype=np.float64)
+
+                for old_col, prep in prepared_columns.items():
+                    new_col = int(np.flatnonzero(cum_c == old_col)[0])
+                    probs = probs_by_pre[new_col]
+                    cats = state.column_states[old_col].categories
+                    if return_probabilities and probs_acc is not None:
+                        for orig_row in range(X_infer.shape[0]):
+                            r = int(np.flatnonzero(cum_r == orig_row)[0])
+                            probs_acc[old_col][orig_row] += probs[r]
+                    for orig_row in np.where(~prep.observed_mask)[0]:
+                        r = int(np.flatnonzero(cum_r == orig_row)[0])
+                        cat_votes[(int(orig_row), old_col)].append(
+                            cats[int(probs[r].argmax())]
+                        )
+
+            acc_norm /= n_pre
+            if return_probabilities and probs_acc is not None:
+                for old_col in prepared_columns:
+                    probs_acc[old_col] /= n_pre
+                probs_by_col = probs_acc
+
+            for col_idx in numeric_orig_cols:
+                missing_rows = np.where(np.isnan(X_numeric[:, col_idx]))[0]
+                if missing_rows.size == 0:
+                    continue
+                denormalized = acc_norm[:, col_idx] * stds[col_idx] + means[col_idx]
+                for row_idx in missing_rows:
+                    X_imputed[row_idx, col_idx] = float(denormalized[row_idx])
+
+            for target_col, prepared in prepared_columns.items():
+                for row_idx in np.where(~prepared.observed_mask)[0]:
+                    votes = cat_votes[(int(row_idx), target_col)]
+                    if votes:
+                        X_imputed[row_idx, target_col] = Counter(votes).most_common(1)[0][
+                            0
+                        ]
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
         if return_probabilities:
             return X_imputed, state, probs_by_col
@@ -666,11 +863,12 @@ class TabImputeCategoricalAdapter(TabImputeV2):
         train_adapter: bool = True,
         max_steps: int = 200,
         mask_prob: float = 0.35,
-        lr: float = 1e-2,
-        weight_decay: float = 0.0,
+        lr: float = 1e-3,
+        weight_decay: float = 1e-4,
         batch_rows: Optional[int] = None,
         random_state: int = 0,
         return_probabilities: bool = False,
+        verbose: bool = False,
     ) -> (
         tuple[np.ndarray, SingleCategoricalColumnState]
         | tuple[np.ndarray, SingleCategoricalColumnState, np.ndarray]
@@ -688,6 +886,7 @@ class TabImputeCategoricalAdapter(TabImputeV2):
             batch_rows=batch_rows,
             random_state=random_state,
             return_probabilities=return_probabilities,
+            verbose=verbose,
         )
         if return_probabilities:
             X_imputed, state_out, probs_by_col = result
@@ -766,7 +965,6 @@ if __name__ == "__main__":
     assert state.target_cols == categorical_cols
     assert set(state.column_states) == set(categorical_cols)
 
-    print(X)
     X_imputed, reused_state, probs = smoke.impute_categorical_columns(
         X,
         target_cols=categorical_cols,
@@ -774,7 +972,6 @@ if __name__ == "__main__":
         train_adapter=False,
         return_probabilities=True,
     )
-    print(X_imputed)
     assert X_imputed.shape == X.shape
     assert reused_state.target_cols == categorical_cols
     assert set(probs) == set(categorical_cols)

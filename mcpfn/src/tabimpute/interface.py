@@ -629,12 +629,9 @@ except ModuleNotFoundError as exc:
 class TabImputeCategorical:
     def __init__(self, 
                  device: str = "cuda",
-                 nhead: int = 2,
-                 preprocessors: list[Any] = None,
-                 checkpoint_path: str = None):
+                 imputer: ImputePFN = None):
         self.device = device
-        self.imputer = ImputePFN(device=device, nhead=nhead, preprocessors=preprocessors, checkpoint_path=checkpoint_path)
-        
+        self.imputer = imputer
         
     def impute(self, 
                X, 

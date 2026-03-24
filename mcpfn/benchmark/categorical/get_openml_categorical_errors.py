@@ -4,11 +4,18 @@ import numpy as np
 import pandas as pd
 import torch
 from tqdm import tqdm
-from tabimpute.interface import ImputePFN, TabPFNImputer, TabPFNUnsupervisedModel, MCTabPFNEnsemble, TabImputeEnsemble, TabImputeRouter, TabImputeCategorical
+from tabimpute.categorical_adapter_interface import TabImputeCategoricalAdapter
+from tabimpute.interface import (
+    ImputePFN,
+    TabImputeCategorical,
+    TabPFNImputer,
+    TabPFNUnsupervisedModel,
+)
+from tabimpute.tabimpute_v2 import TabImputeV2
 from tabimpute.prepreocess import (
-    RandomRowColumnPermutation, 
-    RandomRowPermutation, 
-    RandomColumnPermutation, 
+    RandomColumnPermutation,
+    RandomRowColumnPermutation,
+    RandomRowPermutation,
 )
 from hyperimpute.plugins.imputers import Imputers
 from sklearn.impute import KNNImputer
@@ -35,7 +42,8 @@ force_rerun = True
 
 # --- Choose which imputers to run ---
 imputers = set([
-    "mcpfn",
+    # "mcpfn",
+    "mcpfn_adapter",
     # "mcpfn_ensemble",
     # "tabimpute_ensemble",
     # "knn",
@@ -44,8 +52,8 @@ imputers = set([
     # "hyperimpute_mode",
     # "softimpute",
     # "hyperimpute_ot", # Sinkhorn / Optimal Transport
-    "hyperimpute",
-    "hyperimpute_missforest",
+    # "hyperimpute",
+    # "hyperimpute_missforest",
     # "hyperimpute_ice",
     # "hyperimpute_mice",
     # "hyperimpute_gain",
@@ -56,32 +64,63 @@ imputers = set([
 ])
 
 # --- Initialize classes once ---
-if "mcpfn" in imputers:
-    preprocessors = [
+ROUND2_T2_CHECKPOINT = (
+    "/home/jacobf18/tabular/mcpfn/src/tabimpute/workdir/"
+    "tabimpute-round2-t2/checkpoint_10000.pth"
+)
+
+
+def build_round2_t2_preprocessors():
+    """Fresh instances per imputer (fitted state must not be shared)."""
+    return [
         RandomRowColumnPermutation(),
         RandomRowColumnPermutation(),
         RandomRowPermutation(),
         RandomColumnPermutation(),
-        # StandardizeWhiten(whiten=True),
     ]
-    
+
+
+# TabImputeCategoricalAdapter hyperparameters (test-time heads on a frozen backbone).
+#
+# The legacy one-hot path runs the full TabImpute forward on an expanded numeric matrix,
+# so it can look much stronger if adapter training is under-powered. Very small learning
+# rates (e.g. 2e-5) with only ~100 steps barely move the adapter weights away from the
+# scalar-encoder bootstrap init — use AdamW-style rates (1e-3 … 1e-2) and enough steps.
+#
+# Tune knobs (rough guidance):
+# - max_steps: 200–800 depending on n_rows and number of categorical columns
+# - lr: 1e-3 to 1e-2; if loss oscillates, lower lr or add weight_decay
+# - mask_prob: 0.25–0.5 (higher = harder masked-label recovery, often better if stable)
+# - batch_rows: None = use all observed rows for masking each step; set e.g. 512–2048
+#   on large tables for speed (noisier gradients)
+# - weight_decay: 1e-5 … 1e-3 for light regularization on the small heads
+ADAPTER_MAX_STEPS = 400
+ADAPTER_LR = 3e-3
+ADAPTER_MASK_PROB = 0.35
+ADAPTER_WEIGHT_DECAY = 1e-4
+ADAPTER_BATCH_ROWS = None  # e.g. 1024 for large datasets / faster epochs
+ADAPTER_RANDOM_STATE = 0
+ADAPTER_VERBOSE = True
+
+if "mcpfn" in imputers:
+    mcpfn_numeric = TabImputeV2(
+        device="cuda",
+        checkpoint_path=ROUND2_T2_CHECKPOINT,
+        preprocessors=build_round2_t2_preprocessors(),
+    )
     mcpfn = TabImputeCategorical(
         device="cuda",
-        # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/mnar_fixed/step-10000.ckpt",
-        # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/mixed_mcar_mar_mnar/step-13500.ckpt",
-        # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/mixed_mcar_mar_mnar_reweighted_zscore/step-85000.ckpt",
-        # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/mixed_mcar_mar_mnar_gradnorm/step-41000.ckpt",
-        checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/masters/mcar/step-117000.ckpt",
-        # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/masters/mcar_nonlinear/step-100000.ckpt",
-        # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/masters/mar/step-40000.ckpt",
-        # checkpoint_path="/home/jacobf18/mcpfn_data/checkpoints/masters/mnar/step-40000.ckpt",
-        # checkpoint_path = "/mnt/mcpfn_data/checkpoints/mixed_nonlinear/step-7000.ckpt",
-        # checkpoint_path = "/mnt/mcpfn_data/checkpoints/mar_batch_size_64/step-49900.ckpt",
-        # checkpoint_path = "/mnt/mcpfn_data/checkpoints/mixed_adaptive_more_heads/step-100000.ckpt",
-        nhead=2,
-        preprocessors=preprocessors
+        imputer=mcpfn_numeric,
     )
-    mcpfn_name = "masters_mcar"
+    mcpfn_name = "tabimpute_round2_t2"
+
+if "mcpfn_adapter" in imputers:
+    mcpfn_adapter = TabImputeCategoricalAdapter(
+        device="cuda",
+        checkpoint_path=ROUND2_T2_CHECKPOINT,
+        preprocessors=build_round2_t2_preprocessors(),
+    )
+    mcpfn_adapter_name = "tabimpute_round2_t2_adapter"
     
 if "tabpfn" in imputers:
     tabpfn = TabPFNImputer(device="cuda")
@@ -123,6 +162,27 @@ def fill_all_nan_rows(X_missing: np.ndarray) -> np.ndarray:
             X_processed[row_idx, :] = np.nanmean(X_processed, axis=0)
     return X_processed
 
+
+def dataframe_to_adapter_array(df: pd.DataFrame) -> np.ndarray:
+    # Preserve arbitrary categorical Python values while converting pandas
+    # missing markers into a form the adapter recognizes.
+    return df.astype(object).where(pd.notna(df), np.nan).to_numpy(dtype=object)
+
+
+def restore_categorical_columns(
+    df_imputed: pd.DataFrame,
+    reference_df: pd.DataFrame,
+    categorical_indices: np.ndarray,
+) -> pd.DataFrame:
+    for col_idx in categorical_indices:
+        col_name = reference_df.columns[col_idx]
+        categories = reference_df[col_name].cat.categories
+        df_imputed[col_name] = pd.Categorical(
+            df_imputed[col_name],
+            categories=categories,
+        )
+    return df_imputed
+
 def run_hyperimpute(plugin_name: str, X_missing: np.ndarray, random_state: int = 0) -> np.ndarray:
     """Run a single HyperImpute plugin on X_missing (numpy with NaNs)."""
     # Fill all-NaN columns with 0's before running hyperimpute
@@ -157,8 +217,6 @@ def run_forest_diffusion(X_missing: np.ndarray, n_t: int = 50,
 base_path = "datasets/openml_categorical"
 datasets = os.listdir(base_path)
 
-force_rerun = False
-
 pbar = tqdm(datasets)
 for name in pbar:
     pbar.set_description(f"Running {name}")
@@ -173,14 +231,57 @@ for name in pbar:
     
     if "mcpfn" in imputers:
         print("Running MCPFN...")
-        if os.path.exists(f"{base_path}/{name}/dataframe_imputed_mcpfn.pkl") and not force_rerun:
+        if os.path.exists(f"{base_path}/{name}/dataframe_imputed_{mcpfn_name}.pkl") and not force_rerun:
             continue
         try:
-            df_imputed_mcpfn = mcpfn.impute(df_missing.to_numpy(), categorical_columns=categorical_indices)
+            df_imputed_mcpfn = mcpfn.impute(
+                dataframe_to_adapter_array(df_missing),
+                categorical_columns=categorical_indices.tolist(),
+            )
             df_imputed_mcpfn = pd.DataFrame(df_imputed_mcpfn, columns=df.columns)
-            df_imputed_mcpfn.to_pickle(f"{base_path}/{name}/dataframe_imputed_mcpfn.pkl")
+            df_imputed_mcpfn = restore_categorical_columns(
+                df_imputed_mcpfn,
+                reference_df=df,
+                categorical_indices=categorical_indices,
+            )
+            df_imputed_mcpfn.to_pickle(f"{base_path}/{name}/dataframe_imputed_{mcpfn_name}.pkl")
         except Exception as e:
             print(f"Error running MCPFN: {e}")
+            continue
+
+    if "mcpfn_adapter" in imputers:
+        print("Running MCPFN adapter...")
+        if (
+            os.path.exists(f"{base_path}/{name}/dataframe_imputed_{mcpfn_adapter_name}.pkl")
+            and not force_rerun
+        ):
+            continue
+        try:
+            X_missing_adapter = dataframe_to_adapter_array(df_missing)
+            X_imputed_mcpfn_adapter, _ = mcpfn_adapter.impute_categorical_columns(
+                X_missing_adapter,
+                target_cols=categorical_indices.tolist(),
+                max_steps=ADAPTER_MAX_STEPS,
+                mask_prob=ADAPTER_MASK_PROB,
+                lr=ADAPTER_LR,
+                weight_decay=ADAPTER_WEIGHT_DECAY,
+                batch_rows=ADAPTER_BATCH_ROWS,
+                random_state=ADAPTER_RANDOM_STATE,
+                verbose=ADAPTER_VERBOSE,
+            )
+            df_imputed_mcpfn_adapter = pd.DataFrame(
+                X_imputed_mcpfn_adapter, columns=df.columns
+            )
+            df_imputed_mcpfn_adapter = restore_categorical_columns(
+                df_imputed_mcpfn_adapter,
+                reference_df=df,
+                categorical_indices=categorical_indices,
+            )
+            df_imputed_mcpfn_adapter.to_pickle(
+                f"{base_path}/{name}/dataframe_imputed_{mcpfn_adapter_name}.pkl"
+            )
+        except Exception as e:
+            print(f"Error running MCPFN adapter: {e}")
             continue
     
     if "hyperimpute" in imputers:

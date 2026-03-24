@@ -94,38 +94,10 @@ if "mcpfn" in imputers:
         RandomRowPermutation(),
         RandomColumnPermutation(),
     ]
-<<<<<<< HEAD
     mcpfn = TabImputeV2(
         device="cuda",
         checkpoint_path=MCPFN_CHECKPOINT,
         preprocessors=preprocessors,
-    )
-    mcpfn_name = "tabimpute_50_50_rank_1_11_cls_12"
-
-if "mcpfn_ttt" in imputers:
-    preprocessors = [
-        RandomRowColumnPermutation(),
-        RandomRowColumnPermutation(),
-        RandomRowPermutation(),
-        RandomColumnPermutation(),
-    ]
-    mcpfn_ttt = ImputePFN(
-        device="cuda",
-        nhead=2,
-        preprocessors=preprocessors,
-    )
-=======
-<<<<<<< HEAD
-    # preprocessors = None
-    
-    mcpfn = ImputePFN(
-=======
-    mcpfn = TabImputeV2(
->>>>>>> a577979 (added test time training)
-        device="cuda",
-        checkpoint_path=MCPFN_CHECKPOINT,
-        preprocessors=preprocessors,
-<<<<<<< HEAD
         entry_wise_features=False,
         # checkpoint_path='/home/jacobf18/tabular/mcpfn/src/tabimpute/workdir/tabimpute-mcar_p0.4-num_cls_12-rank_1_11/checkpoint_85000.pth'
         checkpoint_path="/root/tabular/mcpfn/src/tabimpute/workdir/tabimpute-stable-deep-refine-25000-v1-20260309-trial_003/checkpoint_15000.pth",
@@ -153,44 +125,8 @@ if "mcpfn_ttt" in imputers:
         # max_num_chunks=2,
     )
     mcpfn_name = "tabimpute_new_stable_deep_trial_3"
-    
-=======
-    )
-    mcpfn_name = "tabimpute_50_50_rank_1_11_cls_12"
 
-if "mcpfn_ttt" in imputers:
-    preprocessors = [
-        RandomRowColumnPermutation(),
-        RandomRowColumnPermutation(),
-        RandomRowPermutation(),
-        RandomColumnPermutation(),
-    ]
-    mcpfn_ttt = ImputePFN(
-        device="cuda",
-        nhead=2,
-        preprocessors=preprocessors,
-    )
->>>>>>> 7f51224 (added test time training)
-    mcpfn_ttt_name = "tabimpute_ttt_imputepfn"
 
-if "tabimpute_v2_ttt" in imputers:
-    preprocessors = [
-        RandomRowColumnPermutation(),
-        RandomRowColumnPermutation(),
-        RandomRowPermutation(),
-        RandomColumnPermutation(),
-    ]
-    tabimpute_v2_ttt = TabImputeV2(
-        device="cuda",
-        checkpoint_path=MCPFN_CHECKPOINT,
-        preprocessors=preprocessors,
-    )
-    tabimpute_v2_ttt_name = "tabimpute_v2_ttt"
-
-<<<<<<< HEAD
-=======
->>>>>>> a577979 (added test time training)
->>>>>>> 7f51224 (added test time training)
 if "tabpfn" in imputers:
     tabpfn = TabPFNImputer(device="cuda")
     
@@ -322,33 +258,7 @@ for name in pbar:
                         with open(f"{cfg_dir}/{mcpfn_name}_imputation_time.txt", "w") as f:
                             f.write(f"{end_time - start_time}\n")
 
-            # --- MCPFN TTT (ImputePFN with test-time training) ---
-            if "mcpfn_ttt" in imputers:
-                out_path = f"{cfg_dir}/{mcpfn_ttt_name}.npy"
-                if not os.path.exists(out_path) or force_rerun:
-                    start_time = time.time()
-                    X_mcpfn_ttt = mcpfn_ttt.impute_with_test_time_training(
-                        X_missing.copy(), k=5, return_full=False
-                    )
-                    end_time = time.time()
-                    np.save(out_path, X_mcpfn_ttt)
-                    print(f"MCPFN TTT imputation time: {end_time - start_time} seconds for {cfg_dir}")
-                    with open(f"{cfg_dir}/{mcpfn_ttt_name}_imputation_time.txt", "w") as f:
-                        f.write(f"{end_time - start_time}\n")
-
-            # --- TabImputeV2 TTT (TabImputeV2 with test-time training) ---
-            if "tabimpute_v2_ttt" in imputers:
-                out_path = f"{cfg_dir}/{tabimpute_v2_ttt_name}.npy"
-                if not os.path.exists(out_path) or force_rerun:
-                    start_time = time.time()
-                    X_tabimpute_v2_ttt = tabimpute_v2_ttt.impute_with_test_time_training(
-                        X_missing.copy(), k=5, return_full=False
-                    )
-                    end_time = time.time()
-                    np.save(out_path, X_tabimpute_v2_ttt)
-                    print(f"TabImputeV2 TTT imputation time: {end_time - start_time} seconds for {cfg_dir}")
-                    with open(f"{cfg_dir}/{tabimpute_v2_ttt_name}_imputation_time.txt", "w") as f:
-                        f.write(f"{end_time - start_time}\n")
+            
 
             # --- KNN ---
             if "knn" in imputers:
@@ -362,30 +272,6 @@ for name in pbar:
                     with open(f"{cfg_dir}/knn_imputation_time.txt", "a") as f:
                         f.write(f"{end_time - start_time}\n")
                     np.save(out_path, X_knn)
-                
-            if "mcpfn_ensemble" in imputers:
-                out_path = f"{cfg_dir}/mcpfn_ensemble.npy"
-                if not os.path.exists(out_path) or force_rerun:
-                    start_time = time.time()
-                    X_mcpfn_ensemble = mcpfn_ensemble.impute(X_missing.copy())
-                    end_time = time.time()
-                    print(f"MCPFN Ensemble imputation time: {end_time - start_time} seconds")
-                    np.save(out_path, X_mcpfn_ensemble)
-                    # save the imputation time
-                    with open(f"{cfg_dir}/mcpfn_ensemble_cpu_imputation_time.txt", "a") as f:
-                        f.write(f"{end_time - start_time}\n")
-
-            if "tabimpute_ensemble" in imputers:
-                out_path = f"{cfg_dir}/{mcpfn_name}.npy"
-                if not os.path.exists(out_path) or force_rerun:
-                    start_time = time.time()
-                    X_tabimpute_ensemble = tabimpute_ensemble.impute(X_missing.copy())
-                    end_time = time.time()
-                    print(f"TabImpute Ensemble imputation time: {end_time - start_time} seconds")
-                    np.save(out_path, X_tabimpute_ensemble)
-                    # save the imputation time
-                    with open(f"{cfg_dir}/{mcpfn_name}_imputation_time.txt", "a") as f:
-                        f.write(f"{end_time - start_time}\n")
 
             # --- TabPFN ---
             if "tabpfn" in imputers:
