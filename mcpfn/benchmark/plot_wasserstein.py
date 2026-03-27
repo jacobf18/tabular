@@ -38,18 +38,18 @@ methods = [
 
 patterns = {
     "MCAR",
-    # "MAR",
+    "MAR",
     "MNAR",
     "MAR_Neural",
-    # "MAR_BlockNeural",
-    "MAR_Sequential",
+    "MAR_BlockNeural",
+    # "MAR_Sequential",
     # "MNARPanelPattern",
     "MNARPolarizationPattern",
     "MNARSoftPolarizationPattern",
     "MNARLatentFactorPattern",
     "MNARClusterLevelPattern",
     "MNARTwoPhaseSubsetPattern",
-    # "MNARCensoringPattern",
+    "MNARCensoringPattern",
 }
 
 method_names = {
@@ -356,16 +356,16 @@ summary_data = []
 all_patterns = ['MCAR',
                 'MAR_Neural',
                 'MNAR',
-                # 'MAR',
-                # 'MAR_BlockNeural',
-                'MAR_Sequential',
+                'MAR',
+                'MAR_BlockNeural',
+                # 'MAR_Sequential',
                 # "MNARPanelPattern",
                 "MNARPolarizationPattern",
                 "MNARSoftPolarizationPattern",
                 "MNARLatentFactorPattern",
                 "MNARClusterLevelPattern",
                 "MNARTwoPhaseSubsetPattern",
-                # "MNARCensoringPattern",
+                "MNARCensoringPattern",
                 'Overall'
                 ]
 

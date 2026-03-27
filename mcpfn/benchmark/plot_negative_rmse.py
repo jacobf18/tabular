@@ -26,6 +26,47 @@ from plot_options import (
 # matplotlib.rcParams['text.usetex'] = True
 matplotlib.rcParams['font.family'] = 'serif'
 
+
+def format_markdown_value(mean_val, std_val=None, bold=False):
+    if pd.isna(mean_val) or (std_val is not None and pd.isna(std_val)):
+        return "--"
+
+    if std_val is None:
+        value = f"{mean_val:.3f}"
+    else:
+        value = f"{mean_val:.3f} ± {std_val:.3f}"
+
+    return f"**{value}**" if bold else value
+
+
+def build_markdown_table(headers, rows):
+    markdown_lines = [
+        "| " + " | ".join(headers) + " |",
+        "| " + " | ".join(["---"] * len(headers)) + " |",
+    ]
+    for row in rows:
+        markdown_lines.append("| " + " | ".join(row) + " |")
+    return "\n".join(markdown_lines) + "\n"
+
+
+PATTERN_MARKDOWN_NAMES = {
+    "MCAR": "MCAR",
+    "MAR_Neural": "Neural MAR",
+    "MNAR": "Self-Masking MNAR",
+    "MAR": "Column MAR",
+    "MAR_BlockNeural": "Block Neural MAR",
+    "MAR_Sequential": "Sequential MAR",
+    "MNARPanelPattern": "Panel MNAR",
+    "MNARPolarizationPattern": "Polarization MNAR",
+    "MNARSoftPolarizationPattern": "Soft Polarization MNAR",
+    "MNARLatentFactorPattern": "Latent Factor MNAR",
+    "MNARClusterLevelPattern": "Cluster-Level MNAR",
+    "MNARTwoPhaseSubsetPattern": "Two-Phase Subset MNAR",
+    "MNARCensoringPattern": "Censoring MNAR",
+    "Overall": "Overall",
+}
+
+
 base_path = "datasets/openml"
 
 datasets = os.listdir(base_path)
@@ -37,37 +78,31 @@ methods = [
     # "tabimpute_dynamic_cls",
     # "tabimpute_large_cls_8",
     # "tabimpute_75_75_rank_1_11",
-<<<<<<< HEAD
     # "tabimpute_50_50_rank_1_11_cls_12",
     # "tabimpute_rope_v1",
     # "tabimpute_rope_trial_1",
-    "tabimpute_rope_trial_7",
+    # "tabimpute_rope_trial_7",
     # "tabimpute_rope_trial_6",
-    "tabimpute_rope_trial_14",
+    # "tabimpute_rope_trial_14",
     # "tabimpute_rope_trial_14_no_permute",
     # "tabimpute_rope_trial_10",
     # "tabimpute_rope_trial_12",
-    "tabimpute_rope_trial_12_w_permute",
+    # "tabimpute_rope_trial_12_w_permute",
     # "tabimpute_new_stable_v1_100k",
     # "tabimpute_new_stable_v1_15k",
     # "tabimpute_new_stable_v4_7500",
     # "tabimpute_new_stable_v4_27500",
     # "tabimpute_new_stable_v3_15000",
     # "tabimpute_new_stable_v6_25000",
-    "tabimpute_new_stable_round2_trial_3",
-    "tabimpute_new_stable_round2_trial_2",
-    "tabimpute_new_stable_round2_trial_6",
-    "tabimpute_new_stable_round2_trial_10",
-    "tabimpute_new_stable_shallow_trial_3",
-    "tabimpute_new_stable_shallow_trial_6",
-    "tabimpute_new_stable_shallow_trial_2",
-    "tabimpute_new_stable_deep_trial_3",
+    # "tabimpute_new_stable_round2_trial_3",
+    # "tabimpute_new_stable_round2_trial_2",
+    # "tabimpute_new_stable_round2_trial_6",
+    # "tabimpute_new_stable_round2_trial_10",
+    # "tabimpute_new_stable_shallow_trial_3",
+    # "tabimpute_new_stable_shallow_trial_6",
+    # "tabimpute_new_stable_shallow_trial_2",
+    # "tabimpute_new_stable_deep_trial_3",
     # "tabimpute_rope_trial_2",
-=======
-    "tabimpute_50_50_rank_1_11_cls_12",
-    # "tabimpute_ttt_imputepfn",
-    # "tabimpute_v2_ttt",
->>>>>>> a577979 (added test time training)
     # "tabimpute_large_mcar_rank_1_11",
     # "column_mean", 
     "hyperimpute",
@@ -84,10 +119,18 @@ methods = [
     "forestdiffusion",
     "remasker",
     "cacti",
+    "diffputer",
 ]
 
-
-
+# drop sequential
+drop_patterns = [
+    # "MAR_Sequential", 
+    # "MNARPanelPattern"
+    ]
+for pattern in drop_patterns:
+    PATTERNS.remove(pattern)
+    PATTERN_LATEX_NAMES.pop(pattern)
+    
 # Use patterns from plot_options
 patterns = PATTERNS
 
@@ -106,7 +149,6 @@ method_names.update({
     "tabimpute_large_cls_8": "TabImpute (CLS-8)",
     "tabimpute_75_75_rank_1_11": "TabImpute (75x75)",
     "tabimpute_50_50_rank_1_11_cls_12": "TabImpute (New)",
-<<<<<<< HEAD
     "tabimpute_rope_v1": "TabImpute (Rope v1)",
     "tabimpute_rope_trial_1": "TabImpute (Rope Trial 1)",
     "tabimpute_rope_trial_7": "TabImpute (Rope Trial 7)",
@@ -138,22 +180,6 @@ for method in method_names.values():
         method_colors[method] = highlight_color
     else:
         method_colors[method] = neutral_color
-=======
-    "tabimpute_ttt_imputepfn": "TabImpute TTT (ImputePFN)",
-    "tabimpute_v2_ttt": "TabImpute TTT (V2)",
-})
-
-method_colors.update({
-    "TabImpute (Lin. Emb.)": highlight_color,
-    "TabImpute (50x50)": highlight_color,
-    "TabImpute (Dynamic CLs)": highlight_color,
-    "TabImpute (CLS-8)": highlight_color,
-    "TabImpute (75x75)": highlight_color,
-    "TabImpute (New)": highlight_color,
-    "TabImpute TTT (ImputePFN)": highlight_color,
-    "TabImpute TTT (V2)": highlight_color,
-})
->>>>>>> a577979 (added test time training)
 
 # Add missing method colors that may appear in the data
 
@@ -397,7 +423,7 @@ if plot_pattern:
     plt.close()
 
 
-exit()
+# exit()
 # Count how many times TabImpute is the best method
 # print(df_norm_all)
 # tabimpute_best = df_norm_all[df_norm_all.index.get_level_values(2) == "TabImpute"].mean(axis=0).sort_values(ascending=True).index
@@ -494,8 +520,9 @@ all_patterns = ['MCAR',
                 "MNARClusterLevelPattern",
                 "MNARTwoPhaseSubsetPattern",
                 "MNARCensoringPattern",
-                'Overall'
                 ]
+all_patterns = [pattern for pattern in all_patterns if pattern in patterns]
+all_patterns.append('Overall')
 
 # Use pattern LaTeX names from plot_options
 patern_latex_names = PATTERN_LATEX_NAMES
@@ -612,6 +639,35 @@ if summary_data:
         f.write(latex_content)
     
     print(f"LaTeX table saved to {filename}")
+
+    markdown_rows = []
+    for pattern in all_patterns:
+        row = [PATTERN_MARKDOWN_NAMES.get(pattern, pattern)]
+        row_max = global_row_maxs[pattern]
+        for method in all_methods:
+            if f"{method}_mean" in summary_pivot.columns:
+                mean_val = summary_pivot.loc[pattern, f"{method}_mean"]
+                std_val = summary_pivot.loc[pattern, f"{method}_std"]
+                row.append(
+                    format_markdown_value(
+                        mean_val,
+                        std_val,
+                        bold=pd.notna(mean_val) and abs(mean_val - row_max) < 1e-6,
+                    )
+                )
+            else:
+                row.append("--")
+        markdown_rows.append(row)
+
+    markdown_content = build_markdown_table(
+        ["Pattern"] + all_methods,
+        markdown_rows,
+    )
+    markdown_filename = "figures/normalized_negative_rmse_table.md"
+    with open(markdown_filename, "w") as f:
+        f.write(markdown_content)
+
+    print(f"Markdown table saved to {markdown_filename}")
 
 # Generate transposed LaTeX table (methods as rows, patterns as columns)
 print("Creating transposed LaTeX table...")
@@ -732,6 +788,45 @@ with open(transposed_filename, "w") as f:
 
 print(f"Transposed LaTeX table saved to {transposed_filename}")
 
+markdown_rows_transposed = []
+for method in all_methods:
+    row = [method]
+    row_max = global_row_maxs_transposed[method]
+    method_row = transposed_df[transposed_df['Method'] == method]
+
+    for pattern in all_patterns:
+        mean_col = f"{pattern}_mean"
+        std_col = f"{pattern}_std"
+
+        if (
+            mean_col in transposed_df.columns
+            and std_col in transposed_df.columns
+            and not method_row.empty
+        ):
+            mean_val = method_row[mean_col].iloc[0]
+            std_val = method_row[std_col].iloc[0]
+            row.append(
+                format_markdown_value(
+                    mean_val,
+                    std_val,
+                    bold=pd.notna(mean_val) and abs(mean_val - row_max) < 1e-6,
+                )
+            )
+        else:
+            row.append("--")
+
+    markdown_rows_transposed.append(row)
+
+markdown_content_transposed = build_markdown_table(
+    ["Method"] + [PATTERN_MARKDOWN_NAMES.get(pattern, pattern) for pattern in all_patterns],
+    markdown_rows_transposed,
+)
+transposed_markdown_filename = "figures/normalized_negative_rmse_table_transposed.md"
+with open(transposed_markdown_filename, "w") as f:
+    f.write(markdown_content_transposed)
+
+print(f"Transposed Markdown table saved to {transposed_markdown_filename}")
+
 # Generate LaTeX table for non-normalized RMSE values for MCAR with datasets as rows
 print("Creating LaTeX table for non-normalized RMSE values (MCAR, datasets as rows)...")
 
@@ -747,7 +842,6 @@ available_methods = [
     'MissForest',
     'OT',
     "K-Nearest Neighbors",
-    
 ]
 
 if not mcar_data.empty:
@@ -834,6 +928,36 @@ if not mcar_data.empty:
             f.write(latex_content_mcar)
         
         print(f"MCAR RMSE table saved to {mcar_filename}")
+
+        markdown_rows_mcar = []
+        for _, row_data in mcar_df.iterrows():
+            row = [row_data['Dataset']]
+            row_min = float('inf')
+            for method in available_methods:
+                rmse_val = row_data[method]
+                if pd.notna(rmse_val) and rmse_val < row_min:
+                    row_min = rmse_val
+
+            for method in available_methods:
+                rmse_val = row_data[method]
+                row.append(
+                    format_markdown_value(
+                        rmse_val,
+                        bold=pd.notna(rmse_val) and abs(rmse_val - row_min) < 1e-6,
+                    )
+                )
+
+            markdown_rows_mcar.append(row)
+
+        markdown_content_mcar = build_markdown_table(
+            ["Dataset"] + available_methods,
+            markdown_rows_mcar,
+        )
+        mcar_markdown_filename = "figures/rmse_mcar_by_dataset.md"
+        with open(mcar_markdown_filename, "w") as f:
+            f.write(markdown_content_mcar)
+
+        print(f"MCAR Markdown table saved to {mcar_markdown_filename}")
     else:
         print("No methods from table_methods found in MCAR data")
 else:
