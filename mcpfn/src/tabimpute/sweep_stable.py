@@ -2,6 +2,7 @@ import argparse
 import importlib.resources
 import json
 import random
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -509,6 +510,13 @@ STABLE_SEED_CONFIRM_TRIALS = [
     dict(cfg) for cfg in STABLE_SEED_CONFIRM_CONFIGS for _ in range(3)
 ]
 
+FIXED_STABLE_CONFIGS = {
+    "t002": dict(STABLE_SEED_CONFIRM_CONFIGS[0]),
+    "t003": dict(STABLE_SEED_CONFIRM_CONFIGS[1]),
+    "t006": dict(STABLE_SEED_CONFIRM_CONFIGS[2]),
+    "t010": dict(STABLE_SEED_CONFIRM_CONFIGS[3]),
+}
+
 DEPTH_CONDITIONED_SPACES = {
     "shallow": {
         "embedding_size": [BEST_TRANSFER_MODEL_CONFIG["embedding_size"]],
@@ -642,7 +650,7 @@ def _build_trials(seed: int, max_trials: int, search_space: dict | list[dict]) -
     return trials
 
 
-def _build_prior_config(args) -> dict:
+def _build_base_prior_config(args) -> dict:
     return {
         "num_rows_low": args.num_rows_low,
         "num_rows_high": args.num_rows_high,
@@ -658,14 +666,57 @@ def _build_prior_config(args) -> dict:
     }
 
 
+def _build_prior_spec(args) -> tuple[str, str, dict]:
+    prior_config = _build_base_prior_config(args)
+    generator_type = args.generator_type
+    missingness_type = args.missingness_type
+
+    if args.prior_profile in {"priormix_v1", "combo_v1"}:
+        generator_type = "generator_mix"
+        prior_config["generator_profile_name"] = "priormix_v1"
+        prior_config["profile_nonlinear_functions"] = [
+            "sigmoid",
+            "tanh",
+            "relu_squared",
+            "sine",
+            "square",
+            "absolute",
+            "softplus",
+        ]
+        prior_config["latent_rank_high"] = max(
+            50,
+            prior_config["latent_rank_high"],
+            prior_config["num_cols_high"],
+        )
+        prior_config["apply_feature_warping_prob"] = 0.20
+        prior_config["apply_quantization_prob"] = 0.20
+
+    if args.prior_profile in {"missmix_v1", "combo_v1"}:
+        missingness_type = "profile_mixed"
+        prior_config["missingness_profile_name"] = "missmix_v1"
+
+    return generator_type, missingness_type, prior_config
+
+
 def _ensure_fresh_run_paths(args, output_dir: Path, num_trials: int) -> None:
+    if args.overwrite_existing:
+        if output_dir.exists():
+            shutil.rmtree(output_dir)
+        trial_root = Path(args.artifacts_root)
+        for trial_id in range(1, num_trials + 1):
+            run_name = f"{args.sweep_name}-trial_{trial_id:03d}"
+            run_dir = trial_root / run_name
+            if run_dir.exists():
+                shutil.rmtree(run_dir)
+        return
+
     if output_dir.exists() and any(output_dir.iterdir()):
         raise FileExistsError(
             f"Refusing to reuse existing sweep output directory: {output_dir}. "
             "Choose a new --sweep-name."
         )
 
-    trial_root = Path("workdir")
+    trial_root = Path(args.artifacts_root)
     conflicting_runs = []
     for trial_id in range(1, num_trials + 1):
         run_name = f"{args.sweep_name}-trial_{trial_id:03d}"
@@ -692,8 +743,11 @@ def _run_trial(
     borders: torch.Tensor,
 ) -> dict:
     run_name = f"{args.sweep_name}-trial_{trial_id:03d}"
+    run_dir = Path(args.artifacts_root) / run_name
+    run_dir.mkdir(parents=True, exist_ok=True)
     _set_seed(args.seed + trial_id)
     model_dtype = torch.bfloat16 if "cuda" in device else torch.float32
+    generator_type, missingness_type, prior_config = _build_prior_spec(args)
 
     model = TabImputeModel(
         embedding_size=trial_cfg["embedding_size"],
@@ -715,10 +769,41 @@ def _run_trial(
     ).to(device=device, dtype=model_dtype)
     num_params = sum(p.numel() for p in model.parameters())
 
+    run_config = {
+        "run_name": run_name,
+        "trial_id": trial_id,
+        "architecture_file": str(Path(__file__).resolve().parent / "model" / "model_new_stable.py"),
+        "model": {
+            **trial_cfg,
+            "num_outputs": args.num_outputs,
+            "use_rope": True,
+            "rope_base": args.rope_base,
+            "use_absolute_positional_embeddings": False,
+            "positional_damping_factor": 0.1,
+        },
+        "training": {
+            "epochs_per_trial": args.epochs_per_trial,
+            "batch_size": args.batch_size,
+            "device": device,
+            "checkpoint_every": args.checkpoint_every,
+            "metric": args.metric,
+            "seed": args.seed + trial_id,
+            "wandb_project": args.wandb_project,
+        },
+        "prior": {
+            "prior_profile": args.prior_profile,
+            "generator_type": generator_type,
+            "missingness_type": missingness_type,
+            "config": prior_config,
+        },
+    }
+    with open(run_dir / "config.json", "w", encoding="utf-8") as f:
+        json.dump(run_config, f, indent=2, sort_keys=True)
+
     prior = MissingnessPrior(
-        generator_type=args.generator_type,
-        missingness_type=args.missingness_type,
-        config=_build_prior_config(args),
+        generator_type=generator_type,
+        missingness_type=missingness_type,
+        config=prior_config,
         batch_size=args.batch_size,
         verbose=False,
         entry_wise_features=False,
@@ -735,9 +820,10 @@ def _run_trial(
                     **trial_cfg,
                     "epochs_per_trial": args.epochs_per_trial,
                     "batch_size": args.batch_size,
-                    "generator_type": args.generator_type,
-                    "missingness_type": args.missingness_type,
-                    "p_missing": args.p_missing,
+                    "generator_type": generator_type,
+                    "missingness_type": missingness_type,
+                    "prior_profile": args.prior_profile,
+                    "p_missing": prior_config.get("p_missing"),
                 },
                 log_dir=args.wandb_dir,
             )
@@ -760,10 +846,13 @@ def _run_trial(
         device=device,
         callbacks=callbacks,
         run_name=run_name,
+        work_dir=str(run_dir),
         checkpoint_every=args.checkpoint_every if args.checkpoint_every > 0 else None,
         return_metrics=True,
     )
     elapsed = time.time() - start
+    with open(run_dir / "metrics.json", "w", encoding="utf-8") as f:
+        json.dump(metrics, f, indent=2, sort_keys=True)
 
     checkpoint_summary = None
     checkpoint_metrics = metrics.get("checkpoint_metrics")
@@ -789,6 +878,10 @@ def _run_trial(
         "num_params": num_params,
         "seconds": round(elapsed, 2),
         "config": trial_cfg,
+        "prior_profile": args.prior_profile,
+        "generator_type": generator_type,
+        "missingness_type": missingness_type,
+        "artifacts_dir": str(run_dir),
         "metrics": metrics,
     }
     if checkpoint_summary is not None:
@@ -850,6 +943,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser.add_argument("--wandb-project", type=str, default=None)
     parser.add_argument("--wandb-dir", type=str, default="./wandb")
+    parser.add_argument(
+        "--fixed-config-name",
+        type=str,
+        choices=sorted(FIXED_STABLE_CONFIGS.keys()),
+        default=None,
+    )
+    parser.add_argument(
+        "--prior-profile",
+        type=str,
+        choices=["control", "missmix_v1", "priormix_v1", "combo_v1"],
+        default="control",
+    )
+    parser.add_argument("--artifacts-root", type=str, default="workdir")
+    parser.add_argument("--overwrite-existing", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     return parser
 
@@ -857,23 +964,6 @@ def build_parser() -> argparse.ArgumentParser:
 def main():
     args = build_parser().parse_args()
     device = _choose_device(args.device)
-    if args.search_space == "depth_conditioned":
-        search_space = None
-    elif args.search_space == "regularization_focused":
-        search_space = REGULARIZATION_FOCUSED_SPACE
-    elif args.search_space == "depth_expansion":
-        search_space = DEPTH_EXPANSION_SPACE
-    elif args.search_space == "round2_targeted":
-        search_space = ROUND2_TARGETED_TRIALS
-    elif args.search_space == "shallow_refine":
-        search_space = SHALLOW_REFINE_TRIALS
-    elif args.search_space == "deep_refine":
-        search_space = DEEP_REFINE_TRIALS
-    elif args.search_space == "stable_seed_confirm":
-        search_space = STABLE_SEED_CONFIRM_TRIALS
-    else:
-        search_space = ANCHOR_STABLE_TRIALS
-
     if args.sweep_name is None:
         args.sweep_name = f"tabimpute-stable-sweep-{int(time.time())}"
 
@@ -882,24 +972,47 @@ def main():
     results_path = output_dir / "results.jsonl"
     summary_path = output_dir / "summary.json"
 
-    if args.search_space == "depth_conditioned":
-        trials = _build_depth_conditioned_trials(
-            seed=args.seed,
-            max_trials=args.max_trials,
-        )
+    if args.fixed_config_name is not None:
+        trials = [dict(FIXED_STABLE_CONFIGS[args.fixed_config_name])]
+        search_space_label = f"fixed:{args.fixed_config_name}"
     else:
-        trials = _build_trials(
-            seed=args.seed,
-            max_trials=args.max_trials,
-            search_space=search_space,
-        )
+        if args.search_space == "depth_conditioned":
+            search_space = None
+        elif args.search_space == "regularization_focused":
+            search_space = REGULARIZATION_FOCUSED_SPACE
+        elif args.search_space == "depth_expansion":
+            search_space = DEPTH_EXPANSION_SPACE
+        elif args.search_space == "round2_targeted":
+            search_space = ROUND2_TARGETED_TRIALS
+        elif args.search_space == "shallow_refine":
+            search_space = SHALLOW_REFINE_TRIALS
+        elif args.search_space == "deep_refine":
+            search_space = DEEP_REFINE_TRIALS
+        elif args.search_space == "stable_seed_confirm":
+            search_space = STABLE_SEED_CONFIRM_TRIALS
+        else:
+            search_space = ANCHOR_STABLE_TRIALS
+
+        if args.search_space == "depth_conditioned":
+            trials = _build_depth_conditioned_trials(
+                seed=args.seed,
+                max_trials=args.max_trials,
+            )
+        else:
+            trials = _build_trials(
+                seed=args.seed,
+                max_trials=args.max_trials,
+                search_space=search_space,
+            )
+        search_space_label = args.search_space
     if len(trials) == 0:
         raise RuntimeError("No valid trial configurations were sampled.")
 
     _ensure_fresh_run_paths(args, output_dir, len(trials))
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"Using device: {device}")
-    print(f"Search space: {args.search_space}")
+    print(f"Search space: {search_space_label}")
     print(f"Planned trials: {len(trials)}")
     print(f"Results file: {results_path}")
     print(f"Target metric (lower is better): {args.metric}")

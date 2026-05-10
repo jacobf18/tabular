@@ -6,14 +6,80 @@ Adapted from notmiwae_pytorch library.
 import numpy as np
 import pandas as pd
 import torch
+import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 from notmiwae_pytorch import NotMIWAE, Trainer
+from notmiwae_pytorch.models import BaseMissingProcess
 from notmiwae_pytorch.utils import set_seed, impute
 import warnings
 import contextlib
 import io
 
 warnings.filterwarnings('ignore')
+
+
+class SelfMNARMissingProcess(BaseMissingProcess):
+    """Self-MNAR propensity module mirroring ``MNARPattern`` from
+    ``tabimpute.prior.training_set_generation``.
+
+    The prior generates missingness as
+        P(missing | x_j) = sigmoid(slope_j * x_j + beta_{0,j}),  slope_j in {-2,-1,+1,+2}
+    with ``beta_{0,j}`` set so the column's empirical missing fraction is preserved.
+
+    not-MIWAE works with the observed-side logit ``logit p(s=1|x) = -W * (x - b)``
+    (see ``SelfMaskingProcess``). Equivalently, ``W = slope`` and ``b = -beta_0 / slope``.
+    ``init_from_data`` populates ``W, b`` from the input matrix; both stay learnable
+    so the ELBO can refine them during training.
+    """
+
+    def __init__(self, input_dim: int, feature_names=None, **kwargs):
+        super().__init__(input_dim, feature_names)
+        self.W = nn.Parameter(torch.ones(1, 1, input_dim))
+        self.b = nn.Parameter(torch.zeros(1, 1, input_dim))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return -self.W * (x - self.b)
+
+    @torch.no_grad()
+    def init_from_data(
+        self,
+        X: np.ndarray,
+        mask: np.ndarray,
+        candidate_magnitudes=(1.0, 2.0),
+        seed: int | None = None,
+    ) -> None:
+        """Initialize ``W`` and ``b`` per the prior's MNARPattern recipe.
+
+        Args:
+            X: (n, d) data matrix with missing cells filled (e.g. with zeros).
+            mask: (n, d) observation mask, 1 = observed, 0 = missing.
+            candidate_magnitudes: magnitudes the prior samples from (default ``(1, 2)``).
+            seed: optional seed for the slope-sign / magnitude draws.
+        """
+        rng = np.random.default_rng(seed)
+        n, d = X.shape
+        slopes = np.zeros(d, dtype=np.float64)
+        b_vals = np.zeros(d, dtype=np.float64)
+        for j in range(d):
+            obs = mask[:, j].astype(bool)
+            n_obs = int(obs.sum())
+            # No MNAR signal to mirror if the column is fully observed / fully missing
+            # or has degenerate variance.
+            if n_obs < 2 or n_obs >= n:
+                continue
+            x_obs = X[obs, j]
+            if float(np.std(x_obs)) < 1e-8:
+                continue
+            p_miss = 1.0 - n_obs / n
+            sign = float(rng.choice([-1.0, 1.0]))
+            magnitude = float(rng.choice(np.asarray(candidate_magnitudes, dtype=np.float64)))
+            slope = sign * magnitude
+            beta_0 = -float(np.quantile(slope * x_obs, 1.0 - p_miss))
+            slopes[j] = slope
+            b_vals[j] = -beta_0 / slope
+        device = self.W.device
+        self.W.data.copy_(torch.tensor(slopes, dtype=self.W.dtype, device=device).view(1, 1, -1))
+        self.b.data.copy_(torch.tensor(b_vals, dtype=self.b.dtype, device=device).view(1, 1, -1))
 
 
 class NotMIWAEImputer:
@@ -28,7 +94,7 @@ class NotMIWAEImputer:
         hidden_dim=128,
         n_samples=20,
         out_dist='gauss',  # 'gauss', 'bern', 'student_t'
-        missing_process='selfmasking',  # 'selfmasking', 'selfmasking_known_signs', 'linear', 'nonlinear'
+        missing_process='self_mnar',  # 'self_mnar', 'selfmasking', 'selfmasking_known_signs', 'linear', 'nonlinear'
         n_epochs=100,
         batch_size=64,
         lr=1e-3,
@@ -40,13 +106,16 @@ class NotMIWAEImputer:
     ):
         """
         Initialize NotMIWAE imputer.
-        
+
         Args:
             latent_dim: Dimension of the latent space
             hidden_dim: Dimension of hidden layers
             n_samples: Number of importance samples for training
             out_dist: Output distribution ('gauss', 'student_t', or 'bern')
-            missing_process: Missing process type ('selfmasking', 'selfmasking_known_signs', 'linear', 'nonlinear')
+            missing_process: Propensity model. ``'self_mnar'`` (default) instantiates
+                ``SelfMNARMissingProcess`` to match the prior's self-MNAR pattern;
+                other strings ('selfmasking', 'selfmasking_known_signs', 'linear',
+                'nonlinear') are forwarded to the not-MIWAE factory unchanged.
             n_epochs: Number of training epochs
             batch_size: Batch size for training
             lr: Learning rate
@@ -122,13 +191,22 @@ class NotMIWAEImputer:
         X_tensor = torch.tensor(X_filled, dtype=torch.float32)
         mask_tensor = torch.tensor(mask, dtype=torch.float32)
         
+        # If the caller asked for our self-MNAR pattern, build a custom propensity
+        # module seeded from the data; otherwise pass the string through unchanged.
+        if self.missing_process == 'self_mnar':
+            self_mnar_module = SelfMNARMissingProcess(input_dim=self.input_dim)
+            self_mnar_module.init_from_data(X_filled, mask, seed=self.seed)
+            missing_process_arg = self_mnar_module
+        else:
+            missing_process_arg = self.missing_process
+
         # Create model
         self.model = NotMIWAE(
             input_dim=self.input_dim,
             latent_dim=self.latent_dim,
             hidden_dim=self.hidden_dim,
             n_samples=self.n_samples,
-            missing_process=self.missing_process,
+            missing_process=missing_process_arg,
             out_dist=self.out_dist
         ).to(self.device)
         
@@ -178,7 +256,7 @@ def impute_notmiwae(
     hidden_dim=128,
     n_samples=20,
     out_dist='gauss',
-    missing_process='selfmasking',
+    missing_process='self_mnar',
     n_epochs=100,
     batch_size=64,
     lr=1e-3,

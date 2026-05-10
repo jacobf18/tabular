@@ -1,0 +1,21 @@
+{
+  "N0": 40,
+  "N1_realized": 10,
+  "T0": 30,
+  "T1_realized": 10,
+  "assignment": "min_wage",
+  "draw_id": 1,
+  "draw_name": "draw_0001",
+  "n_missing_cells": 100,
+  "n_observed_cells": 1900,
+  "n_treated_cells": 100,
+  "outcome": "log_wage",
+  "post_col_end": 40,
+  "post_col_start": 31,
+  "shape": {
+    "n_cols": 40,
+    "n_rows": 50
+  },
+  "treated_row_end": 50,
+  "treated_row_start": 41
+}

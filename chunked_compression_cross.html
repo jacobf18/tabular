@@ -1,0 +1,415 @@
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>Two-Sided Chunked Compression for Matrix Completion</title>
+      <style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --ink:     #1a1815;
+  --paper:   #faf7f2;
+  --rule:    #c9bfae;
+  --muted:   #6b6357;
+  --accent:  #8b3a2a;
+  --target:  #d9a441;
+  --row:     #4a6c8c;
+  --col:     #a04438;
+  --off:     #5a7a35;
+  --content-width: 720px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: 'EB Garamond', 'Garamond', Georgia, serif;
+  font-size: 19px;
+  line-height: 1.65;
+  font-feature-settings: "kern", "liga", "onum";
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  max-width: var(--content-width);
+  margin: 0 auto;
+  padding: 80px 32px 120px;
+}
+
+/* ---------- masthead ---------- */
+.masthead {
+  border-top: 2px solid var(--ink);
+  border-bottom: 1px solid var(--ink);
+  padding: 20px 0 16px;
+  margin-bottom: 56px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.masthead .left { font-weight: 500; color: var(--ink); }
+.masthead .right { }
+
+/* ---------- title block ---------- */
+h1.title {
+  font-family: 'Fraunces', serif;
+  font-weight: 600;
+  font-variation-settings: "opsz" 144;
+  font-size: 56px;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  margin: 0 0 18px;
+  color: var(--ink);
+}
+.subtitle {
+  font-family: 'EB Garamond', serif;
+  font-style: italic;
+  font-size: 21px;
+  line-height: 1.4;
+  color: var(--muted);
+  margin: 0 0 56px;
+  max-width: 580px;
+}
+
+/* ---------- section headings ---------- */
+h2 {
+  font-family: 'Fraunces', serif;
+  font-weight: 500;
+  font-variation-settings: "opsz" 36;
+  font-size: 28px;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  margin: 56px 0 18px;
+  color: var(--ink);
+  position: relative;
+}
+h2::before {
+  content: "§";
+  position: absolute;
+  left: -36px;
+  top: 4px;
+  font-family: 'Fraunces', serif;
+  font-weight: 400;
+  font-size: 22px;
+  color: var(--accent);
+  opacity: 0.65;
+}
+
+/* ---------- body ---------- */
+p {
+  margin: 0 0 16px;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+}
+p + p { text-indent: 1.5em; }
+p.lead { font-size: 21px; line-height: 1.55; text-indent: 0; color: var(--ink); }
+p.lead::first-line { font-variant: small-caps; letter-spacing: 0.04em; }
+
+em, i { font-style: italic; }
+strong, b { font-weight: 600; color: var(--ink); }
+
+/* ---------- bullet items ---------- */
+.bullets {
+  margin: 12px 0 24px;
+  padding-left: 0;
+  list-style: none;
+}
+.bullets li {
+  position: relative;
+  padding-left: 28px;
+  margin-bottom: 12px;
+}
+.bullets li::before {
+  content: "—";
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+/* ---------- numbered procedure ---------- */
+.procedure {
+  counter-reset: step;
+  margin: 16px 0 24px;
+  padding-left: 0;
+  list-style: none;
+}
+.procedure li {
+  counter-increment: step;
+  position: relative;
+  padding-left: 44px;
+  margin-bottom: 14px;
+}
+.procedure li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 2px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent);
+  background: var(--paper);
+  border: 1px solid var(--accent);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 22px;
+}
+
+/* ---------- figure ---------- */
+figure {
+  margin: 36px -40px;
+  padding: 28px 24px 18px;
+  background: rgba(217, 164, 65, 0.06);
+  border: 1px solid var(--rule);
+}
+figure svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+}
+figcaption {
+  font-family: 'EB Garamond', serif;
+  font-style: italic;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--muted);
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule);
+}
+figcaption .figlabel {
+  font-style: normal;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink);
+  margin-right: 8px;
+}
+
+/* ---------- pull quote / framing ---------- */
+.framing {
+  margin: 32px 0;
+  padding: 24px 28px;
+  border-left: 3px solid var(--accent);
+  background: rgba(139, 58, 42, 0.03);
+  font-family: 'Fraunces', serif;
+  font-size: 18px;
+  font-style: italic;
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+/* ---------- inline code ---------- */
+code, .mono {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85em;
+  color: var(--accent);
+}
+
+/* ---------- responsive ---------- */
+@media (max-width: 720px) {
+  .page { padding: 48px 20px 80px; }
+  h1.title { font-size: 38px; }
+  h2 { font-size: 24px; }
+  h2::before { display: none; }
+  body { font-size: 17px; }
+  figure { margin: 28px -20px; padding: 20px 16px 14px; }
+  .masthead { font-size: 10px; flex-direction: column; gap: 4px; }
+}
+      </style>
+    </head>
+    <body>
+      <article class="page">
+        <header class="masthead">
+          <span class="left">Research memo · TabImpute</span>
+          <span class="right">Variant A · cross only</span>
+        </header>
+
+        <h1 class="title">Two-Sided Chunked Compression for Matrix Completion</h1>
+        <p class="subtitle">Cross-only variant: compressed context flows along row and column axes.</p>
+
+
+        <h2>Motivation</h2>
+        <p class="lead">TabImpute currently scales to large matrices via chunked imputation: the matrix is partitioned into chunks, each chunk is imputed independently, and results are reassembled. This works mechanically but degrades predictive quality, because each chunk loses access to information that lives in other chunks.</p>
+
+        <p>A missing entry in one part of the matrix may be best predicted using factor information identified by entries elsewhere; chunked inference severs that signal. We propose a chunked compression scheme that respects the row/column symmetry of matrix completion and integrates with TabImpute via end-to-end joint training. Cross-chunk context flows along the matrix's row and column axes — the directions that classical matrix completion methods rely on.</p>
+
+        <h2>Architecture</h2>
+        <p>The matrix is partitioned along both axes into a grid of chunks. For any chunk designated as the target — the chunk containing the entry currently being predicted — the rest of the matrix decomposes into source categories defined by axis alignment with the target.</p>
+
+        <ul class="bullets">
+          <li><strong>Column-aligned chunks</strong> share the target's columns. They are compressed into <strong>K<sub>row</sub> latent rows</strong> per chunk, summarizing how the target's columns behave outside the target chunk.</li>
+          <li><strong>Row-aligned chunks</strong> share the target's rows. They are compressed into <strong>K<sub>col</sub> latent columns</strong> per chunk, summarizing how the target's rows behave outside the target chunk.</li>
+        </ul>
+
+        <p>These compressed regions are stitched onto the target chunk to form an extended virtual matrix, which is what the predictor (TabImpute) operates on. The extended matrix has the target chunk at full resolution with compressed extensions along its row and column axes — preserving the spatial structure of the original matrix.</p>
+
+        <figure>
+          <svg viewBox="0 0 760 320" xmlns="http://www.w3.org/2000/svg"
+         role="img" aria-label="Two-panel diagram of chunked compression">
+      <rect x="0" y="0" width="760" height="320" fill="none"/>
+      <rect x="30" y="30" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="66" y="30" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="102" y="30" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="138" y="30" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="174" y="30" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="210" y="30" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="30" y="66" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="66" y="66" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="102" y="66" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="138" y="66" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="174" y="66" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="210" y="66" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="30" y="102" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="66" y="102" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="102" y="102" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="138" y="102" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="174" y="102" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="210" y="102" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="30" y="138" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="66" y="138" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="102" y="138" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="138" y="138" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="174" y="138" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="210" y="138" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="30" y="174" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="66" y="174" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="102" y="174" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="138" y="174" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="174" y="174" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="210" y="174" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="30" y="210" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="66" y="210" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="102" y="210" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="138" y="210" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="174" y="210" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="210" y="210" width="36" height="36" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="30" y="30" width="72" height="72" fill="#fbe9c2" stroke="#b8841d" stroke-width="2.5" fill-opacity="0.85"/>
+<text x="66.0" y="70.0" text-anchor="middle" font-family="EB Garamond, Georgia, serif" font-size="13" font-style="italic" fill="#1a1815" font-weight="600">target</text>
+<rect x="102" y="30" width="72" height="72" fill="#e8d3d1" stroke="#7a2e25" stroke-width="1.5" fill-opacity="0.85"/>
+<text x="138.0" y="70.0" text-anchor="middle" font-family="EB Garamond, Georgia, serif" font-size="13" font-style="italic" fill="#6b6357" font-weight="400">(0,1)</text>
+<rect x="174" y="30" width="72" height="72" fill="#e8d3d1" stroke="#7a2e25" stroke-width="1.5" fill-opacity="0.85"/>
+<text x="210.0" y="70.0" text-anchor="middle" font-family="EB Garamond, Georgia, serif" font-size="13" font-style="italic" fill="#6b6357" font-weight="400">(0,2)</text>
+<rect x="30" y="102" width="72" height="72" fill="#d3dde8" stroke="#2c4f73" stroke-width="1.5" fill-opacity="0.85"/>
+<text x="66.0" y="142.0" text-anchor="middle" font-family="EB Garamond, Georgia, serif" font-size="13" font-style="italic" fill="#6b6357" font-weight="400">(1,0)</text>
+<rect x="102" y="102" width="72" height="72" fill="#ffffff" stroke="#c9bfae" stroke-width="1.0" fill-opacity="0.85"/>
+<text x="138.0" y="142.0" text-anchor="middle" font-family="EB Garamond, Georgia, serif" font-size="13" font-style="italic" fill="#6b6357" font-weight="400">(1,1)</text>
+<rect x="174" y="102" width="72" height="72" fill="#ffffff" stroke="#c9bfae" stroke-width="1.0" fill-opacity="0.85"/>
+<text x="210.0" y="142.0" text-anchor="middle" font-family="EB Garamond, Georgia, serif" font-size="13" font-style="italic" fill="#6b6357" font-weight="400">(1,2)</text>
+<rect x="30" y="174" width="72" height="72" fill="#d3dde8" stroke="#2c4f73" stroke-width="1.5" fill-opacity="0.85"/>
+<text x="66.0" y="214.0" text-anchor="middle" font-family="EB Garamond, Georgia, serif" font-size="13" font-style="italic" fill="#6b6357" font-weight="400">(2,0)</text>
+<rect x="102" y="174" width="72" height="72" fill="#ffffff" stroke="#c9bfae" stroke-width="1.0" fill-opacity="0.85"/>
+<text x="138.0" y="214.0" text-anchor="middle" font-family="EB Garamond, Georgia, serif" font-size="13" font-style="italic" fill="#6b6357" font-weight="400">(2,1)</text>
+<rect x="174" y="174" width="72" height="72" fill="#ffffff" stroke="#c9bfae" stroke-width="1.0" fill-opacity="0.85"/>
+<text x="210.0" y="214.0" text-anchor="middle" font-family="EB Garamond, Georgia, serif" font-size="13" font-style="italic" fill="#6b6357" font-weight="400">(2,2)</text>
+<text x="48.0" y="54.0" text-anchor="middle" font-size="20" fill="#8b3a2a" font-weight="700">★</text>
+<text x="138" y="18" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" letter-spacing="1.5" fill="#1a1815" font-weight="500">ORIGINAL MATRIX</text>
+      <rect x="470" y="30" width="28" height="28" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="498" y="30" width="28" height="28" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="470" y="58" width="28" height="28" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="498" y="58" width="28" height="28" fill="#ffffff" stroke="#c9bfae" stroke-width="0.5"/>
+<rect x="470" y="30" width="56" height="56" fill="#fbe9c2" stroke="#b8841d" stroke-width="2.5" fill-opacity="0.9"/>
+<text x="484.0" y="49.0" text-anchor="middle" font-size="16" fill="#8b3a2a" font-weight="700">★</text>
+<text x="498.0" y="78" text-anchor="middle" font-family="EB Garamond, serif" font-size="10" font-style="italic" fill="#1a1815" font-weight="600">target</text>
+<rect x="470" y="86" width="56" height="28" fill="#d3dde8" stroke="#2c4f73" stroke-width="1.0" fill-opacity="0.85"/>
+<rect x="470" y="114" width="56" height="28" fill="#d3dde8" stroke="#2c4f73" stroke-width="1.0" fill-opacity="0.85"/>
+<text x="498.0" y="113.0" text-anchor="middle" font-family="EB Garamond, serif" font-size="9" font-style="italic" fill="#2c4f73">rows</text>
+<text x="498.0" y="125.0" text-anchor="middle" font-family="EB Garamond, serif" font-size="9" font-style="italic" fill="#2c4f73">(1,0)</text>
+<rect x="470" y="142" width="56" height="28" fill="#d3dde8" stroke="#2c4f73" stroke-width="1.0" fill-opacity="0.85"/>
+<rect x="470" y="170" width="56" height="28" fill="#d3dde8" stroke="#2c4f73" stroke-width="1.0" fill-opacity="0.85"/>
+<text x="498.0" y="169.0" text-anchor="middle" font-family="EB Garamond, serif" font-size="9" font-style="italic" fill="#2c4f73">rows</text>
+<text x="498.0" y="181.0" text-anchor="middle" font-family="EB Garamond, serif" font-size="9" font-style="italic" fill="#2c4f73">(2,0)</text>
+<rect x="526" y="30" width="28" height="56" fill="#e8d3d1" stroke="#7a2e25" stroke-width="1.0" fill-opacity="0.85"/>
+<rect x="554" y="30" width="28" height="56" fill="#e8d3d1" stroke="#7a2e25" stroke-width="1.0" fill-opacity="0.85"/>
+<text x="554.0" y="61.0" text-anchor="middle" font-family="EB Garamond, serif" font-size="9" font-style="italic" fill="#7a2e25">cols</text>
+<text x="554.0" y="74.0" text-anchor="middle" font-family="EB Garamond, serif" font-size="9" font-style="italic" fill="#7a2e25">(0,1)</text>
+<rect x="582" y="30" width="28" height="56" fill="#e8d3d1" stroke="#7a2e25" stroke-width="1.0" fill-opacity="0.85"/>
+<rect x="610" y="30" width="28" height="56" fill="#e8d3d1" stroke="#7a2e25" stroke-width="1.0" fill-opacity="0.85"/>
+<text x="610.0" y="61.0" text-anchor="middle" font-family="EB Garamond, serif" font-size="9" font-style="italic" fill="#7a2e25">cols</text>
+<text x="610.0" y="74.0" text-anchor="middle" font-family="EB Garamond, serif" font-size="9" font-style="italic" fill="#7a2e25">(0,2)</text>
+<rect x="526" y="86" width="112" height="112" fill="none" stroke="#c9bfae" stroke-width="1.0" stroke-dasharray="3 3"/>
+<text x="582.0" y="138.0" text-anchor="middle" font-family="EB Garamond, serif" font-size="11" font-style="italic" fill="#6b6357">(off-axis chunks</text>
+<text x="582.0" y="154.0" text-anchor="middle" font-family="EB Garamond, serif" font-size="11" font-style="italic" fill="#6b6357">unreached)</text>
+<rect x="470" y="30" width="168" height="168" fill="none" stroke="#1a1815" stroke-width="1.8"/>
+<text x="554.0" y="18" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" letter-spacing="1.5" fill="#1a1815" font-weight="500">EXTENDED VIRTUAL MATRIX</text>
+      <rect x="30" y="280" width="14" height="14" fill="#fbe9c2" stroke="#b8841d" stroke-width="1.2" fill-opacity="0.85"/>
+<text x="50" y="291" font-family="EB Garamond, serif" font-size="13" fill="#1a1815">target</text>
+<rect x="132" y="280" width="14" height="14" fill="#d3dde8" stroke="#2c4f73" stroke-width="1.2" fill-opacity="0.85"/>
+<text x="152" y="291" font-family="EB Garamond, serif" font-size="13" fill="#1a1815">column-aligned</text>
+<rect x="290" y="280" width="14" height="14" fill="#e8d3d1" stroke="#7a2e25" stroke-width="1.2" fill-opacity="0.85"/>
+<text x="310" y="291" font-family="EB Garamond, serif" font-size="13" fill="#1a1815">row-aligned</text>
+    </svg>
+          <figcaption><span class="figlabel">Figure 1.</span> Left: the original matrix partitioned into a 3×3 grid of chunks. The target chunk (yellow) contains the missing entry to predict. Column-aligned and row-aligned source chunks contribute compressed context; off-axis chunks (dashed) are unreached in this variant. Right: the extended virtual matrix the predictor sees, with the target at full resolution and compressed extensions along the row and column axes.</figcaption>
+        </figure>
+
+        <h2>Why row–column symmetry matters</h2>
+        <p>Matrix completion's information flow is two-directional in a way that supervised tabular prediction is not. Predicting an entry M[i,j] requires information about row i (what other columns in row i look like) and information about column j (what other rows in column j look like). A single set of compressed slots that mixes the two loses the structure — the predictor would have to disentangle factor sources from a flat summary.</p>
+
+        <p>By separating compression into row-summaries (from column-aligned chunks) and column-summaries (from row-aligned chunks), the architecture preserves the directional structure of the imputation problem. Compressed rows extend the target vertically; compressed columns extend it horizontally. The predictor receives context in exactly the shape it would consume real context, just at compressed cardinality.</p>
+
+        <h2>Training procedure</h2>
+        <p>The compressor and TabImpute are trained jointly, end-to-end. For each training step:</p>
+
+        <ol class="procedure">
+          <li>Sample a synthetic matrix from the TabImpute prior (cheap, given our DGP).</li>
+          <li>Partition it into a grid of chunks (chunk shape and grid shape randomized across steps).</li>
+          <li>Designate one chunk as the target; apply masking to entries within the target.</li>
+          <li>Run the compressor on every cross-aligned chunk to produce its compressed output: K<sub>row</sub> latent rows if the chunk is column-aligned with the target; K<sub>col</sub> latent columns if row-aligned.</li>
+          <li>Stitch the compressed regions onto the target chunk in their spatially appropriate positions, forming the extended virtual matrix.</li>
+          <li>Run TabImpute on the extended matrix; compute imputation loss on the masked entries of the target chunk.</li>
+          <li>Backpropagate through both modules.</li>
+        </ol>
+
+        <p>To ensure all chunks contribute gradient signal, we either rotate the target chunk across steps or compute loss on multiple chunks per step. Importantly, the training regime exactly matches the deployment regime: the model is trained on chunked-and-stitched inputs from the start, eliminating the train–test mismatch that arises when chunking is applied only at inference.</p>
+
+        <h2>Compute considerations</h2>
+        <p>Unlike approaches whose pretraining is bottlenecked by expensive synthetic data generation, the TabImpute DGP is essentially free relative to model forward and backward cost. Three implications follow.</p>
+
+        <ul class="bullets">
+          <li><strong>Diversity.</strong> We can sample matrices with arbitrarily varied rank, size, sparsity, and factor structure at no per-sample cost.</li>
+          <li><strong>Realistic training scale.</strong> We can train directly on multi-chunk matrices at deployment scale, rather than extrapolating from small examples.</li>
+          <li><strong>Curriculum.</strong> Chunk count, chunk size, and matrix rank can be ramped over training without throughput concerns.</li>
+        </ul>
+
+        <h2>Initialization regimes</h2>
+        <p>Three initialization regimes are worth comparing for the joint training.</p>
+
+        <ul class="bullets">
+          <li><strong>From scratch.</strong> Both modules randomly initialized; cleanest scientifically but requires a full pretraining run.</li>
+          <li><strong>Warm-started predictor.</strong> Predictor initialized from existing TabImpute weights; compressor randomly initialized; both jointly fine-tuned. Recommended starting point given existing TabImpute investment.</li>
+          <li><strong>Frozen predictor.</strong> TabImpute weights frozen; only the compressor trained. Cheapest option; serves as a clean test of how much TabImpute's representation space already accommodates compressed context.</li>
+        </ul>
+
+        <p>TabImpute's representations are shaped by a generative imputation objective and must encode the joint distribution over all columns to support arbitrary masking patterns. This makes its representation space considerably more general than that of supervised tabular foundation models, and we expect a compressor trained against a frozen TabImpute predictor to align more easily than against a frozen supervised predictor.</p>
+
+        <h2>Open design questions</h2>
+
+        <p><strong>Compressor module sharing.</strong> A single compressor that conditions on a compression-mode flag (row vs. column) and produces the appropriate output shape is the most parameter-efficient option. Separate modules give more capacity. Worth ablating.</p>
+
+        <p><strong>Mask-awareness in the compressor.</strong> The compressor should likely see each chunk's mask channel, since the reliability of compressed factor estimates depends on which entries were observed. Easiest implementation: the mask is an additional input channel.</p>
+
+        <p><strong>Aggregation across many source chunks.</strong> When the target chunk has multiple column-aligned chunks providing compressed rows, those summaries can be either concatenated (linear context growth) or further aggregated (truly fixed context). Concatenation is simpler and likely sufficient for moderate chunk counts.</p>
+
+        <p><strong>Row–column asymmetry for asymmetric domains.</strong> For symmetric matrix completion (rec sys, sensor data), shared compressor logic is natural. For asymmetric domains like EHR data — where rows are exchangeable patients and columns are non-exchangeable features — row-summaries and column-summaries may want different inductive biases. Particularly relevant for the PRISM use case.</p>
+
+        <div class="framing">
+          The cross-only variant is the minimal architecture that respects row–column symmetry while remaining tractable to train and deploy. It deliberately omits off-axis information; whether this loses meaningful signal in practice is an empirical question and the natural extension is a corner-block channel.
+        </div>
+
+      </article>
+    </body>
+    </html>

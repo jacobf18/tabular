@@ -171,9 +171,9 @@ if __name__ == "__main__":
     
     p_missing = 0.4
     config = {
-        "num_rows_low": 10,
+        "num_rows_low": 50,
         "num_rows_high": 50,
-        "num_cols_low": 5,
+        "num_cols_low": 50,
         "num_cols_high": 50,
         "p_missing": p_missing,
         "apply_feature_warping_prob": 0.0,

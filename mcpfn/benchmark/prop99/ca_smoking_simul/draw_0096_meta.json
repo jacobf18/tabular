@@ -1,0 +1,29 @@
+{
+  "N": 38,
+  "Nt": 8,
+  "T": 31,
+  "T0": 11,
+  "adoption_time": 11,
+  "assignment": "simultaneous",
+  "dataset": "california_smoking_controls",
+  "design": "simultaneous",
+  "draw_id": 96,
+  "draw_name": "draw_0096",
+  "n_hidden": 160,
+  "outcome": "PacksPerCapita",
+  "shape": {
+    "n_cols": 31,
+    "n_rows": 38
+  },
+  "t0_ratio": 0.3548387096774194,
+  "treated_units": [
+    14,
+    9,
+    27,
+    32,
+    31,
+    23,
+    37,
+    26
+  ]
+}

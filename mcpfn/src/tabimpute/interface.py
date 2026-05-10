@@ -25,11 +25,36 @@ from huggingface_hub import hf_hub_download
 from scipy.optimize import minimize
 from scipy.special import softmax
 from tabimpute.model.encoders import normalize_data
-# from tabimpute.model.model_new import TabImputeModel
-# from tabimpute.model.model import TabImputeModel
-from tabimpute.model.model_new_stable import TabImputeModel
+from tabimpute.model.model_new import TabImputeModel as TabImputeModelNew
+from tabimpute.model.model_new_stable import (
+    TabImputeModel as TabImputeModelStable,
+    build_best_transfer_model,
+)
+from tabimpute.model.model_new_stable_memory_efficient import (
+    TabImputeModel as TabImputeModelMemoryEfficient,
+)
+from tabimpute.model.model_compressed_cross import (
+    ColumnCompressionModel,
+    CompressedCrossTabImputeModel,
+    RowCompressionModel,
+    build_compressor_config_from_predictor,
+)
 
 import matplotlib.pyplot as plt
+
+
+def _load_json_config_from_checkpoint(checkpoint_path: str) -> dict:
+    from pathlib import Path
+    import json
+
+    cfg_path = Path(checkpoint_path).parent / "config.json"
+    with cfg_path.open("r", encoding="utf-8") as f:
+        cfg = json.load(f)
+    if "model" in cfg:
+        return dict(cfg["model"])
+    if "config" in cfg:
+        return dict(cfg["config"])
+    return dict(cfg)
 
 def get_model_from_huggingface() -> str:
     repo_id = "Tabimpute/TabImpute"
@@ -76,74 +101,24 @@ class ImputePFN:
         preprocessors: list[Preprocess] = None,
         checkpoint_path: str = None,
         max_num_rows: int = None,
+        max_num_cols: int = None,
         max_num_chunks: int = None,
         verbose: bool = False,
         entry_wise_features: bool = True,
         json_config: dict = None,
+        model_family: str = "new_stable",
+        use_ema: bool = False,
     ):
         self.device = device
+        self.model_family = model_family
 
         # Build model
         if entry_wise_features:
             self.model = MCPFN(nhead=nhead).to(self.device).to(torch.bfloat16)
         else:
-            # num_attention_heads = 32
-            # embedding_size = 32 * num_attention_heads
-            # mlp_hidden_size = 1024
-            # num_cls = 12
-            # num_layers = 12
-            # self.model = TabImputeModel(embedding_size=embedding_size, 
-            #                             num_attention_heads=num_attention_heads, 
-            #                             mlp_hidden_size=mlp_hidden_size, 
-            #                             num_layers=num_layers,
-            #                             num_cls=num_cls,
-            #                             num_outputs=5000).to(self.device).to(torch.bfloat16)
-            num_attention_heads = json_config["config"]["num_attention_heads"]
-            embedding_size = json_config["config"]["embedding_size"]
-            mlp_hidden_size = json_config["config"]["mlp_hidden_size"]
-            num_cls = json_config["config"]["num_cls"]
-            num_layers = json_config["config"]["num_layers"]
-            rope_base = 10000.0
-            rope_fraction = json_config["config"]["rope_fraction"]
-            attention_dropout = json_config["config"]["attention_dropout"]
-            ffn_dropout = json_config["config"]["ffn_dropout"]
-            drop_path_rate = json_config["config"]["drop_path_rate"]
-            residual_scale_init = json_config["config"]["residual_scale_init"]
-            embedding_dropout = json_config["config"]["embedding_dropout"]
-            
-            # self.model = TabImputeModel(
-            #                 embedding_size=embedding_size,
-            #                 num_attention_heads=num_attention_heads,
-            #                 mlp_hidden_size=mlp_hidden_size,
-            #                 num_layers=num_layers,
-            #                 num_outputs=5000,
-            #                 num_cls=num_cls,
-            #                 use_rope=True,
-            #                 rope_base=10000.0,
-            #                 rope_fraction=json_config["config"]["rope_fraction"],
-            #                 use_absolute_positional_embeddings=False,
-            #                 positional_damping_factor=0.1,
-            #             ).to('cuda').to(torch.bfloat16)
-
-            self.model = TabImputeModel(
-                embedding_size=embedding_size,
-                num_attention_heads=num_attention_heads,
-                mlp_hidden_size=mlp_hidden_size,
-                num_layers=num_layers,
-                num_outputs=5000,
-                num_cls=num_cls,
-                use_rope=True,
-                rope_base=rope_base,
-                rope_fraction=rope_fraction,
-                use_absolute_positional_embeddings=False,
-                positional_damping_factor=0.1,
-                attention_dropout=attention_dropout,
-                ffn_dropout=ffn_dropout,
-                drop_path_rate=drop_path_rate,
-                residual_scale_init=residual_scale_init,
-                rms_norm_eps=1e-6,
-                embedding_dropout=embedding_dropout,
-            ).to("cuda", dtype=torch.bfloat16)
+            self.model = self._build_direct_model(json_config=json_config).to(
+                self.device, dtype=torch.bfloat16
+            )
             self.model.eval()
         # torch.compile(self.model)
 
@@ -159,13 +134,18 @@ class ImputePFN:
             checkpoint = torch.load(
                 checkpoint_path, map_location=self.device, weights_only=True
             )
-            self.model.load_state_dict(checkpoint["state_dict"])
+
+            state_dict = self._select_state_dict(
+                checkpoint, use_ema=use_ema, checkpoint_path=checkpoint_path
+            )
+            self.model.load_state_dict(state_dict)
         else:
             checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=True)
             self.model.load_state_dict(checkpoint['model'], strict=True)
 
         self.preprocessors = preprocessors
         self.max_num_rows = max_num_rows
+        self.max_num_cols = max_num_cols
         if max_num_chunks is None:
             max_num_chunks = float('inf')
         self.max_num_chunks = max_num_chunks
@@ -174,8 +154,215 @@ class ImputePFN:
         self.bar_distribution = FullSupportBarDistribution(borders=borders)
         self.verbose = verbose
         self.entry_wise_features = entry_wise_features
-        
-    def impute(self, X: np.ndarray, return_full: bool = False, num_repeats: int = 1) -> np.ndarray:
+
+    def set_attention_capture(
+        self, enabled: bool = True, store_weights: bool = True
+    ) -> None:
+        if not hasattr(self.model, "set_attention_capture"):
+            raise NotImplementedError(
+                "Attention capture is implemented for direct TabImpute models "
+                "(entry_wise_features=False)."
+            )
+        self.model.set_attention_capture(enabled, store_weights=store_weights)
+
+    def get_attention_diagnostics(self) -> list[dict[str, object]]:
+        if not hasattr(self.model, "get_attention_diagnostics"):
+            raise NotImplementedError(
+                "Attention diagnostics are implemented for direct TabImpute models "
+                "(entry_wise_features=False)."
+            )
+        return self.model.get_attention_diagnostics()
+
+    def diagnose_attention(
+        self,
+        X: np.ndarray,
+        store_weights: bool = False,
+        means: np.ndarray | None = None,
+        stds: np.ndarray | None = None,
+    ) -> list[dict[str, object]]:
+        """Run one direct-model pass and return per-layer attention weights/stats."""
+        if self.entry_wise_features:
+            raise NotImplementedError(
+                "diagnose_attention is intended for the direct mat-to-mat model. "
+                "Construct ImputePFN with entry_wise_features=False."
+            )
+        if X.ndim != 2:
+            raise ValueError("Input matrix must be 2-dimensional")
+
+        if means is None:
+            means = np.nanmean(X, axis=0)
+        else:
+            means = np.asarray(means, dtype=np.float64)
+            if means.shape != (X.shape[1],):
+                raise ValueError(
+                    f"means must have shape ({X.shape[1]},), got {means.shape}"
+                )
+
+        if stds is None:
+            stds = np.nanstd(X, axis=0)
+        else:
+            stds = np.asarray(stds, dtype=np.float64)
+            if stds.shape != (X.shape[1],):
+                raise ValueError(
+                    f"stds must have shape ({X.shape[1]},), got {stds.shape}"
+                )
+
+        stds = np.where(np.isnan(stds), 1, stds)
+        means = np.where(np.isnan(means), 0, means)
+        X_normalized = (X - means) / (stds + 1e-16)
+        X_tensor = (
+            torch.from_numpy(X_normalized)
+            .unsqueeze(0)
+            .to(self.device)
+            .to(torch.bfloat16)
+        )
+
+        self.set_attention_capture(True, store_weights=store_weights)
+        with torch.no_grad():
+            self.model(X_tensor)
+        diagnostics = self.get_attention_diagnostics()
+        self.set_attention_capture(False)
+        return diagnostics
+
+    @staticmethod
+    def _select_state_dict(
+        checkpoint: dict, use_ema: bool, checkpoint_path: str
+    ) -> dict:
+        """Pick the parameter dict to load, preferring EMA weights when requested.
+
+        Handles three checkpoint shapes:
+          - best.ckpt with `ema_applied=True` and `state_dict` already = EMA weights.
+          - step-*.ckpt with `state_dict` = live weights and
+            `ema_state["shadow"]` = the EMA shadow keyed by parameter name.
+          - any checkpoint with no EMA info (falls back to `state_dict`).
+
+        For (2), the EMA shadow is overlaid onto the live state_dict so that
+        non-parameter buffers are preserved.
+        """
+        if "state_dict" not in checkpoint:
+            raise ValueError(
+                f"Checkpoint at {checkpoint_path} has no 'state_dict' key."
+            )
+        live_state_dict = checkpoint["state_dict"]
+
+        if not use_ema:
+            return live_state_dict
+
+        if checkpoint.get("ema_applied"):
+            # state_dict already contains EMA weights (best.ckpt path).
+            return live_state_dict
+
+        ema_state = checkpoint.get("ema_state")
+        if ema_state is None or "shadow" not in ema_state:
+            raise ValueError(
+                f"use_ema=True but checkpoint at {checkpoint_path} has no EMA "
+                "shadow (no 'ema_state' or 'ema_applied' marker). Train with "
+                "--ema_enabled true or pass use_ema=False."
+            )
+
+        shadow = ema_state["shadow"]
+        merged = {**live_state_dict}
+        for name, tensor in shadow.items():
+            if name in merged:
+                merged[name] = tensor.to(dtype=merged[name].dtype)
+            else:
+                merged[name] = tensor
+        return merged
+
+    def _get_direct_model_config(self, json_config: dict | None) -> dict:
+        if json_config is None:
+            raise ValueError(
+                "json_config must be provided when entry_wise_features=False"
+            )
+
+        if "config" in json_config:
+            return dict(json_config["config"])
+        return dict(json_config)
+
+    def _build_direct_model(self, json_config: dict | None):
+        config = self._get_direct_model_config(json_config)
+        model_family = self.model_family.lower()
+
+        common_kwargs = {
+            "embedding_size": config["embedding_size"],
+            "num_attention_heads": config["num_attention_heads"],
+            "mlp_hidden_size": config["mlp_hidden_size"],
+            "num_layers": config["num_layers"],
+            "num_outputs": config.get("num_outputs", 5000),
+            "num_cls": config["num_cls"],
+            "use_rope": config.get("use_rope", True),
+            "rope_base": config.get("rope_base", 10000.0),
+            "rope_fraction": config.get("rope_fraction", 1.0),
+            "use_absolute_positional_embeddings": config.get(
+                "use_absolute_positional_embeddings", False
+            ),
+            "positional_damping_factor": config.get(
+                "positional_damping_factor", 0.1
+            ),
+        }
+
+        if model_family in {"new", "train_new", "legacy"}:
+            return TabImputeModelNew(**common_kwargs)
+
+        if model_family in {"new_stable", "stable", "train_new_stable"}:
+            stable_kwargs = {
+                **common_kwargs,
+                "attention_dropout": config.get("attention_dropout", 0.0),
+                "ffn_dropout": config.get("ffn_dropout", 0.0),
+                "drop_path_rate": config.get("drop_path_rate", 0.0),
+                "residual_scale_init": config.get("residual_scale_init", 1.0),
+                "rms_norm_eps": config.get("rms_norm_eps", 1e-6),
+                "embedding_dropout": config.get("embedding_dropout", 0.0),
+            }
+            return TabImputeModelStable(**stable_kwargs)
+
+        if model_family in {
+            "new_stable_memory_efficient",
+            "stable_memory_efficient",
+            "memory_efficient",
+            "train_new_stable_memory_efficient",
+        }:
+            stable_kwargs = {
+                **common_kwargs,
+                "attention_dropout": config.get("attention_dropout", 0.0),
+                "ffn_dropout": config.get("ffn_dropout", 0.0),
+                "drop_path_rate": config.get("drop_path_rate", 0.0),
+                "residual_scale_init": config.get("residual_scale_init", 1.0),
+                "rms_norm_eps": config.get("rms_norm_eps", 1e-6),
+                "embedding_dropout": config.get("embedding_dropout", 0.0),
+                "use_activation_checkpointing": config.get(
+                    "use_activation_checkpointing", True
+                ),
+            }
+            return TabImputeModelMemoryEfficient(**stable_kwargs)
+
+        if model_family in {"best_transfer", "best_transfer_stable"}:
+            stable_overrides = {
+                **common_kwargs,
+                "attention_dropout": config.get("attention_dropout", 0.0),
+                "ffn_dropout": config.get("ffn_dropout", 0.0),
+                "drop_path_rate": config.get("drop_path_rate", 0.0),
+                "residual_scale_init": config.get("residual_scale_init", 1.0),
+                "rms_norm_eps": config.get("rms_norm_eps", 1e-6),
+                "embedding_dropout": config.get("embedding_dropout", 0.0),
+            }
+            return build_best_transfer_model(**stable_overrides)
+
+        raise ValueError(
+            f"Unsupported model_family '{self.model_family}'. "
+            "Expected one of: 'new', 'new_stable', "
+            "'new_stable_memory_efficient', 'best_transfer'."
+        )
+
+
+    def impute(
+        self,
+        X: np.ndarray,
+        return_full: bool = False,
+        num_repeats: int = 1,
+        means: np.ndarray | None = None,
+        stds: np.ndarray | None = None,
+    ) -> np.ndarray:
         """Impute missing values in the input matrix.
         Imputes the missing values in place.
 
@@ -191,13 +378,28 @@ class ImputePFN:
         if X.ndim != 2:
             raise ValueError("Input matrix must be 2-dimensional")
 
-        # Get means and stds per column
-        means = np.nanmean(X, axis=0)
-        stds = np.nanstd(X, axis=0)
-        
+        # Get means and stds per column unless they are supplied manually.
+        if means is None:
+            means = np.nanmean(X, axis=0)
+        else:
+            means = np.asarray(means, dtype=np.float64)
+            if means.shape != (X.shape[1],):
+                raise ValueError(
+                    f"means must have shape ({X.shape[1]},), got {means.shape}"
+                )
+
+        if stds is None:
+            stds = np.nanstd(X, axis=0)
+        else:
+            stds = np.asarray(stds, dtype=np.float64)
+            if stds.shape != (X.shape[1],):
+                raise ValueError(
+                    f"stds must have shape ({X.shape[1]},), got {stds.shape}"
+                )
+
         # set stds to 1 if they are nan
         stds = np.where(np.isnan(stds), 1, stds)
-        
+
         # set means to 0 if they are nan
         means = np.where(np.isnan(means), 0, means)
 
@@ -259,8 +461,9 @@ class ImputePFN:
         
     def get_imputation(self, X_normalized: np.ndarray, num_repeats: int = 1) -> np.ndarray:
         """Get the imputation for the input matrix.
-        If max_num_rows is not None, the input matrix is split into chunks of max_num_rows rows, 
-        and the imputation is performed on each chunk.
+        If ``max_num_rows`` and/or ``max_num_cols`` is set, the input matrix is
+        split into row/column chunks and the imputation is performed on each
+        submatrix.
 
         Args:
             X_normalized (np.ndarray): Input matrix of shape (T, H) where:
@@ -268,33 +471,57 @@ class ImputePFN:
              - H is the number of features (columns)
             num_repeats (int, optional): Number of times to repeat the imputation. Defaults to 1.
             max_num_rows (int, optional): Maximum number of rows to impute at once. Defaults to None.
+            max_num_cols (int, optional): Maximum number of columns to impute at once. Defaults to None.
 
         Returns:
             np.ndarray: Imputed matrix of shape (T, H)
         """
-        if self.max_num_rows is None:
+        if self.max_num_rows is None and self.max_num_cols is None:
             return self._get_imputation_single(X_normalized, num_repeats=num_repeats)
-        
-        else:
-            X_full = X_normalized.copy()
-            start_index = 0
-            
-            if self.verbose:
-                from tqdm import tqdm
-                pbar = tqdm(total=X_normalized.shape[0], desc="Processed rows")
-                
-            while start_index < X_normalized.shape[0]:
-                end_index = min(start_index + (self.max_num_rows * self.max_num_chunks), X_normalized.shape[0])
+
+        row_chunk_size = self._get_row_window_size(X_normalized.shape[0])
+        row_spans = self._get_chunk_spans(X_normalized.shape[0], row_chunk_size)
+        col_spans = self._get_chunk_spans(X_normalized.shape[1], self.max_num_cols)
+        X_imputed_sum = np.zeros_like(X_normalized, dtype=np.float64)
+        X_full_sum = np.zeros_like(X_normalized, dtype=np.float64)
+        prediction_counts = np.zeros_like(X_normalized, dtype=np.float64)
+
+        if self.verbose:
+            from tqdm import tqdm
+
+            total_chunks = len(row_spans) * len(col_spans)
+            pbar = tqdm(total=total_chunks, desc="Processed chunks")
+
+        for row_start, row_end in row_spans:
+            for col_start, col_end in col_spans:
+                row_slice = slice(row_start, row_end)
+                col_slice = slice(col_start, col_end)
+                X_chunk = X_normalized[row_slice, col_slice].copy()
+                X_chunk_imputed, X_chunk_full = self._get_imputation_chunk(
+                    X_chunk, num_repeats=num_repeats
+                )
+                X_imputed_sum[row_slice, col_slice] += X_chunk_imputed
+                X_full_sum[row_slice, col_slice] += X_chunk_full
+                prediction_counts[row_slice, col_slice] += 1.0
                 if self.verbose:
-                    pbar.update(end_index - start_index)
-                X_normalized_chunk = X_normalized[start_index:end_index, :]
-                X_normalized_chunk, X_full_chunk = self._get_imputation_chunk(X_normalized_chunk, num_repeats=num_repeats)
-                X_normalized[start_index:end_index, :] = X_normalized_chunk
-                X_full[start_index:end_index, :] = X_full_chunk
-                start_index = end_index
-            return X_normalized, X_full
-            
-        
+                    pbar.update(1)
+
+        if self.verbose:
+            pbar.close()
+
+        has_predictions = prediction_counts > 0
+        X_imputed = X_normalized.copy()
+        X_full = X_normalized.copy()
+        X_imputed[has_predictions] = (
+            X_imputed_sum[has_predictions] / prediction_counts[has_predictions]
+        )
+        X_full[has_predictions] = (
+            X_full_sum[has_predictions] / prediction_counts[has_predictions]
+        )
+
+        return X_imputed, X_full
+
+
     def _get_input_tensors(self, X_normalized: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Get the input tensors for the input matrix.
         Args:
@@ -331,18 +558,42 @@ class ImputePFN:
         
         return X_input, input_y, missing_indices, non_missing_indices, train_size
     
-    def split_into_chunks(self, arr: np.ndarray, chunk_size: int) -> list[np.ndarray]:
+    def _get_row_window_size(self, num_rows: int) -> int | None:
+        if self.max_num_rows is None:
+            return None
+        if self.max_num_chunks == float("inf"):
+            return num_rows
+        return max(1, int(self.max_num_rows * self.max_num_chunks))
+
+    def _get_chunk_spans(
+        self, size: int, chunk_size: int | None
+    ) -> list[tuple[int, int]]:
+        if chunk_size is None or chunk_size >= size:
+            return [(0, size)]
+        spans = []
+        start_index = 0
+        while start_index + chunk_size < size:
+            spans.append((start_index, start_index + chunk_size))
+            start_index += chunk_size
+        if start_index < size:
+            final_span = (max(0, size - chunk_size), size)
+            if not spans or spans[-1] != final_span:
+                spans.append(final_span)
+        return spans
+
+    def split_into_chunks(self, arr: np.ndarray, chunk_size: int | None) -> list[np.ndarray]:
         """
         Split a 2D array into row chunks of size `chunk_size`.
-        The final chunk may have fewer rows.
+        The final chunk overlaps the previous chunk when needed so it can keep
+        a full-size context window.
         """
-        start_indices = []
-        end_indices = []
-        chunks = []
-        for i in range(0, arr.shape[0], chunk_size):
-            start_indices.append(i)
-            end_indices.append(min(i + chunk_size, arr.shape[0]))
-            chunks.append(arr[start_indices[-1]:end_indices[-1]])
+        if chunk_size is None or chunk_size >= arr.shape[0]:
+            return [arr], [0], [arr.shape[0]]
+
+        spans = self._get_chunk_spans(arr.shape[0], chunk_size)
+        start_indices = [start_index for start_index, _ in spans]
+        end_indices = [end_index for _, end_index in spans]
+        chunks = [arr[start_index:end_index] for start_index, end_index in spans]
         return chunks, start_indices, end_indices
     
     def _get_imputation_chunk(self, X_normalized: np.ndarray, num_repeats: int = 1) -> tuple[np.ndarray, np.ndarray]:
@@ -527,8 +778,8 @@ class ImputePFN:
                         X_full = X_normalized.copy()
                         X_imputed = X_normalized.copy()
                         
-                        sampls_train = sample[:train_y.shape[0]]
-                        sampls_test = sample[train_y.shape[0]:]
+                        sampls_train = sample[:train_size]
+                        sampls_test = sample[train_size:]
                         X_full[missing_indices] = sampls_test.cpu().detach().numpy()
                         X_full[non_missing_indices] = sampls_train.cpu().detach().numpy()
                         X_imputed[missing_indices] = sampls_test.cpu().detach().numpy()
@@ -567,7 +818,199 @@ class ImputePFN:
             missing_mask = np.isnan(X_normalized)
             X_normalized[missing_mask] = X_imputed[missing_mask]
             return X_normalized, X_imputed
-            
+	            
+
+
+class CompressedCrossImputePFN:
+    """Chunked cross-compression interface for direct TabImpute checkpoints."""
+
+    def __init__(
+        self,
+        predictor_checkpoint_path: str,
+        row_compressor_checkpoint_path: str | None = None,
+        column_compressor_checkpoint_path: str | None = None,
+        predictor_config: dict | None = None,
+        compressor_config: dict | None = None,
+        chunk_rows: int = 50,
+        chunk_cols: int = 50,
+        k_row: int = 4,
+        k_col: int = 4,
+        device: str = "cpu",
+        model_family: str = "new_stable_memory_efficient",
+    ):
+        self.device = device
+        self.chunk_rows = chunk_rows
+        self.chunk_cols = chunk_cols
+        self.k_row = k_row
+        self.k_col = k_col
+
+        if predictor_config is None:
+            predictor_config = _load_json_config_from_checkpoint(
+                predictor_checkpoint_path
+            )
+        if "model" in predictor_config:
+            predictor_config = dict(predictor_config["model"])
+        self.predictor_config = dict(predictor_config)
+
+        predictor_builder = ImputePFN(
+            device=device,
+            checkpoint_path=predictor_checkpoint_path,
+            entry_wise_features=False,
+            json_config={"config": self.predictor_config},
+            model_family=model_family,
+        )
+        predictor = predictor_builder.model
+
+        if compressor_config is None:
+            compressor_config = build_compressor_config_from_predictor(
+                self.predictor_config,
+                k_row=k_row,
+                k_col=k_col,
+            )
+        self.compressor_config = dict(compressor_config)
+
+        row_compressor = RowCompressionModel(
+            embedding_size=self.compressor_config["embedding_size"],
+            num_attention_heads=self.compressor_config["num_attention_heads"],
+            mlp_hidden_size=self.compressor_config["mlp_hidden_size"],
+            num_layers=self.compressor_config["num_layers"],
+            k_row=k_row,
+            attention_dropout=self.compressor_config.get("attention_dropout", 0.0),
+            ffn_dropout=self.compressor_config.get("ffn_dropout", 0.0),
+            drop_path_rate=self.compressor_config.get("drop_path_rate", 0.0),
+            residual_scale_init=self.compressor_config.get("residual_scale_init", 1.0),
+            rms_norm_eps=self.compressor_config.get("rms_norm_eps", 1e-6),
+            use_rope=self.compressor_config.get("use_rope", True),
+            rope_base=self.compressor_config.get("rope_base", 10000.0),
+            rope_fraction=self.compressor_config.get("rope_fraction", 1.0),
+            use_activation_checkpointing=self.compressor_config.get(
+                "use_activation_checkpointing",
+                True,
+            ),
+        )
+        column_compressor = ColumnCompressionModel(
+            embedding_size=self.compressor_config["embedding_size"],
+            num_attention_heads=self.compressor_config["num_attention_heads"],
+            mlp_hidden_size=self.compressor_config["mlp_hidden_size"],
+            num_layers=self.compressor_config["num_layers"],
+            k_col=k_col,
+            attention_dropout=self.compressor_config.get("attention_dropout", 0.0),
+            ffn_dropout=self.compressor_config.get("ffn_dropout", 0.0),
+            drop_path_rate=self.compressor_config.get("drop_path_rate", 0.0),
+            residual_scale_init=self.compressor_config.get("residual_scale_init", 1.0),
+            rms_norm_eps=self.compressor_config.get("rms_norm_eps", 1e-6),
+            use_rope=self.compressor_config.get("use_rope", True),
+            rope_base=self.compressor_config.get("rope_base", 10000.0),
+            rope_fraction=self.compressor_config.get("rope_fraction", 1.0),
+            use_activation_checkpointing=self.compressor_config.get(
+                "use_activation_checkpointing",
+                True,
+            ),
+        )
+
+        self.model = CompressedCrossTabImputeModel(
+            predictor=predictor,
+            row_compressor=row_compressor,
+            column_compressor=column_compressor,
+            k_row=k_row,
+            k_col=k_col,
+        ).to(device=device, dtype=torch.bfloat16)
+
+        self._load_compressor_checkpoint(
+            row_compressor_checkpoint_path,
+            module_name="row_compressor",
+        )
+        self._load_compressor_checkpoint(
+            column_compressor_checkpoint_path,
+            module_name="column_compressor",
+        )
+        self.model.eval()
+
+        with resources.files("tabimpute.data").joinpath("borders.pt").open("rb") as f:
+            self.borders = torch.load(f, map_location=self.device)
+        self.bar_distribution = FullSupportBarDistribution(
+            borders=self.borders.to(self.device)
+        )
+
+    def _load_compressor_checkpoint(
+        self,
+        checkpoint_path: str | None,
+        module_name: str,
+    ) -> None:
+        if checkpoint_path is None:
+            return
+        checkpoint = torch.load(
+            checkpoint_path,
+            map_location=self.device,
+            weights_only=True,
+        )
+        module = getattr(self.model, module_name)
+        if module_name in checkpoint:
+            state_dict = checkpoint[module_name]
+        elif "model" in checkpoint:
+            prefix = f"{module_name}."
+            state_dict = {
+                key.removeprefix(prefix): value
+                for key, value in checkpoint["model"].items()
+                if key.startswith(prefix)
+            }
+        else:
+            state_dict = checkpoint
+        module.load_state_dict(state_dict, strict=True)
+
+    def impute(
+        self,
+        X: np.ndarray,
+        return_full: bool = False,
+        means: np.ndarray | None = None,
+        stds: np.ndarray | None = None,
+    ) -> np.ndarray:
+        if X.ndim != 2:
+            raise ValueError("Input matrix must be 2-dimensional")
+
+        if means is None:
+            means = np.nanmean(X, axis=0)
+        else:
+            means = np.asarray(means, dtype=np.float64)
+            if means.shape != (X.shape[1],):
+                raise ValueError(
+                    f"means must have shape ({X.shape[1]},), got {means.shape}"
+                )
+
+        if stds is None:
+            stds = np.nanstd(X, axis=0)
+        else:
+            stds = np.asarray(stds, dtype=np.float64)
+            if stds.shape != (X.shape[1],):
+                raise ValueError(
+                    f"stds must have shape ({X.shape[1]},), got {stds.shape}"
+                )
+
+        stds = np.where(np.isnan(stds), 1, stds)
+        means = np.where(np.isnan(means), 0, means)
+        X_normalized = (X - means) / (stds + 1e-16)
+        X_tensor = (
+            torch.from_numpy(X_normalized)
+            .unsqueeze(0)
+            .to(self.device)
+            .to(torch.bfloat16)
+        )
+
+        with torch.no_grad():
+            imputed = self.model.impute_normalized(
+                X_tensor,
+                chunk_rows=self.chunk_rows,
+                chunk_cols=self.chunk_cols,
+                bar_distribution=self.bar_distribution,
+            )[0]
+
+        X_full = imputed.float().cpu().numpy() * stds + means
+        X_imputed = X.copy()
+        missing_mask = np.isnan(X_imputed)
+        X_imputed[missing_mask] = X_full[missing_mask]
+        if return_full:
+            return X_imputed, X_full
+        return X_imputed
 
 
 class TabPFNImputer:
@@ -972,7 +1415,12 @@ if __name__ == "__main__":
     X_test[np.random.rand(*X_test.shape) < 0.15] = np.nan
 
     imputer_no_chunk = ImputePFN(device="cpu", entry_wise_features=True, max_num_rows=None)
-    imputer_chunk = ImputePFN(device="cpu", entry_wise_features=True, max_num_rows=25)
+    imputer_chunk = ImputePFN(
+        device="cpu",
+        entry_wise_features=True,
+        max_num_rows=25,
+        max_num_cols=4,
+    )
 
     out_no_chunk, full_no_chunk = imputer_no_chunk.impute(X_test.copy(), return_full=True)
     out_chunk, full_chunk = imputer_chunk.impute(X_test.copy(), return_full=True)

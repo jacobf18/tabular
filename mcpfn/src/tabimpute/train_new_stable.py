@@ -11,11 +11,10 @@ if __package__ is None or __package__ == "":
 
 from tabimpute.model.bar_distribution import FullSupportBarDistribution
 from tabimpute.model.model_new_stable import (
-    BEST_TRANSFER_MODEL_CONFIG,
     BEST_TRANSFER_OPTIMIZER_CONFIG,
     build_best_transfer_model,
 )
-from tabimpute.prior.training_set_generation import MissingnessPrior
+from tabimpute.prior.spectrum_training_set_generation import SpectrumMissingnessPrior
 from tabimpute.train.callbacks import WandbLoggerCallback
 from tabimpute.train_new_sweep import train
 
@@ -26,34 +25,101 @@ DEFAULT_P_MISSING = 0.4
 DEFAULT_CHECKPOINT_EVERY = 2500
 DEFAULT_WANDB_PROJECT = "tabimpute"
 
+MOVIELENS_SURROGATE_PRIOR_CONFIG = {
+    # Preserve the MovieLens 100K aspect ratio on a much cheaper canvas.
+    "num_rows_low": 128,
+    "num_rows_high": 128,
+    "num_cols_low": 224,
+    "num_cols_high": 224,
+    # MovieLens 100K is about 6.3% observed entries.
+    # "p_missing": 0.94,
+    "p_missing": 0.4,
+    # Keep a long, nontrivial spectrum instead of the previous rank<=30 regime.
+    "spectrum_rank_low": 80,
+    "spectrum_rank_high": 128,
+    # Flatter tail to mimic the long MovieLens decay.
+    "spectrum_alpha_low": 0.30,
+    "spectrum_alpha_high": 0.50,
+    "spectrum_head_weight_low": 3.0,
+    "spectrum_head_weight_high": 6.0,
+    "spectrum_head_exp_scale_low": 2.5,
+    "spectrum_head_exp_scale_high": 4.5,
+    "spectrum_head_exp_power_low": 2.2,
+    "spectrum_head_exp_power_high": 3.0,
+    "spectrum_head_handoff_scale_low": 1.0,
+    "spectrum_head_handoff_scale_high": 4.0,
+    "spectrum_tail_amplitude_low": 0.25,
+    "spectrum_tail_amplitude_high": 0.45,
+    "spectrum_taper_strength_low": 1.2,
+    "spectrum_taper_strength_high": 1.8,
+    "spectrum_taper_power_low": 3.0,
+    "spectrum_taper_power_high": 4.5,
+    "spectrum_scale_low": 1.0,
+    "spectrum_scale_high": 1.0,
+    "spectrum_noise_std_low": 0.001,
+    "spectrum_noise_std_high": 0.005,
+    # Roughly matches a scaled-down 90-95% power cutoff from MovieLens.
+    "spectrum_target_rank": 40,
+}
+
+ROUND2_T003_MODEL_CONFIG = {
+    "embedding_size": 768,
+    "num_attention_heads": 16,
+    "mlp_hidden_size": 1536,
+    "num_layers": 8,
+    "num_outputs": 5000,
+    "num_cls": 12,
+    "use_rope": True,
+    "rope_base": 10000.0,
+    "rope_fraction": 0.5,
+    "use_absolute_positional_embeddings": False,
+    "positional_damping_factor": 0.1,
+    "attention_dropout": 0.0,
+    "ffn_dropout": 0.05,
+    "drop_path_rate": 0.01,
+    "residual_scale_init": 0.5,
+    "embedding_dropout": 0.0,
+    "rms_norm_eps": 1e-6,
+}
+
+# Update parameters to make much larger model
+
+ROUND2_T003_MODEL_CONFIG_LARGE = {
+    "embedding_size": 32*48,
+    "num_attention_heads": 32,
+    "mlp_hidden_size": 3072,
+    "num_layers": 8,
+    "num_outputs": 5000,
+    "num_cls": 16,
+    "use_rope": True,
+    "rope_base": 10000.0,
+    "rope_fraction": 0.5,
+    "use_absolute_positional_embeddings": False,
+    "positional_damping_factor": 0.1,
+    "attention_dropout": 0.0,
+    "ffn_dropout": 0.05,
+    "drop_path_rate": 0.01,
+    "residual_scale_init": 0.5,
+    "embedding_dropout": 0.0,
+    "rms_norm_eps": 1e-6,
+}
+
+
 
 if __name__ == "__main__":
-    model_cfg = dict(BEST_TRANSFER_MODEL_CONFIG)
+    model_cfg = dict(ROUND2_T003_MODEL_CONFIG)
     optimizer_cfg = dict(BEST_TRANSFER_OPTIMIZER_CONFIG)
+    wandb_api_key = os.environ.get("WANDB_KEY")
 
-    epochs = DEFAULT_EPOCHS
-    batch_size = DEFAULT_BATCH_SIZE
-    p_missing = DEFAULT_P_MISSING
+    epochs = 20000
+    batch_size = 4
 
-    model = build_best_transfer_model(num_outputs=5000).to("cuda")
+    model = build_best_transfer_model(**model_cfg).to("cuda")
     model = model.to(torch.bfloat16)
 
-    config = {
-        "num_rows_low": 10,
-        "num_rows_high": 50,
-        "num_cols_low": 5,
-        "num_cols_high": 50,
-        "p_missing": p_missing,
-        "apply_feature_warping_prob": 0.0,
-        "apply_quantization_prob": 0.0,
-        "latent_rank_low": 1,
-        "latent_rank_high": 11,
-        "latent_spike_p": 0.3,
-        "latent_slab_sigma": 2.0,
-    }
+    config = dict(MOVIELENS_SURROGATE_PRIOR_CONFIG)
 
-    prior = MissingnessPrior(
-        generator_type="latent_factor",
+    prior = SpectrumMissingnessPrior(
         missingness_type="mcar",
         config=config,
         batch_size=batch_size,
@@ -71,12 +137,13 @@ if __name__ == "__main__":
 
     model.train()
 
-    name = (
-        "tabimpute-new-stable_v2-"
-        f"mcar_p{p_missing}-num_cls_{model_cfg['num_cls']}-rank_1_11"
-    )
+    name = f"tabimpute-spectrum-decay-movielens-surrogate_p_{config['p_missing']:.2f}-{config['num_rows_low']}x{config['num_cols_low']}"
 
+    # ckpt = torch.load(
+    #     "/root/tabular/mcpfn/src/tabimpute/workdir/tabimpute-new-stable_v2-rank_10_10-50x50/checkpoint_30000.pth"
+    # )
     ckpt = None
+
     id_name = None
 
     callbacks = [
@@ -84,6 +151,7 @@ if __name__ == "__main__":
             project=DEFAULT_WANDB_PROJECT,
             name=name,
             id=id_name,
+            api_key=wandb_api_key,
             config={
                 **model_cfg,
                 **optimizer_cfg,

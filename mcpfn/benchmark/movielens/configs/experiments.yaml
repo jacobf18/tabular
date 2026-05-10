@@ -1,0 +1,56 @@
+# Global experiment configuration.
+#
+# The paper reproduces matrix-completion RMSE on MovieLens 1M and Netflix Prize.
+# - 100 subsampled 2000x2000 user-movie matrices per dataset.
+# - Withhold 10%, 30%, 50%, 70% of known ratings and evaluate RMSE on them.
+#
+# Paper's lambda schedule (beta = 2) for the User-Item Gaussian Kernel method:
+paper_subsamples:
+  num_reps: 100
+  rows: 2000
+  cols: 2000
+  seed: 123
+  withhold_fractions: [0.10, 0.30, 0.50, 0.70]
+
+smoke:
+  num_reps: 2
+  rows: 300
+  cols: 300
+  seed: 7
+  withhold_fractions: [0.10, 0.30, 0.50, 0.70]
+
+paper_gaussian_kernel:
+  beta: 2.0
+  # lambda presets per dataset and withheld fraction
+  lambdas:
+    movielens:
+      "0.10": 2.8
+      "0.30": 2.3
+      "0.50": 1.7
+      "0.70": 1.0
+    netflix:
+      "0.10": 1.8
+      "0.30": 1.7
+      "0.50": 1.6
+      "0.70": 1.5
+
+softimpute:
+  max_rank: 30
+  max_iters: 40
+  convergence_tol: 1e-3
+  # First value is the single-shrinkage default used by run_paper_benchmarks.
+  lambda_grid: [20.0, 10.0, 5.0, 2.0, 1.0]
+
+collaborative_filtering:
+  k_neighbors: 50
+  similarity: "cosine"
+  shrinkage: 25
+
+tabimpute:
+  default_eval_mode: "auto"
+  default_row_chunk: 50
+  default_col_chunk: 10
+  # Guard for direct "full" evaluation of a matrix. If a subsample exceeds
+  # these bounds (e.g. 2000x2000), "auto" will fall back to chunked.
+  full_rows_limit: 400
+  full_cols_limit: 400

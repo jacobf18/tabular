@@ -1,0 +1,138 @@
+================================================================================
+xRFM — algorithm walkthrough
+Source: xrfm v0.4.3, /usr/local/lib/python3.10/dist-packages/xrfm/
+================================================================================
+
+xRFM is two algorithms layered: an RFM (the kernel-ridge leaf model with
+feature learning) wrapped in a tree of RFMs (the "x" / "expanded" part).
+
+
+1. RFM — the leaf model
+-----------------------
+
+Setup. Standard kernelized ridge regression, but with a learnable
+Mahalanobis matrix M baked into the kernel:
+
+    K(x, z) = exp( -|| sqrt(M)·x - sqrt(M)·z ||_2^p / gamma^p )
+
+(Laplace family, exponent p, bandwidth gamma). With M = I it's the plain
+Laplace kernel; with M != I the kernel only attends to directions that
+matter.
+
+Fit loop (RFM.fit, recursive_feature_machine.py:982), `iters` iterations:
+  1. Solve. With current M, build K = K(X_train, X_train), add `reg` to
+     the diagonal, solve (K + reg·I) alpha = y directly with
+     torch.linalg.solve / cholesky (fit_predictor_lstsq, line 639). For
+     n > 70k switch to EigenPro (iterative gradient-based solver,
+     fit_predictor_eigenpro).
+  2. Validate. Score on X_val. Track best (alpha, M, bandwidth, iter).
+  3. Early stop. If val metric > best * early_stop_multiplier (default
+     ×1.1), stop.
+  4. Update M via AGOP (fit_M, line 1132).
+
+AGOP — the feature-learning step. "Average Gradient Outer Product." The
+trained kernel-ridge predictor is f(z) = sum_i alpha_i K(x_i, z).
+Compute grad f(z) at every training point z, stack into a Jacobian, and
+form
+
+    M       = (1/N) sum_z  grad_f(z) grad_f(z)^T          (full)
+    M_diag  = (1/N) sum_z  (grad_f(z))^2                  (diag=True)
+
+This is the outer product of the function's gradients averaged over the
+data. Eigenvectors of M are the directions in which the predicted
+function varies — exactly the "important" feature directions. Then
+normalize: M <- M / max(M). If the kernel uses sqrt(M) (the Laplace
+family does), set sqrtM = M^(1/2) via SVD (agop_power=0.5, line 1191).
+
+The next iteration's kernel uses this new M, so feature directions
+sharpen, residuals get refit, AGOP updates, repeat. That's the
+"Recursive" in RFM — the kernel iteratively recurses on its own gradient
+structure.
+
+At convergence RFM stores: centers = X_train, weights = alpha, M, sqrtM.
+Predict: K(X_query, centers) @ alpha (line 728).
+
+
+2. xRFM — the tree wrapper
+--------------------------
+
+Built because plain RFM's O(n^2) kernel matrix and O(n^3) solve don't
+scale past ~60k points. Idea: partition the data with axis-like splits,
+fit an RFM at each leaf.
+
+Build (_build_tree, xrfm.py:549):
+  - If n_samples <= max_leaf_size (60k), fit an RFM here -> leaf node.
+  - Otherwise pick a 1-D split direction v (default
+    'top_vector_agop_on_subset', line 626):
+      1. Fit a cheap "scout" RFM (default_rfm_params, 0 iters, just
+         AGOP) on a random 50k subset -> AGOP matrix M_sub.
+      2. v = top right singular vector of M_sub (i.e. direction of
+         maximum function variation).
+  - Project all rows: proj = X @ v. Split at the median into balanced
+    halves.
+  - Overlap. A central band of 2*overlap_fraction (default 10% per
+    side) of rows is added to BOTH children, so leaves overlap and
+    decision boundaries don't get lost (_get_balanced_split, line 489).
+  - Recurse left and right. Validation set is split too, and refilled
+    at leaves whose val pool is too small (_refill_val_set, line 701).
+
+Other split methods available: random_pca, linear (OLS coefficient),
+random_agop_on_subset, top_pc_agop_on_subset, fixed_vector, plain
+random.
+
+Multiple trees / iterations (fit, line 821):
+  - n_trees > 1: bagging — predictions averaged.
+  - n_tree_iters > 0: rebuild each tree using the average M across all
+    leaves of the previous build to seed projection directions
+    (_average_M_across_leaves -> _generate_projection_from_M, line
+    267). Keeps the best tree by val score. Default both = 0/1: single
+    tree, single build.
+
+Predict — two routing modes:
+  - Hard (default, _predict_tree_hard, line 1188). Walk each query down
+    the tree by sign of (x·v) - threshold, group by leaf, run that
+    leaf's RFM, reorder back.
+  - Soft (_predict_tree_soft, line 1233; activated when
+    split_temperature is set). At each split node compute logit
+    (x·v - tau) / (T * IQR_node), take logsigmoid along each
+    root-to-leaf path -> log-prob of each leaf. Keep the top
+    max_leaf_count_in_ensemble leaves covering keep_weight_frac_in_predict
+    = 0.99 of the mass, renormalize, weight-average their leaf-RFM
+    predictions. The temperature T itself is tuned post-hoc on the val
+    set over a 36-point geometric grid (fit_temperature, line 939) —
+    picks the one that minimizes tuning_metric.
+
+
+3. Defaults that matter (paper config)
+--------------------------------------
+
+  RFM leaf:    kernel=l2_high_dim, exponent=1, bandwidth=10, diag=True/False,
+               iters=5, reg=1e-3, early_stop x1.1, agop_power=0.5
+  xRFM tree:   max_leaf_size=60_000  (scaled by GPU memory),
+               refill_size=1500, val_frac=0.2,
+               split_method=top_vector_agop_on_subset,
+               overlap_fraction=0.1,
+               n_trees=1, n_tree_iters=0,
+               use_temperature_tuning=True  (auto soft routing)
+
+
+4. Mental model
+---------------
+
+  - AGOP = "tell me which input directions the function actually uses"
+    — outer product of gradients, then plug as Mahalanobis weighting
+    back into the kernel.
+  - RFM iterates this: solve -> measure gradient directions -> reweight
+    kernel -> re-solve. A few iterations is usually enough.
+  - xRFM scales it: recursively partition along the AGOP top
+    eigenvector (the most informative axis at the current scale), drop
+    a fitted RFM at each leaf, ensemble softly.
+  - The two ideas compose: each leaf's RFM discovers its own local
+    feature geometry, and the tree finds where in input space those
+    geometries should change.
+
+This is why xRFM works on tabular data the way GBDTs do — it's a
+piecewise-locally-linear-feature-map kernel method, with the "where to
+break the pieces" decision driven by a learned (not random / CART-
+greedy) projection.
+================================================================================

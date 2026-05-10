@@ -33,6 +33,7 @@ from tabimpute.diffusion.mar_diffusion_row10_30_col10_30_mar0_3_marblock0_3_marb
     MARDiffusionModel,
     mar_diffusion_config,
 )
+import random
 
 
 # Helpers
@@ -47,6 +48,74 @@ def sample_log_uniform(low, high, size=1, base=np.e):
 
 def sample_exponential(scale, min_val, size=1):
     return min_val + np.round(np.random.exponential(scale=scale, size=size)).astype(int)
+
+
+def _normalize_weights(weights: dict[str, float]) -> dict[str, float]:
+    total = float(sum(weights.values()))
+    if total <= 0:
+        raise ValueError("Weight dictionary must sum to a positive value")
+    return {key: float(value) / total for key, value in weights.items()}
+
+
+def _sample_weighted_key(weights: dict[str, float]) -> str:
+    names = list(weights.keys())
+    probs = np.asarray([weights[name] for name in names], dtype=float)
+    probs = probs / probs.sum()
+    return str(np.random.choice(names, p=probs))
+
+
+def _safe_logit(prob: float) -> float:
+    clipped = min(max(float(prob), 1e-4), 1.0 - 1e-4)
+    return float(np.log(clipped / (1.0 - clipped)))
+
+
+def _sample_profile_p_missing(config: dict) -> float:
+    anchor_prob = float(config.get("profile_p_missing_anchor_prob", 0.25))
+    anchor_value = float(config.get("profile_p_missing_anchor_value", 0.40))
+    if np.random.rand() < anchor_prob:
+        return anchor_value
+
+    alpha = float(config.get("profile_p_missing_beta_alpha", 2.0))
+    beta_param = float(config.get("profile_p_missing_beta_beta", 2.0))
+    low = float(config.get("profile_p_missing_low", 0.05))
+    width = float(config.get("profile_p_missing_width", 0.70))
+    return low + width * float(np.random.beta(alpha, beta_param))
+
+
+MISSINGNESS_PROFILES = {
+    "missmix_v1": {
+        "weights": _normalize_weights(
+            {
+                "mcar": 0.30,
+                "mar": 0.20,
+                "mnar": 0.20,
+                "mnar_censoring": 0.10,
+                "mnar_two_phase_subset": 0.10,
+                "mnar_skip_logic": 0.05,
+                "mnar_cluster_level": 0.05,
+            }
+        ),
+        "p_missing_anchor_prob": 0.25,
+        "p_missing_anchor_value": 0.40,
+        "p_missing_beta_alpha": 2.0,
+        "p_missing_beta_beta": 2.0,
+        "p_missing_low": 0.05,
+        "p_missing_width": 0.70,
+    }
+}
+
+
+GENERATOR_MIX_PROFILES = {
+    "priormix_v1": {
+        "weights": _normalize_weights(
+            {
+                "latent_factor": 0.60,
+                "nonlinear_factor": 0.25,
+                "robust_pca": 0.15,
+            }
+        )
+    }
+}
 
 
 ACTIVATION_FUNCTIONS = {
@@ -125,12 +194,48 @@ class LatentFactorPrior:
                 latent_matrix[i, :] = np.random.dirichlet(alpha) - (1 / rank)
         return latent_matrix
 
+    def _apply_quantization(self, matrix: pd.DataFrame) -> pd.DataFrame:
+        if np.random.rand() < self.config["apply_quantization_prob"]:
+            col_to_quantize = np.random.choice(matrix.columns)
+            self._quantize_column_inplace(matrix, col_to_quantize)
+        return matrix
+
+    def _quantize_column_inplace(
+        self,
+        matrix: pd.DataFrame,
+        col_to_quantize: str,
+    ) -> None:
+        series = matrix[col_to_quantize]
+        unique_count = int(series.nunique(dropna=True))
+        if unique_count <= 1:
+            return
+
+        q = min(np.random.randint(2, 20), unique_count)
+        if q < 2:
+            return
+
+        try:
+            quantized = pd.qcut(
+                series,
+                q=q,
+                labels=False,
+                duplicates="drop",
+            )
+        except (ValueError, IndexError):
+            return
+
+        # qcut can silently return NaNs for degenerate inputs such as constant columns.
+        if quantized.isna().any():
+            return
+
+        matrix[col_to_quantize] = quantized
+
     def generate_complete_matrix(self) -> pd.DataFrame:
         n_rows = np.random.randint(self.config["num_rows_low"], self.config["num_rows_high"]+1)
         n_cols = np.random.randint(self.config["num_cols_low"], self.config["num_cols_high"]+1)
         rank = np.random.randint(
             self.config.get("latent_rank_low", 1),
-            self.config.get("latent_rank_high", 11)+1,
+            min(self.config.get("latent_rank_high", 11), n_rows, n_cols)+1,
         )
         U = self._sample_latent_vectors(n_rows, rank)
         V = self._sample_latent_vectors(n_cols, rank)
@@ -144,18 +249,7 @@ class LatentFactorPrior:
                 matrix[col] = scaler.inverse_transform(
                     beta.ppf(np.clip(col_data, 1e-10, 1 - 1e-10), a, b).reshape(-1, 1)
                 ).flatten()
-        if np.random.rand() < self.config["apply_quantization_prob"]:
-            col_to_quantize = np.random.choice(matrix.columns)
-            try:
-                matrix[col_to_quantize] = pd.qcut(
-                    matrix[col_to_quantize],
-                    q=np.random.randint(2, 20),
-                    labels=False,
-                    duplicates="drop",
-                )
-            except (ValueError, IndexError):
-                pass
-        return matrix
+        return self._apply_quantization(matrix)
 
 
 class NonLinearFactorPrior(LatentFactorPrior):
@@ -233,18 +327,7 @@ class NonLinearFactorPrior(LatentFactorPrior):
                 matrix[col] = scaler.inverse_transform(
                     beta.ppf(np.clip(col_data, 1e-10, 1 - 1e-10), a, b).reshape(-1, 1)
                 ).flatten()
-        if np.random.rand() < self.config["apply_quantization_prob"]:
-            col_to_quantize = np.random.choice(matrix.columns)
-            try:
-                matrix[col_to_quantize] = pd.qcut(
-                    matrix[col_to_quantize],
-                    q=np.random.randint(2, 20),
-                    labels=False,
-                    duplicates="drop",
-                )
-            except (ValueError, IndexError):
-                pass
-        return matrix
+        return self._apply_quantization(matrix)
 
 
 class RobustPCAPrior(LatentFactorPrior):
@@ -597,6 +680,33 @@ class MNARCensoringPattern(BaseMissingness):
                 col_data[col_data > cutoff] = torch.nan
             X[:, j] = col_data
         return X
+
+
+class GaussianMCARPattern(BaseMissingness):
+    """
+    Applies MCAR masking, then adds Gaussian noise to the remaining observed
+    entries so the observed matrix is both masked and noisy.
+
+    Config keys:
+        p_missing       – MCAR masking probability (default 0.3)
+        noise_sigma_low – lower bound for noise std (default 0.1)
+        noise_sigma_high – upper bound for noise std (default 1.0)
+    """
+
+    def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
+        missing_mask = torch.rand_like(X) < self.config.get("p_missing", 0.3)
+        sigma = random.uniform(
+            self.config.get("noise_sigma_low", 0.1),
+            self.config.get("noise_sigma_high", 1.0),
+        )
+        noise = torch.randn_like(X) * sigma
+        observed_mask = ~missing_mask
+        X[observed_mask] = X[observed_mask] + noise[observed_mask]
+        X[missing_mask] = torch.nan
+        return X
+
+    def __str__(self):
+        return "GaussianMCAR"
 
 
 class MNARTwoPhaseSubsetPattern(BaseMissingness):
@@ -1001,6 +1111,302 @@ class MARDiffusion(BaseMissingness):
         return X_missing
 
 
+class ProfileMNARClusterLevelPattern(MNARClusterLevelPattern):
+    """Cluster-level pattern variant with profile-controlled density."""
+
+    def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
+        n_rows, n_cols = X.shape
+
+        num_row_clusters = self.config.get("cluster_level_n_row_clusters", 5)
+        num_col_clusters = self.config.get("cluster_level_n_col_clusters", 5)
+        tau_r_std = self.config.get("cluster_level_tau_r_std", 1.0)
+        tau_c_std = self.config.get("cluster_level_tau_c_std", 1.0)
+        epsilon_std = self.config.get("cluster_level_epsilon_std", 1.0)
+
+        row_assignments = torch.randint(0, num_row_clusters, (n_rows,))
+        col_assignments = torch.randint(0, num_col_clusters, (n_cols,))
+
+        g_k = torch.randn(num_row_clusters) * tau_r_std
+        h_l = torch.randn(num_col_clusters) * tau_c_std
+
+        g_expanded = g_k[row_assignments].unsqueeze(1)
+        h_expanded = h_l[col_assignments].unsqueeze(0)
+        epsilon_noise = torch.randn(n_rows, n_cols) * epsilon_std
+
+        logit_bias = self.config.get("cluster_level_logit_bias", 0.0)
+        logits = g_expanded + h_expanded + epsilon_noise + float(logit_bias)
+        p_obs = torch.sigmoid(logits)
+
+        mask = torch.rand_like(p_obs) > p_obs
+        X[mask] = torch.nan
+        return X
+
+
+class ProfileMNARTwoPhaseSubsetPattern(MNARTwoPhaseSubsetPattern):
+    """Two-phase subset pattern variant with profile-controlled density."""
+
+    def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
+        n_rows, n_cols = X.shape
+        if n_cols < 2:
+            return X
+
+        frac = self.config.get("two_phase_cheap_fraction", 0.5)
+        n_cheap = max(1, int(n_cols * frac))
+        col_indices = np.random.permutation(n_cols)
+        cheap_cols, expensive_cols = col_indices[:n_cheap], col_indices[n_cheap:]
+
+        X_cheap = X[:, cheap_cols]
+        weights = torch.randn(n_cheap)
+        scores = X_cheap @ weights
+        scores = (scores - scores.mean()) / (scores.std() + 1e-6)
+
+        alpha = self.config.get(
+            "two_phase_alpha",
+            _safe_logit(1.0 - float(self.config.get("p_missing", 0.5))),
+        )
+        beta = self.config.get("two_phase_beta", 2.0)
+        logits = alpha + beta * scores
+        p_obs = torch.sigmoid(logits)
+
+        is_missing = torch.rand(n_rows) > p_obs
+        X[is_missing, :] = X[is_missing, :].index_fill(
+            1, torch.tensor(expensive_cols), torch.nan
+        )
+        return X
+
+
+class ProfileMNARSkipLogicPattern(MNARSkipLogicPattern):
+    """Skip-logic pattern variant with profile-controlled gate threshold."""
+
+    def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
+        _, n_cols = X.shape
+        if n_cols < 2:
+            return X
+
+        p_noise = self.config.get("skip_logic_p_noise", 0.98)
+        gate_quantile = float(self.config.get("skip_logic_gate_quantile", 0.5))
+
+        gate_col = np.random.randint(0, n_cols)
+        dependent_cols = [j for j in range(n_cols) if j != gate_col]
+
+        gate_threshold = torch.quantile(X[:, gate_col], gate_quantile)
+        gate_condition_met = X[:, gate_col] > gate_threshold
+
+        rows_to_mask = ~gate_condition_met
+        X[rows_to_mask, :] = X[rows_to_mask, :].index_fill(
+            1, torch.tensor(dependent_cols), torch.nan
+        )
+
+        rows_passed = torch.where(gate_condition_met)[0]
+        if len(rows_passed) > 0:
+            rand_mask = torch.rand(len(rows_passed), len(dependent_cols)) > p_noise
+            X[rows_passed.unsqueeze(1), torch.tensor(dependent_cols).unsqueeze(0)][
+                rand_mask
+            ] = torch.nan
+
+        return X
+
+
+class ProfileLatentFactorPrior(LatentFactorPrior):
+    """Latent-factor prior variant with richer multi-column quantization."""
+
+    def _apply_quantization(self, matrix: pd.DataFrame) -> pd.DataFrame:
+        if np.random.rand() < self.config["apply_quantization_prob"]:
+            num_cols_to_quantize = min(len(matrix.columns), np.random.randint(1, 4))
+            cols_to_quantize = np.random.choice(
+                matrix.columns,
+                size=num_cols_to_quantize,
+                replace=False,
+            )
+            for col_to_quantize in np.atleast_1d(cols_to_quantize):
+                self._quantize_column_inplace(matrix, col_to_quantize)
+        return matrix
+
+
+class ProfileNonLinearFactorPrior(NonLinearFactorPrior):
+    """Nonlinear-factor prior variant with richer multi-column quantization."""
+
+    def __init__(self, config: dict):
+        super().__init__(config)
+        self.nonlinear_functions = list(
+            config.get(
+                "profile_nonlinear_functions",
+                [
+                    "sigmoid",
+                    "tanh",
+                    "relu_squared",
+                    "sine",
+                    "square",
+                    "absolute",
+                    "softplus",
+                ],
+            )
+        )
+
+    def _sample_profile_dimension(self, low_key: str, high_key: str) -> int:
+        low = int(self.config[low_key])
+        high = int(self.config[high_key])
+        if low >= high:
+            return low
+        return int(
+            sample_log_uniform(
+                low,
+                high,
+            )[0]
+        )
+
+    def _apply_quantization(self, matrix: pd.DataFrame) -> pd.DataFrame:
+        if np.random.rand() < self.config["apply_quantization_prob"]:
+            num_cols_to_quantize = min(len(matrix.columns), np.random.randint(1, 4))
+            cols_to_quantize = np.random.choice(
+                matrix.columns,
+                size=num_cols_to_quantize,
+                replace=False,
+            )
+            for col_to_quantize in np.atleast_1d(cols_to_quantize):
+                self._quantize_column_inplace(matrix, col_to_quantize)
+        return matrix
+
+    def _get_nonlinear_function(self, data_range: tuple[float, float]):
+        choice = np.random.choice(self.nonlinear_functions)
+        if choice == "sigmoid":
+            return lambda x: 1 / (1 + np.exp(-np.clip(x, -50, 50)))
+        if choice in ACTIVATION_FUNCTIONS:
+            return ACTIVATION_FUNCTIONS[choice]
+        if choice == "random_fourier":
+            d_phi = np.random.randint(
+                self.config.get("profile_fourier_dim_low", 32),
+                self.config.get("profile_fourier_dim_high", 129),
+            )
+            rff = RandomFourierFeatureFunction(N=d_phi)
+            return lambda x: rff(x.flatten()).reshape(x.shape)
+        if choice == "gp_draw":
+            l = np.random.uniform(
+                self.config.get("gp_length_scale_low", 0.3),
+                self.config.get("gp_length_scale_high", 2.0),
+            )
+            gp = GaussianProcessRegressor(kernel=1.0 * RBF(length_scale=l))
+            grid_size = int(self.config.get("profile_gp_grid_size", 256))
+            x_grid = np.linspace(data_range[0], data_range[1], grid_size).reshape(-1, 1)
+            y_grid = gp.sample_y(x_grid, 1, random_state=None).flatten()
+            return lambda x: np.interp(x, x_grid.flatten(), y_grid)
+        return super()._get_nonlinear_function(data_range)
+
+    def generate_complete_matrix(self) -> pd.DataFrame:
+        n_rows = self._sample_profile_dimension("num_rows_low", "num_rows_high")
+        n_cols = self._sample_profile_dimension("num_cols_low", "num_cols_high")
+        rank_low = int(self.config.get("latent_rank_low", 1))
+        rank_high = min(int(self.config.get("latent_rank_high", 11)), n_rows, n_cols)
+        if rank_high <= rank_low:
+            rank = rank_low
+        else:
+            rank = np.random.randint(rank_low, rank_high + 1)
+        U = self._sample_latent_vectors(n_rows, rank)
+        V = self._sample_latent_vectors(n_cols, rank)
+        dot_products = U @ V.T
+        f = self._get_nonlinear_function(
+            data_range=(dot_products.min(), dot_products.max())
+        )
+        Y = f(dot_products)
+        matrix = pd.DataFrame(Y, columns=[f"feature_{i}" for i in range(n_cols)])
+        if np.random.rand() < self.config["apply_feature_warping_prob"]:
+            scaler = MinMaxScaler()
+            for col in matrix.columns:
+                col_data = scaler.fit_transform(matrix[[col]])
+                a, b = np.random.rand() * 5 + 0.5, np.random.rand() * 5 + 0.5
+                matrix[col] = scaler.inverse_transform(
+                    beta.ppf(np.clip(col_data, 1e-10, 1 - 1e-10), a, b).reshape(-1, 1)
+                ).flatten()
+        return self._apply_quantization(matrix)
+
+
+class ProfileMixedPattern(BaseMissingness):
+    """
+    Configurable mixed missingness mode that samples a pattern and effective
+    missingness density independently for each sample.
+    """
+
+    pattern_classes = {
+        "mcar": MCARPattern,
+        "mar": MARPattern,
+        "mnar": MNARPattern,
+        "mnar_censoring": MNARCensoringPattern,
+        "mnar_two_phase_subset": ProfileMNARTwoPhaseSubsetPattern,
+        "mnar_skip_logic": ProfileMNARSkipLogicPattern,
+        "mnar_cluster_level": ProfileMNARClusterLevelPattern,
+    }
+
+    def __init__(self, config: dict):
+        super().__init__(config)
+        profile_name = config.get("missingness_profile_name", "missmix_v1")
+        if profile_name not in MISSINGNESS_PROFILES:
+            raise ValueError(
+                f"Unknown missingness profile '{profile_name}'. "
+                f"Available: {list(MISSINGNESS_PROFILES.keys())}"
+            )
+        self.profile_name = profile_name
+        self.profile = copy.deepcopy(MISSINGNESS_PROFILES[profile_name])
+        self.weights = dict(self.profile["weights"])
+
+    def _build_pattern_config(self, p_missing: float) -> dict:
+        pattern_config = copy.deepcopy(self.config)
+        pattern_config["p_missing"] = p_missing
+        pattern_config["censor_quantile"] = min(max(p_missing, 0.01), 0.49)
+        pattern_config["two_phase_alpha"] = _safe_logit(1.0 - p_missing)
+        pattern_config["skip_logic_gate_quantile"] = min(max(p_missing, 0.05), 0.95)
+        pattern_config.setdefault("skip_logic_p_noise", 0.98)
+        pattern_config["cluster_level_logit_bias"] = _safe_logit(1.0 - p_missing)
+        return pattern_config
+
+    def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
+        p_missing = _sample_profile_p_missing(
+            {
+                "profile_p_missing_anchor_prob": self.profile["p_missing_anchor_prob"],
+                "profile_p_missing_anchor_value": self.profile["p_missing_anchor_value"],
+                "profile_p_missing_beta_alpha": self.profile["p_missing_beta_alpha"],
+                "profile_p_missing_beta_beta": self.profile["p_missing_beta_beta"],
+                "profile_p_missing_low": self.profile["p_missing_low"],
+                "profile_p_missing_width": self.profile["p_missing_width"],
+            }
+        )
+        pattern_name = _sample_weighted_key(self.weights)
+        pattern_cls = self.pattern_classes[pattern_name]
+        return pattern_cls(self._build_pattern_config(p_missing))._induce_missingness(X)
+
+
+class GeneratorMixturePrior:
+    """
+    Generator mixture that samples one synthetic data family independently for
+    each sample while keeping dimensions consistent within the batch.
+    """
+
+    generator_classes = {
+        "latent_factor": ProfileLatentFactorPrior,
+        "nonlinear_factor": ProfileNonLinearFactorPrior,
+        "robust_pca": RobustPCAPrior,
+    }
+
+    def __init__(self, config: dict):
+        self.config = config
+        profile_name = config.get("generator_profile_name", "priormix_v1")
+        if profile_name not in GENERATOR_MIX_PROFILES:
+            raise ValueError(
+                f"Unknown generator mix profile '{profile_name}'. "
+                f"Available: {list(GENERATOR_MIX_PROFILES.keys())}"
+            )
+        self.profile_name = profile_name
+        self.weights = dict(GENERATOR_MIX_PROFILES[profile_name]["weights"])
+        self.generators = {
+            name: cls(config)
+            for name, cls in self.generator_classes.items()
+            if name in self.weights
+        }
+
+    def generate_complete_matrix(self) -> pd.DataFrame:
+        generator_name = _sample_weighted_key(self.weights)
+        return self.generators[generator_name].generate_complete_matrix()
+
+
 class MixedPattern(BaseMissingness):
     """
     Induces missingness by randomly selcting a type of missingness pattern and then inducing missingness based on that pattern.
@@ -1052,13 +1458,24 @@ class MissingnessPrior(IterableDataset):
         "latent_factor": LatentFactorPrior,
         "nonlinear_factor": NonLinearFactorPrior,
         "robust_pca": RobustPCAPrior,
+        "generator_mix": GeneratorMixturePrior,
+        "priormix_v1": lambda cfg: GeneratorMixturePrior(
+            {**cfg, "generator_profile_name": "priormix_v1"}
+        ),
     }
     missingness_map = {
         # Standard Patterns
         "mcar": MCARPattern,
         "mar": MARPattern,
+        "mar_neural": MARNeuralNetwork,
+        "mar_block_neural": MARBlockNeuralNetwork,
+        "mar_sequential": MARSequentialBandit,
         "mnar": MNARPattern,
         "mixed": MixedPattern,
+        "profile_mixed": ProfileMixedPattern,
+        "missmix_v1": lambda cfg: ProfileMixedPattern(
+            {**cfg, "missingness_profile_name": "missmix_v1"}
+        ),
         # Specific MNAR Patterns
         "mnar_rec_sys": MNARRecSysPattern,
         "mnar_panel": MNARPanelPattern,
@@ -1071,6 +1488,8 @@ class MissingnessPrior(IterableDataset):
         "mnar_cluster_level": MNARClusterLevelPattern,
         "mnar_spatial_block": MNARSpatialBlockPattern,
         "mnar_censoring": MNARCensoringPattern,
+        "gaussian_mcar": GaussianMCARPattern,
+        "gaussian_noise": GaussianMCARPattern,
         "mnar_two_phase_subset": MNARTwoPhaseSubsetPattern,
         "mnar_skip_logic": MNARSkipLogicPattern,
         "mnar_cold_start": MNARColdStartPattern,
@@ -1157,9 +1576,20 @@ class MissingnessPrior(IterableDataset):
                 complete_df = self.generator.generate_complete_matrix()
                 X = torch.tensor(complete_df.values, dtype=torch.float32)
 
+            if not torch.isfinite(X).all():
+                raise ValueError(
+                    "Synthetic generator produced non-finite values before missingness "
+                    f"(generator_type={self.generator_type}, shape={tuple(X.shape)})"
+                )
+
             if X.numel() == 0:  # if the matrix is empty, skip
                 continue
             X = normalize_data(X.clone())
+            if not torch.isfinite(X).all():
+                raise ValueError(
+                    "Normalization produced non-finite values for the complete target matrix "
+                    f"(generator_type={self.generator_type}, shape={tuple(X.shape)})"
+                )
             X_missing = self.missingness_inducer._induce_missingness(X.clone())
             # pattern_weights.append(self.missingness_inducer.weights[pattern_name])
             pattern_weights.append(1.0)
@@ -1170,6 +1600,11 @@ class MissingnessPrior(IterableDataset):
             )
             X_missing = torch.squeeze(X_missing_normalized, 1)
             X = torch.squeeze(normalize_data(torch.unsqueeze(X, 1), mean=mean, std=std), 1)
+            if not torch.isfinite(X).all():
+                raise ValueError(
+                    "Observed-value normalization produced non-finite target values "
+                    f"(generator_type={self.generator_type}, shape={tuple(X.shape)})"
+                )
             
             
             if self.entry_wise_features:
@@ -1228,77 +1663,139 @@ class MissingnessPrior(IterableDataset):
 
 # Execution Block
 if __name__ == "__main__":
-    config = {
-        "num_rows_low": 5,
-        "num_rows_high": 5.5,
-        "num_cols_low": 5,
-        "num_cols_high": 5.5,
-        "p_missing": 0.4,
-        # SCM configs
-        "num_nodes_low": 60,
-        "num_nodes_high": 80,
-        "graph_generation_method": ["MLP-Dropout", "Scale-Free"],
-        "root_node_noise_dist": ["Normal", "Uniform"],
-        "scm_activation_functions": list(ACTIVATION_FUNCTIONS.keys()),
-        "xgb_n_estimators_exp_scale": 0.5,
-        "xgb_max_depth_exp_scale": 0.5,
+    import matplotlib.pyplot as plt
+
+    plot_config = {
+        "num_rows_low": 50,
+        "num_rows_high": 50,
+        "num_cols_low": 50,
+        "num_cols_high": 50,
+        "latent_rank_low": 2,
+        "latent_rank_high": 20,
+        "latent_gaussian_sigma": 1.0,
+        "latent_laplace_b": 1.0,
+        "latent_t_df_low": 2,
+        "latent_t_df_high": 11,
+        "latent_spike_p": 0.5,
+        "latent_slab_sigma": 3.0,
+        "latent_dirichlet_alpha": 1.0,
         "apply_feature_warping_prob": 0.0,
         "apply_quantization_prob": 0.0,
-        # MNAR configs
-        "threshold_quantile": 0.25,
-        "n_core_items": 5,
-        "n_genres": 3,
-        "n_policies": 4,
-        # Latent Factor configs
-        "latent_rank_low": 1,
-        "latent_rank_high": 3,
-        "latent_spike_p": 0.3,
-        "latent_slab_sigma": 2.0,
-        # Non-linear Factor configs
-        "spline_knot_k": [3, 5, 7],
-        "gp_length_scale_low": 0.3,
-        "gp_length_scale_high": 2.0,
-        "fourier_dim_low": 100,
-        "fourier_dim_high": 501,
-        # Robust-PCA configs
-        "rpca_beta_a": 2,
-        "rpca_beta_b": 30,
-        # Soft Polarization configs
-        "soft_polarization_alpha": 2.5,
-        "soft_polarization_epsilon": 0.05,
-        # User Cascade configs
-        "cascade_n_genres": 5,
-        "cascade_delta": 1.5,
-        # Cluster Level configs
-        "cluster_level_n_row_clusters": 8,
-        "cluster_level_n_col_clusters": 8,
-        "cluster_level_tau_r_std": 1.0,
-        # Spatial Block configs
-        "spatial_block_n_blocks": 5,
-        "spatial_block_p_geom": 0.2,
-        # Last few ones
-        "censor_quantile": 0.1,
-        "two_phase_cheap_fraction": 0.4,
-        "two_phase_beta": 2.5,
-        "skip_logic_p_noise": 0.9,
-        "cold_start_fraction": 0.3,
-        "cold_start_gamma": 0.15,
     }
 
-    # Example, specify one data generation type and one missingness pattern
-    prior = MissingnessPrior(
-        generator_type="latent_factor",
-        missingness_type="mcar",
-        num_missing=10,
-        config=config,
-        batch_size=1,
-        verbose=False,
-        entry_wise_features=False,
-    )
+    generator = LatentFactorPrior(plot_config)
+    fig, axes = plt.subplots(4, 5, figsize=(18, 12), sharex=True, sharey=True)
+    axes = axes.ravel()
 
-    (X_full, y_full, d, seq_lens, train_sizes), _ = prior.get_batch()
-    
-    print(X_full.shape, y_full.shape, d.shape, seq_lens.shape, train_sizes.shape)
-    
-    print(X_full)
-    print(y_full)
+    for plot_idx, axis in enumerate(axes):
+        # Sample rank/shape here so we can annotate them per subplot. Mirrors
+        # the logic inside LatentFactorPrior.generate_complete_matrix.
+        n_rows = np.random.randint(
+            plot_config["num_rows_low"], plot_config["num_rows_high"] + 1
+        )
+        n_cols = np.random.randint(
+            plot_config["num_cols_low"], plot_config["num_cols_high"] + 1
+        )
+        rank_high = min(
+            plot_config["latent_rank_high"], n_rows, n_cols
+        )
+        rank = int(
+            np.random.randint(
+                plot_config["latent_rank_low"], rank_high + 1
+            )
+        )
+
+        # Track which distribution was drawn for each latent vector to
+        # annotate the mix (linear factor model mixes distributions per row/col).
+        distribution_counts: dict[str, int] = {}
+        rng_state = np.random.get_state()
+
+        def _sample_with_tracking(num_vectors: int, rank_inner: int) -> np.ndarray:
+            latent = np.zeros((num_vectors, rank_inner))
+            for i in range(num_vectors):
+                choice = np.random.choice(generator.distributions)
+                distribution_counts[choice] = distribution_counts.get(choice, 0) + 1
+                if choice == "Gaussian":
+                    latent[i, :] = np.random.normal(
+                        0, plot_config["latent_gaussian_sigma"], size=rank_inner
+                    )
+                elif choice == "Laplace":
+                    latent[i, :] = np.random.laplace(
+                        0, plot_config["latent_laplace_b"], size=rank_inner
+                    )
+                elif choice == "t_v":
+                    df = np.random.randint(
+                        plot_config["latent_t_df_low"],
+                        plot_config["latent_t_df_high"],
+                    )
+                    latent[i, :] = np.random.standard_t(df, size=rank_inner)
+                elif choice == "Spike+Slab":
+                    is_spike = np.random.rand(rank_inner) < plot_config["latent_spike_p"]
+                    samples = np.random.normal(
+                        0, plot_config["latent_slab_sigma"], size=rank_inner
+                    )
+                    samples[is_spike] = 0
+                    latent[i, :] = samples
+                elif choice == "Dirichlet":
+                    alpha = np.full(rank_inner, plot_config["latent_dirichlet_alpha"])
+                    latent[i, :] = np.random.dirichlet(alpha) - (1 / rank_inner)
+            return latent
+
+        np.random.set_state(rng_state)
+        U = _sample_with_tracking(n_rows, rank)
+        V = _sample_with_tracking(n_cols, rank)
+        Y = U @ V.T
+
+        singular_values = np.linalg.svd(Y, compute_uv=False)
+        component_idx = np.arange(1, len(singular_values) + 1)
+
+        axis.semilogy(
+            component_idx,
+            singular_values,
+            marker="o",
+            markersize=3,
+            linewidth=1,
+        )
+        axis.set_title(
+            f"r={rank}, shape={n_rows}x{n_cols}",
+            fontsize=9,
+        )
+
+        top_mix = sorted(distribution_counts.items(), key=lambda kv: -kv[1])[:3]
+        mix_lines = [f"{name}={count}" for name, count in top_mix]
+        annotation = "\n".join(
+            [
+                f"rank={rank}",
+                f"n_rows={n_rows}",
+                f"n_cols={n_cols}",
+                *mix_lines,
+            ]
+        )
+        axis.text(
+            0.98,
+            0.98,
+            annotation,
+            transform=axis.transAxes,
+            ha="right",
+            va="top",
+            fontsize=7,
+            family="monospace",
+            bbox={
+                "boxstyle": "round,pad=0.2",
+                "facecolor": "white",
+                "alpha": 0.85,
+                "edgecolor": "lightgray",
+            },
+        )
+        axis.grid(True, which="both", alpha=0.3)
+
+        if plot_idx % 5 == 0:
+            axis.set_ylabel("Singular value")
+        if plot_idx >= 15:
+            axis.set_xlabel("Component")
+
+    fig.suptitle("Power Plots of LatentFactorPrior Matrices", fontsize=16)
+    fig.tight_layout()
+    output_path = Path(__file__).parent / "latent_factor_power_plots.png"
+    plt.savefig(output_path)
+    print(f"LatentFactor power plots saved to {output_path}")

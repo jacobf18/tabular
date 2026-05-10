@@ -107,6 +107,24 @@ def build_parser():
         help="Exponential moving average decay factor for task loss normalization (0-1). Higher values give more weight to historical losses.",
     )
     parser.add_argument(
+        "--ema_enabled",
+        default=False,
+        type=str2bool,
+        help="If True, maintain an EMA of model weights and use it for best-checkpoint evaluation/promotion.",
+    )
+    parser.add_argument(
+        "--ema_decay",
+        type=float,
+        default=0.999,
+        help="Long-run EMA decay for model weights. 0.999 ~ 700-step half-life; 0.9999 ~ 7000.",
+    )
+    parser.add_argument(
+        "--ema_warmup_steps",
+        type=int,
+        default=0,
+        help="Steps to skip before starting EMA updates. Typically equal to LR warmup so early-warmup weights don't pollute the average.",
+    )
+    parser.add_argument(
         "--weight_decay",
         type=float,
         default=0,
@@ -238,7 +256,7 @@ def build_parser():
         "--missingness_type",
         type=str,
         default="mcar",
-        help="Missingness type: mcar, mar, mnar, mnar_rec_sys, mnar_panel, mnar_sequential, mnar_polarization, mnar_soft_polarization, mnar_latent_factor, mnar_positivity_violation, mnar_user_cascade, mnar_cluster_level, mnar_spatial_block, mnar_censoring, mnar_two_phase_subset, mnar_skip_logic, mnar_cold_start",
+        help="Missingness type: mcar, mar, mar_neural, mar_block_neural, mar_sequential, mnar, mnar_rec_sys, mnar_panel, mnar_sequential, mnar_polarization, mnar_soft_polarization, mnar_latent_factor, mnar_positivity_violation, mnar_user_cascade, mnar_cluster_level, mnar_spatial_block, mnar_censoring, mnar_two_phase_subset, mnar_skip_logic, mnar_cold_start",
     )
     parser.add_argument(
         "--update_probs_every",
@@ -354,18 +372,6 @@ def build_parser():
         default=False,
         type=str2bool,
         help="Whether to freeze the ICL predictor",
-    )
-    parser.add_argument(
-        "--encoder_path",
-        type=str,
-        default="/Users/jfeit/tabular/mcpfn/src/mcpfn/model/encoder.pth",
-        help="Path to the encoder model",
-    )
-    parser.add_argument(
-        "--borders_path",
-        type=str,
-        default="/Users/jfeit/tabular/mcpfn/borders.pt",
-        help="Path to the borders model",
     )
 
     # Shared Architecture Config

@@ -10,6 +10,36 @@ except ImportError:
     TorchvisionStochasticDepth = None
 
 
+def _summarize_attention(probs: torch.Tensor, logits: torch.Tensor) -> dict[str, float]:
+    probs_f = probs.detach().to(torch.float32)
+    logits_f = logits.detach().to(torch.float32)
+    seq_len = probs_f.size(-1)
+    safe_probs = probs_f.clamp_min(torch.finfo(probs_f.dtype).tiny)
+    entropy = -(probs_f * safe_probs.log()).sum(dim=-1)
+    max_prob = probs_f.max(dim=-1).values
+    top_k = min(5, seq_len)
+    topk_mass = probs_f.topk(k=top_k, dim=-1).values.sum(dim=-1)
+    log_seq_len = torch.log(
+        torch.tensor(float(seq_len), device=entropy.device, dtype=entropy.dtype)
+    )
+    normalized_entropy = entropy / log_seq_len
+    effective_keys = entropy.exp()
+    return {
+        "seq_len": float(seq_len),
+        "entropy_mean": float(entropy.mean().cpu()),
+        "normalized_entropy_mean": float(normalized_entropy.mean().cpu()),
+        "effective_keys_mean": float(effective_keys.mean().cpu()),
+        "effective_key_fraction_mean": float((effective_keys / seq_len).mean().cpu()),
+        "max_prob_mean": float(max_prob.mean().cpu()),
+        "top5_mass_mean": float(topk_mass.mean().cpu()),
+        "kl_to_uniform_mean": float((log_seq_len - entropy).mean().cpu()),
+        "logit_std_mean": float(logits_f.std(dim=-1).mean().cpu()),
+        "logit_range_mean": float(
+            (logits_f.max(dim=-1).values - logits_f.min(dim=-1).values).mean().cpu()
+        ),
+    }
+
+
 BEST_TRANSFER_MODEL_CONFIG = {
     # Centered on the downstream-best trial12/local14 family.
     "embedding_size": 768,
@@ -157,11 +187,22 @@ class AxialRoPESelfAttention(nn.Module):
         self.k_proj = nn.Linear(embedding_size, embedding_size)
         self.v_proj = nn.Linear(embedding_size, embedding_size)
         self.out_proj = nn.Linear(embedding_size, embedding_size)
+        self.capture_attention_weights = False
+        self.store_attention_weights = True
+        self.last_attention_weights = None
+        self.last_attention_stats = None
 
     def _reshape_heads(self, x: torch.Tensor) -> torch.Tensor:
         batch_size, seq_len, _ = x.shape
         x = x.view(batch_size, seq_len, self.nhead, self.head_dim)
         return x.transpose(1, 2)
+
+    def set_attention_capture(self, enabled: bool, store_weights: bool = True) -> None:
+        self.capture_attention_weights = enabled
+        self.store_attention_weights = store_weights
+        if not enabled:
+            self.last_attention_weights = None
+            self.last_attention_stats = None
 
     def forward(self, x: torch.Tensor, rope_start_index: int = 0) -> torch.Tensor:
         q = self._reshape_heads(self.q_proj(x))
@@ -174,12 +215,24 @@ class AxialRoPESelfAttention(nn.Module):
             q = _apply_rope_to_subset(q, cos, sin, rope_start_index, self.rotary_dim)
             k = _apply_rope_to_subset(k, cos, sin, rope_start_index, self.rotary_dim)
 
-        attn_out = F.scaled_dot_product_attention(
-            q,
-            k,
-            v,
-            dropout_p=self.dropout if self.training else 0.0,
-        )
+        if self.capture_attention_weights:
+            logits = torch.matmul(q, k.transpose(-2, -1)) * (self.head_dim ** -0.5)
+            probs = torch.softmax(logits, dim=-1)
+            self.last_attention_stats = _summarize_attention(probs, logits)
+            self.last_attention_weights = (
+                probs.detach().cpu() if self.store_attention_weights else None
+            )
+            probs = F.dropout(probs, p=self.dropout, training=self.training)
+            attn_out = torch.matmul(probs, v)
+        else:
+            self.last_attention_weights = None
+            self.last_attention_stats = None
+            attn_out = F.scaled_dot_product_attention(
+                q,
+                k,
+                v,
+                dropout_p=self.dropout if self.training else 0.0,
+            )
         attn_out = attn_out.transpose(1, 2).contiguous().view(
             x.size(0), x.size(1), self.embedding_size
         )
@@ -340,6 +393,23 @@ class TransformerEncoderLayerStable(nn.Module):
             torch.full((1,), residual_scale_init)
         )
         self.ffn_residual_scale = nn.Parameter(torch.full((1,), residual_scale_init))
+        self._last_feature_attention_weights = None
+        self._last_datapoint_attention_weights = None
+        self._last_feature_attention_stats = None
+        self._last_datapoint_attention_stats = None
+
+    def set_attention_capture(self, enabled: bool, store_weights: bool = True) -> None:
+        self.self_attention_between_features.set_attention_capture(
+            enabled, store_weights=store_weights
+        )
+        self.self_attention_between_datapoints.set_attention_capture(
+            enabled, store_weights=store_weights
+        )
+        if not enabled:
+            self._last_feature_attention_weights = None
+            self._last_datapoint_attention_weights = None
+            self._last_feature_attention_stats = None
+            self._last_datapoint_attention_stats = None
 
     def forward(
         self,
@@ -355,6 +425,12 @@ class TransformerEncoderLayerStable(nn.Module):
             src_flat,
             rope_start_index=num_cls_cols,
         )
+        self._last_feature_attention_weights = (
+            self.self_attention_between_features.last_attention_weights
+        )
+        self._last_feature_attention_stats = (
+            self.self_attention_between_features.last_attention_stats
+        )
         src_att = src_att.reshape(batch_size, rows_size, col_size, embedding_size)
         src = src + self.feature_drop_path(self.feature_residual_scale * src_att)
 
@@ -364,6 +440,12 @@ class TransformerEncoderLayerStable(nn.Module):
         src_att = self.self_attention_between_datapoints(
             src_flat,
             rope_start_index=num_cls_rows,
+        )
+        self._last_datapoint_attention_weights = (
+            self.self_attention_between_datapoints.last_attention_weights
+        )
+        self._last_datapoint_attention_stats = (
+            self.self_attention_between_datapoints.last_attention_stats
         )
         src_att = src_att.reshape(batch_size, col_size, rows_size, embedding_size)
         src_att = src_att.transpose(2, 1)
@@ -376,6 +458,24 @@ class TransformerEncoderLayerStable(nn.Module):
         src_mlp = self.ff_dropout(src_mlp)
         src_mlp = self.ff_out(src_mlp)
         return src + self.ffn_drop_path(self.ffn_residual_scale * src_mlp)
+
+    def get_attention_weights(self, attention_type: str = "features"):
+        if attention_type == "features":
+            return self._last_feature_attention_weights
+        if attention_type == "datapoints":
+            return self._last_datapoint_attention_weights
+        raise ValueError(
+            f"attention_type must be 'features' or 'datapoints', got {attention_type}"
+        )
+
+    def get_attention_stats(self, attention_type: str = "features"):
+        if attention_type == "features":
+            return self._last_feature_attention_stats
+        if attention_type == "datapoints":
+            return self._last_datapoint_attention_stats
+        raise ValueError(
+            f"attention_type must be 'features' or 'datapoints', got {attention_type}"
+        )
 
 
 class DecoderStable(nn.Module):
@@ -463,9 +563,39 @@ class TabImputeModelStable(nn.Module):
                 for layer_idx in range(num_layers)
             ]
         )
-        self.decoder = DecoderStable(embedding_size, mlp_hidden_size, num_outputs)
+        if num_outputs is not None and num_outputs > 0:
+            self.decoder = DecoderStable(embedding_size, mlp_hidden_size, num_outputs)
+        else:
+            self.decoder = None
 
-    def forward(self, src: torch.Tensor) -> torch.Tensor:
+    def set_attention_capture(self, enabled: bool, store_weights: bool = True) -> None:
+        for block in self.transformer_blocks:
+            block.set_attention_capture(enabled, store_weights=store_weights)
+
+    def get_attention_diagnostics(self) -> list[dict[str, object]]:
+        diagnostics = []
+        for layer_idx, block in enumerate(self.transformer_blocks):
+            diagnostics.append(
+                {
+                    "layer": layer_idx,
+                    "features": {
+                        "weights": block.get_attention_weights("features"),
+                        "stats": block.get_attention_stats("features"),
+                    },
+                    "datapoints": {
+                        "weights": block.get_attention_weights("datapoints"),
+                        "stats": block.get_attention_stats("datapoints"),
+                    },
+                }
+            )
+        return diagnostics
+
+    def forward(
+        self,
+        src: torch.Tensor,
+        return_embeddings: bool = False,
+        decode_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         src = self.feature_encoder(src)
 
         num_cls_rows = self.feature_encoder.last_num_cls_rows
@@ -474,14 +604,24 @@ class TabImputeModelStable(nn.Module):
         for block in self.transformer_blocks:
             src = block(src, num_cls_rows=num_cls_rows, num_cls_cols=num_cls_cols)
 
-        return self.decoder(src[:, num_cls_rows:, num_cls_cols:, :])
+        feats = src[:, num_cls_rows:, num_cls_cols:, :]
+        if return_embeddings or self.decoder is None:
+            return feats
+        if decode_mask is not None:
+            if decode_mask.shape != feats.shape[:-1]:
+                raise ValueError(
+                    f"decode_mask shape {tuple(decode_mask.shape)} must match "
+                    f"feature grid shape {tuple(feats.shape[:-1])}"
+                )
+            feats = feats[decode_mask]
+        return self.decoder(feats)
 
 
 class TabImputeModel(TabImputeModelStable):
     """Drop-in class name compatibility for training code imports."""
 
 
-def build_best_transfer_model(num_outputs: int = 5000, **overrides) -> TabImputeModel:
+def build_best_transfer_model(num_outputs: int | None = 5000, **overrides) -> TabImputeModel:
     model_cfg = dict(BEST_TRANSFER_MODEL_CONFIG)
     model_cfg.update(overrides)
     return TabImputeModel(num_outputs=num_outputs, **model_cfg)

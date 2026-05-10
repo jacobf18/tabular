@@ -1,0 +1,14 @@
+{
+  "source_dataset": "augsynth::kansas",
+  "outcome": "lngdpcapita",
+  "n_draws": 200,
+  "n_rows": 50,
+  "n_cols": 105,
+  "T0": 89,
+  "factor_r": 3,
+  "theta": 0.5,
+  "noise_scale": 1,
+  "fitted_model": "gsynth::interFE(y ~ 1, force = 'two-way')",
+  "paper_target": "Kansas-calibrated factor-model simulation in Ben-Michael, Feller, Rothstein (2021)",
+  "note": "Y files contain the full latent untreated outcome matrix; W files mark the single treated row for post-treatment columns. Apply the mask downstream to create observed panels."
+}

@@ -2,3 +2,5 @@ misc_data/
 wandb/
 stage1/
 workdir/
+runs/
+.pytest_cache/

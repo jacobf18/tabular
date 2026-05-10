@@ -1,0 +1,43 @@
+{
+  "N0": 49,
+  "N1_realized": 1,
+  "T0": 89,
+  "T1_realized": 16,
+  "assignment": "kansas_factor_r3_theta0.500_noise1.000",
+  "draw_id": 49,
+  "draw_name": "draw_0049",
+  "n_missing_cells": 16,
+  "n_observed_cells": 5234,
+  "n_treated_cells": 16,
+  "outcome": "lngdpcapita",
+  "post_col_end": 105,
+  "post_col_indices": [
+    89,
+    90,
+    91,
+    92,
+    93,
+    94,
+    95,
+    96,
+    97,
+    98,
+    99,
+    100,
+    101,
+    102,
+    103,
+    104
+  ],
+  "post_col_start": 89,
+  "shape": {
+    "n_cols": 105,
+    "n_rows": 50
+  },
+  "treated_row_end": 33,
+  "treated_row_idx": 32,
+  "treated_row_indices": [
+    32
+  ],
+  "treated_row_start": 32
+}

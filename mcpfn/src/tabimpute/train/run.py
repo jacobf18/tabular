@@ -11,6 +11,7 @@ warnings.filterwarnings(
 import functools
 from contextlib import nullcontext
 from typing import Optional
+import importlib.resources as resources
 
 import math
 import numpy as np
@@ -44,6 +45,89 @@ warnings.filterwarnings(
     message=".*The PyTorch API of nested tensors is in prototype stage.*",
     category=UserWarning,
 )
+
+class WeightEMA:
+    """Exponential moving average of model parameters.
+
+    Maintains an fp32 shadow copy of `model.parameters()` updated in-place after
+    each optimizer step. `apply_to`/`restore` swap the shadow into a model for
+    eval-time use, then put the live weights back.
+
+    `decay` is the long-run decay; during the first few thousand updates the
+    effective decay ramps up via `min(decay, (1 + n)/(10 + n))` so the average
+    is not pinned to early-warmup weights.
+    """
+
+    def __init__(self, model, decay: float = 0.999, device=None):
+        self.decay = decay
+        self.num_updates = 0
+        target_device = device if device is not None else next(model.parameters()).device
+        self.shadow = {
+            name: p.detach().to(device=target_device, dtype=torch.float32).clone()
+            for name, p in model.named_parameters()
+            if p.requires_grad
+        }
+        self._backup = None
+
+    def _effective_decay(self) -> float:
+        n = self.num_updates
+        return min(self.decay, (1.0 + n) / (10.0 + n))
+
+    @torch.no_grad()
+    def update(self, model):
+        d = self._effective_decay()
+        for name, p in model.named_parameters():
+            if not p.requires_grad:
+                continue
+            shadow = self.shadow.get(name)
+            if shadow is None:
+                continue
+            shadow.mul_(d).add_(p.detach().to(shadow.dtype), alpha=1.0 - d)
+        self.num_updates += 1
+
+    @torch.no_grad()
+    def apply_to(self, model):
+        """Swap EMA weights into `model`, saving live weights for `restore`."""
+        self._backup = {}
+        for name, p in model.named_parameters():
+            if not p.requires_grad:
+                continue
+            shadow = self.shadow.get(name)
+            if shadow is None:
+                continue
+            self._backup[name] = p.detach().clone()
+            p.data.copy_(shadow.to(dtype=p.dtype, device=p.device))
+
+    @torch.no_grad()
+    def restore(self, model):
+        if self._backup is None:
+            return
+        for name, p in model.named_parameters():
+            if not p.requires_grad:
+                continue
+            backup = self._backup.get(name)
+            if backup is None:
+                continue
+            p.data.copy_(backup)
+        self._backup = None
+
+    def state_dict(self):
+        return {
+            "decay": self.decay,
+            "num_updates": self.num_updates,
+            "shadow": {k: v.detach().cpu() for k, v in self.shadow.items()},
+        }
+
+    def load_state_dict(self, state):
+        self.decay = state.get("decay", self.decay)
+        self.num_updates = state.get("num_updates", 0)
+        loaded = state.get("shadow", {})
+        for name, tensor in loaded.items():
+            if name in self.shadow:
+                self.shadow[name].copy_(
+                    tensor.to(device=self.shadow[name].device, dtype=self.shadow[name].dtype)
+                )
+
 
 class Timer:
     """Context manager for timing code execution."""
@@ -94,15 +178,24 @@ class Trainer:
 
     def __init__(self, config, step_progress: Optional[tqdm] = None):
         self.config = config
+        self.compute_dtype = torch.float32
+        self.best_loss = float("inf")
+        self.best_step = None
+        self.best_ckpt_name = None
+        self.ema = None
         self.configure_ddp()
         self.configure_wandb()
         self.build_model()
         self.configure_prior(self.config.prior_dir)
         self.configure_optimizer()
         self.configure_amp()
+        self.configure_ema()
         
-        borders = torch.load(self.config.borders_path).to(self.config.device)
-        self.bar_distribution = FullSupportBarDistribution(borders=borders)
+        # load borders
+        with resources.files("tabimpute.data").joinpath("borders.pt").open("rb") as f:
+            self.borders = torch.load(f, map_location=self.config.device)
+        
+        self.bar_distribution = FullSupportBarDistribution(borders=self.borders)
 
         self.step_progress = step_progress
 
@@ -199,7 +292,7 @@ class Trainer:
             self.wandb_run = None
 
     def build_model(self):
-        """Build and initialize the TabICL model."""
+        """Build and initialize the model."""
         print("Building model")
         self.model_config = {
             "max_classes": self.config.max_classes,
@@ -219,35 +312,13 @@ class Trainer:
             "norm_first": self.config.norm_first,
         }
 
-        model = MCPFN(nhead=2)
-        model.to(device=self.config.device)
-
-        # print(f"Loading tabpfn model weights from {self.config.tabpfn_path}")
-        # model.model.load_state_dict(
-        #     torch.load(self.config.tabpfn_path, weights_only=True)
-        # )
-
-        # self.tabpfn_model = TabPFNModel(device=self.config.device)
+        model = MCPFN(nhead=2).to(
+            self.config.device, dtype=self.compute_dtype
+        )
 
         if self.master_process:
             num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
             print(f"Model has {num_params} parameters.")
-
-        # # Freeze model components if requested
-        # if self.config.freeze_col:
-        #     model.col_embedder.eval()
-        #     for param in model.col_embedder.parameters():
-        #         param.requires_grad = False
-
-        # if self.config.freeze_row:
-        #     model.row_interactor.eval()
-        #     for param in model.row_interactor.parameters():
-        #         param.requires_grad = False
-
-        # if self.config.freeze_icl:
-        #     model.icl_predictor.eval()
-        #     for param in model.icl_predictor.parameters():
-        #         param.requires_grad = False
 
         # Compile model if requested
         if self.config.model_compile:
@@ -344,7 +415,7 @@ class Trainer:
                 "spatial_block_n_blocks": 5,
                 "spatial_block_p_geom": 0.2,
                 # Last few ones
-                "censor_quantile": 0.1,
+                "censor_quantile": 0.25,
                 "two_phase_cheap_fraction": 0.4,
                 "two_phase_beta": 2.5,
                 "skip_logic_p_noise": 0.9,
@@ -423,19 +494,34 @@ class Trainer:
         #     device=self.config.device
         # )
 
+    def configure_ema(self):
+        """Initialize the weight-EMA shadow if enabled in config."""
+        if not getattr(self.config, "ema_enabled", False):
+            self.ema = None
+            return
+        if self.master_process:
+            print(
+                f"Configuring EMA (decay={self.config.ema_decay}, "
+                f"warmup_steps={self.config.ema_warmup_steps})"
+            )
+        self.ema = WeightEMA(
+            self.raw_model,
+            decay=self.config.ema_decay,
+            device=self.config.device,
+        )
+
     def configure_amp(self):
         """Configure automatic mixed precision (AMP) for training."""
         print("Configuring AMP")
         self.amp = self.config.amp and "cuda" in self.config.device
-        self.scaler = torch.GradScaler("cuda", enabled=self.amp)
-        if self.amp:
-            if self.master_process:
-                print(f"Automatic Mixed Precision is enabled.")
+        # bfloat16 does not use GradScaler; float16 AMP does.
+        self.scaler = torch.GradScaler("cuda", enabled=(self.amp and self.config.dtype == "float16"))
+        if "cuda" in self.config.device:
+            if self.master_process and self.amp:
+                print("Autocast (bfloat16) is enabled on CUDA.")
             self.amp_ctx = torch.autocast(
                 device_type="cuda",
-                dtype=(
-                    torch.float16 if self.config.dtype == "float16" else torch.float32
-                ),
+                dtype=torch.float32,
             )
         else:
             self.amp_ctx = nullcontext()
@@ -506,6 +592,7 @@ class Trainer:
                 }
 
         self.model.load_state_dict(checkpoint["state_dict"])
+        self.model.to(dtype=self.compute_dtype)
 
         # Optionally load optimizer and scheduler state
         if self.config.only_load_model:
@@ -515,6 +602,22 @@ class Trainer:
             self.scheduler.load_state_dict(checkpoint["scheduler_state"])
             self.curr_step = checkpoint["curr_step"]
             print(f"Resuming training at step {self.curr_step}")
+
+            if "best_loss" in checkpoint:
+                self.best_loss = checkpoint["best_loss"]
+                self.best_step = checkpoint.get("best_step")
+                self.best_ckpt_name = checkpoint.get("best_ckpt_name")
+                print(
+                    f"Restored best checkpoint: {self.best_ckpt_name} "
+                    f"(step {self.best_step}, loss {self.best_loss:.6f})"
+                )
+            else:
+                self._restore_best_from_disk()
+
+            ema_state = checkpoint.get("ema_state")
+            if ema_state is not None and self.ema is not None:
+                self.ema.load_state_dict(ema_state)
+                print(f"Restored EMA state ({self.ema.num_updates} updates).")
             
             # Load running statistics state if available (backward compatible with EMA checkpoints)
             if "task_loss_means" in checkpoint and "task_loss_vars" in checkpoint:
@@ -564,11 +667,160 @@ class Trainer:
             "optimizer_state": self.optimizer.state_dict(),
             "scheduler_state": self.scheduler.state_dict(),
             "curr_step": self.curr_step,
+            "best_loss": self.best_loss,
+            "best_step": self.best_step,
+            "best_ckpt_name": self.best_ckpt_name,
+            "ema_state": self.ema.state_dict() if self.ema is not None else None,
             # "task_loss_means": self.task_loss_means.cpu(),
             # "task_loss_vars": self.task_loss_vars.cpu(),
             # "task_loss_initialized": self.task_loss_initialized.cpu(),
         }
         torch.save(checkpoint, checkpoint_path)
+
+    def _restore_best_from_disk(self):
+        """Rehydrate best-checkpoint state from best_checkpoint.txt if present."""
+        best_txt = os.path.join(self.config.checkpoint_dir, "best_checkpoint.txt")
+        if not os.path.exists(best_txt):
+            return
+        try:
+            with open(best_txt, "r") as f:
+                lines = [ln.strip() for ln in f.readlines() if ln.strip()]
+            info = {}
+            for ln in lines:
+                if ":" in ln:
+                    k, v = ln.split(":", 1)
+                    info[k.strip()] = v.strip()
+            if "checkpoint" in info and "loss" in info:
+                self.best_ckpt_name = info["checkpoint"]
+                self.best_loss = float(info["loss"])
+                if "step" in info:
+                    try:
+                        self.best_step = int(info["step"])
+                    except ValueError:
+                        self.best_step = None
+                print(
+                    f"Restored best checkpoint from disk: {self.best_ckpt_name} "
+                    f"(step {self.best_step}, loss {self.best_loss:.6f})"
+                )
+        except Exception as e:
+            print(f"Could not parse best_checkpoint.txt: {e}")
+
+    @torch.no_grad()
+    def evaluate_missing_ce(self, num_batches: int = 10, use_ema: bool = True) -> Optional[float]:
+        """Estimate missing-cell CE by averaging over `num_batches` fresh batches.
+
+        Used for best-checkpoint selection so the decision is robust to single-step
+        noise. Runs in eval() mode with no gradients, then restores train() mode.
+        If `use_ema` and EMA is enabled and warmed up, evaluates the EMA weights.
+        """
+        was_training = self.model.training
+        self.model.eval()
+        ema_active = (
+            use_ema
+            and self.ema is not None
+            and self.curr_step >= self.config.ema_warmup_steps
+        )
+        if ema_active:
+            self.ema.apply_to(self.raw_model)
+        losses = []
+        try:
+            for _ in range(num_batches):
+                batch, pattern_weights = self.train_dataset.get_batch(
+                    self.config.batch_size
+                )
+                batch = (
+                    batch[0].to(self.config.device, dtype=self.compute_dtype),
+                    batch[1].to(self.config.device, dtype=self.compute_dtype),
+                    batch[2].to(self.config.device),
+                    batch[3].to(self.config.device),
+                    batch[4].to(self.config.device),
+                )
+                pattern_weights = pattern_weights.to(
+                    self.config.device, dtype=self.compute_dtype
+                )
+                results = self.run_batch(
+                    batch, pattern_weights=pattern_weights, is_train=False
+                )
+                loss = results.get("missing_ce")
+                if loss is not None and math.isfinite(loss):
+                    losses.append(loss)
+        finally:
+            if ema_active:
+                self.ema.restore(self.raw_model)
+            if was_training:
+                self.model.train()
+
+        if not losses:
+            return None
+        return sum(losses) / len(losses)
+
+    def update_best_checkpoint(self, ckpt_name: str, num_eval_batches: int = 10):
+        """Track the best checkpoint by an averaged missing-CE estimate.
+
+        Generates `num_eval_batches` fresh batches in eval mode, averages their
+        `missing_ce`, and compares against the running best. If better, copies the
+        freshly-saved checkpoint to `best.ckpt` and rewrites `best_checkpoint.txt`.
+        """
+        current_loss = self.evaluate_missing_ce(num_batches=num_eval_batches)
+        if current_loss is None or not math.isfinite(current_loss):
+            return
+
+        print(
+            f"[best-eval] step={self.curr_step} avg_missing_ce={current_loss:.6f} "
+            f"(over {num_eval_batches} batches; current best={self.best_loss:.6f})"
+        )
+
+        if current_loss >= self.best_loss:
+            return
+
+        self.best_loss = current_loss
+        self.best_step = self.curr_step
+        self.best_ckpt_name = ckpt_name
+
+        ckpt_dir = self.config.checkpoint_dir
+        src_path = os.path.join(ckpt_dir, ckpt_name)
+        best_path = os.path.join(ckpt_dir, "best.ckpt")
+
+        try:
+            if os.path.exists(src_path):
+                # Re-save under best.ckpt so it survives temp-checkpoint pruning.
+                checkpoint = torch.load(src_path, map_location="cpu", weights_only=False)
+                checkpoint["best_loss"] = self.best_loss
+                checkpoint["best_step"] = self.best_step
+                checkpoint["best_ckpt_name"] = self.best_ckpt_name
+                # If EMA is active, persist the EMA weights as the canonical state_dict
+                # so loaders downstream don't need EMA awareness. Keep the live weights
+                # under "raw_state_dict" for completeness.
+                ema_active_for_save = (
+                    self.ema is not None
+                    and self.curr_step >= self.config.ema_warmup_steps
+                )
+                if ema_active_for_save:
+                    raw_sd = checkpoint["state_dict"]
+                    ema_sd = {}
+                    for name, tensor in raw_sd.items():
+                        shadow = self.ema.shadow.get(name)
+                        if shadow is not None:
+                            ema_sd[name] = shadow.detach().cpu().to(dtype=tensor.dtype)
+                        else:
+                            ema_sd[name] = tensor
+                    checkpoint["raw_state_dict"] = raw_sd
+                    checkpoint["state_dict"] = ema_sd
+                    checkpoint["ema_applied"] = True
+                torch.save(checkpoint, best_path)
+        except Exception as e:
+            print(f"Warning: failed to copy best checkpoint to {best_path}: {e}")
+
+        best_txt = os.path.join(ckpt_dir, "best_checkpoint.txt")
+        try:
+            with open(best_txt, "w") as f:
+                f.write(f"checkpoint: {self.best_ckpt_name}\n")
+                f.write(f"step: {self.best_step}\n")
+                f.write(f"loss: {self.best_loss:.8f}\n")
+                f.write(f"path: {os.path.abspath(src_path)}\n")
+                f.write(f"best_path: {os.path.abspath(best_path)}\n")
+        except Exception as e:
+            print(f"Warning: failed to write {best_txt}: {e}")
 
     def manage_checkpoint(self):
         """
@@ -598,13 +850,19 @@ class Trainer:
         # Sort temporary checkpoints by step number (ascending)
         temp_checkpoints.sort(key=lambda x: x[0])
 
-        # Remove oldest temporary checkpoints if limit is exceeded
+        # Remove oldest temporary checkpoints if limit is exceeded; preserve the best.
         num_to_delete = len(temp_checkpoints) - limit
         if num_to_delete > 0:
-            for step, ckpt_name in temp_checkpoints[:num_to_delete]:
+            deleted = 0
+            for step, ckpt_name in temp_checkpoints:
+                if deleted >= num_to_delete:
+                    break
+                if ckpt_name == self.best_ckpt_name:
+                    continue
                 ckpt_path = os.path.join(ckpt_dir, ckpt_name)
                 try:
                     os.remove(ckpt_path)
+                    deleted += 1
                 except Exception as e:
                     print(f"Error removing checkpoint {ckpt_path}: {e}")
 
@@ -685,18 +943,26 @@ class Trainer:
             # Weighted loss for actual training
             # total_loss = self.weighter.weighted_total_loss(task_losses_tensor)
             batch, pattern_weights = self.train_dataset.get_batch(self.config.batch_size)
+            # move batch to device and dtype
+            batch = (batch[0].to(self.config.device, dtype=self.compute_dtype),
+                     batch[1].to(self.config.device, dtype=self.compute_dtype),
+                     batch[2].to(self.config.device),
+                     batch[3].to(self.config.device),
+                     batch[4].to(self.config.device))
+            pattern_weights = pattern_weights.to(self.config.device, dtype=self.compute_dtype)
+            
             results = self.run_batch(batch, pattern_weights=pattern_weights, is_train=True)
             total_loss = results["missing_ce_tensor"]
             self.optimizer.zero_grad()
             total_loss.backward()
             
             # Gradient clipping if enabled
-            # if self.config.gradient_clipping > 0:
-            #     # if self.amp:
-            #     #     self.scaler.unscale_(self.optimizer)
-            #     nn.utils.clip_grad_norm_(
-            #         self.model.parameters(), self.config.gradient_clipping
-            #     )
+            if self.config.gradient_clipping > 0:
+                # if self.amp:
+                #     self.scaler.unscale_(self.optimizer)
+                nn.utils.clip_grad_norm_(
+                    self.model.parameters(), self.config.gradient_clipping
+                )
             
             # # Update model parameters
             # if self.amp:
@@ -706,9 +972,13 @@ class Trainer:
             #     self.optimizer.step()
             
             self.optimizer.step()
-            
+
             # Update learning rate
             self.scheduler.step()
+
+            # EMA update (after optimizer step, after warmup)
+            if self.ema is not None and self.curr_step >= self.config.ema_warmup_steps:
+                self.ema.update(self.raw_model)
 
             # # Aggregate results for logging
             # for name in names:
@@ -747,6 +1017,7 @@ class Trainer:
                 if is_temp_save or is_perm_save:
                     ckpt_name = f"step-{self.curr_step}.ckpt"
                     self.save_checkpoint(name=ckpt_name)
+                    self.update_best_checkpoint(ckpt_name=ckpt_name)
 
                     # Manage checkpoint limit only for temporary checkpoints
                     if (
@@ -767,6 +1038,8 @@ class Trainer:
         # Save last checkpoint
         ckpt_name = f"step-{self.curr_step}.ckpt"
         self.save_checkpoint(name=ckpt_name)
+        if self.master_process:
+            self.update_best_checkpoint(ckpt_name=ckpt_name)
         
     def update_probs(self, batch_size=20):
         """
@@ -918,9 +1191,9 @@ class Trainer:
         ].item()  # this should be the same for all datasets in the micro batch
         micro_X, micro_y = self.align_micro_batch(micro_X, micro_y, micro_d, seq_len)
 
-        # Move to device
-        micro_X = micro_X.to(self.config.device)
-        micro_y = micro_y.to(self.config.device)
+        # Move to device (match model dtype for features/targets; keep index tensors integer)
+        micro_X = micro_X.to(self.config.device, dtype=self.compute_dtype)
+        micro_y = micro_y.to(self.config.device, dtype=self.compute_dtype)
         micro_d = micro_d.to(self.config.device)
         micro_train_size = micro_train_size.to(self.config.device)
         
@@ -949,7 +1222,9 @@ class Trainer:
         y_train[~mask] = torch.nan
 
         # Add a new column of mask to X at the first position
-        micro_X = torch.cat([mask.unsqueeze(2), micro_X], dim=2)
+        micro_X = torch.cat(
+            [mask.unsqueeze(2).to(dtype=self.compute_dtype), micro_X], dim=2
+        )
 
         mask_reshaped = einops.rearrange(mask, "b t -> t b")
 
@@ -989,29 +1264,15 @@ class Trainer:
 
         else:  # val
             with torch.no_grad():
-                if not is_tabpfn:
+                with self.amp_ctx:
                     pred = self.model(
                         micro_X, y_train, micro_d
                     )  # (B, test_size, max_classes)
-                else:
-                    pred = self.tabpfn_model.forward(
-                        micro_X, y_train, micro_train_size
-                    )  # (B, test_size, max_classes)
-
-                # pred = einops.rearrange(pred, "b t h -> t b h")
-                # loss = self.bar_distribution(
-                #     logits=pred, y=einops.rearrange(micro_y, "b t -> t b")
-                # )
-                loss = self.bar_distribution(logits=pred, y=micro_y)
-                loss = einops.rearrange(loss, "b t -> t b")
+                    loss = self.bar_distribution(logits=pred, y=micro_y)
+                    loss = einops.rearrange(loss, "b t -> t b")
                 
-                micro_pattern_weights = micro_pattern_weights.unsqueeze(0)
-                loss = loss * micro_pattern_weights # reweight the loss by the pattern weights
-                
-                scaled_loss = torch_nanmean(loss).mean() / num_micro_batches
-                missing_loss = (
-                    torch_nanmean(loss[~mask_reshaped]).mean() / num_micro_batches
-                )
+                scaled_loss = (loss).mean() / num_micro_batches
+                missing_loss = (loss[~mask_reshaped]).mean() / num_micro_batches
 
         # with torch.no_grad():
         micro_results = {}
@@ -1081,6 +1342,7 @@ class Trainer:
                 micro_results = self.run_micro_batch(
                     micro_batch, micro_pattern_weights, idx, num_micro_batches, is_train, is_tabpfn
                 )
+                
                 for k, v in micro_results.items():
                     if k == "missing_ce_tensor":
                         missing_ce_tensors.append(v)
@@ -1108,9 +1370,19 @@ class Trainer:
                 # Stack and average to preserve gradients
                 results["missing_ce_tensor"] = torch.stack(missing_ce_tensors).mean()
             else:
-                results["missing_ce_tensor"] = torch.tensor(0.0, device=self.config.device, requires_grad=True)
+                results["missing_ce_tensor"] = torch.tensor(
+                    0.0,
+                    device=self.config.device,
+                    dtype=self.compute_dtype,
+                    requires_grad=True,
+                )
         else:
-            results["missing_ce_tensor"] = torch.tensor(0.0, device=self.config.device, requires_grad=True)
+            results["missing_ce_tensor"] = torch.tensor(
+                0.0,
+                device=self.config.device,
+                dtype=self.compute_dtype,
+                requires_grad=True,
+            )
         failure_ratio = failed_batches / num_micro_batches
         if failure_ratio > 0.1:
             raise RuntimeError(

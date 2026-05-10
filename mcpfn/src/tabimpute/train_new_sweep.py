@@ -8,6 +8,7 @@ import os
 import importlib.resources
 import math
 from torch.optim.lr_scheduler import CosineAnnealingLR, LambdaLR, OneCycleLR
+from pathlib import Path
 
 from tabimpute.model.model_new import TabImputeModel
 from tabimpute.prior.training_set_generation import MissingnessPrior
@@ -165,7 +166,9 @@ def train(model: TabImputeModel,
           callbacks: list[Callback] = None, 
           ckpt: Dict[str, torch.Tensor] = None, 
           multi_gpu: bool = False,
-          run_name: str = 'tabimpute-new'):
+          work_dir: str | None = None,
+          run_name: str = 'tabimpute-new',
+          decode_only_missing: bool = False):
     """
     Trains our model on the given prior using the given criterion.
 
@@ -183,8 +186,11 @@ def train(model: TabImputeModel,
     Returns:
         (TabImputeModel) trained model
     """
-    work_dir = 'workdir/'+run_name
-    os.makedirs(work_dir, exist_ok=True)
+    if work_dir is None:
+        work_dir_path = Path("workdir") / run_name
+    else:
+        work_dir_path = Path(work_dir)
+    work_dir_path.mkdir(parents=True, exist_ok=True)
     if callbacks is None:
         callbacks = []
     if not device:
@@ -249,20 +255,42 @@ def train(model: TabImputeModel,
             
             batch_X = batch_X.to(device=device, dtype=compute_dtype)
             batch_target = batch_target.to(device=device, dtype=compute_dtype)
-            
-            output = model(batch_X)
+            if not torch.isfinite(batch_target).all():
+                raise ValueError("Encountered non-finite values in batch_target before loss computation")
             
             missing_mask = torch.isnan(batch_X)
-            
-            losses = criterion(output, batch_target)
-            
-            loss_missing = losses[missing_mask].mean()
-            
-            with torch.no_grad():
-                loss_total = losses.mean()
-                medians = bar_distribution.median(output)
-                missing_mae = (medians[missing_mask] - batch_target[missing_mask]).abs().mean()
-                total_mae = (medians - batch_target).abs().mean()
+
+            if decode_only_missing:
+                output = model(batch_X, decode_mask=missing_mask)
+                if not torch.isfinite(output).all():
+                    raise ValueError("Model produced non-finite logits")
+                target_missing = batch_target[missing_mask]
+                losses = criterion(output, target_missing)
+                loss_missing = losses.mean()
+
+                with torch.no_grad():
+                    medians = bar_distribution.median(output)
+                    if not torch.isfinite(medians).all():
+                        raise ValueError("bar_distribution.median produced non-finite values")
+                    missing_mae = (medians - target_missing).abs().mean()
+                    loss_total = torch.full_like(loss_missing, float("nan"))
+                    total_mae = torch.full_like(missing_mae, float("nan"))
+            else:
+                output = model(batch_X)
+                if not torch.isfinite(output).all():
+                    raise ValueError("Model produced non-finite logits")
+
+                losses = criterion(output, batch_target)
+
+                loss_missing = losses[missing_mask].mean()
+
+                with torch.no_grad():
+                    loss_total = losses.mean()
+                    medians = bar_distribution.median(output)
+                    if not torch.isfinite(medians).all():
+                        raise ValueError("bar_distribution.median produced non-finite values")
+                    missing_mae = (medians[missing_mask] - batch_target[missing_mask]).abs().mean()
+                    total_mae = (medians - batch_target).abs().mean()
             
             loss_missing.backward()
             if grad_clip_norm is not None:
@@ -292,7 +320,7 @@ def train(model: TabImputeModel,
                     'optimizer': optimizer.state_dict(),
                     'scheduler': scheduler.state_dict() if scheduler is not None else None,
                 }
-                torch.save(training_state, work_dir+'/checkpoint_'+str(epoch)+'.pth')
+                torch.save(training_state, work_dir_path / f"checkpoint_{epoch}.pth")
                 checkpoint_metrics[str(epoch)] = dict(log_dict)
 
             for callback in callbacks:

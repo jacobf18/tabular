@@ -1,0 +1,24 @@
+\begin{table}[h]
+\centering
+\caption{Mean Normalized RMSE ± Standard Deviation by Missingness Pattern}
+\label{tab:normalized_negative_rmse_by_pattern}
+\begin{tabular}{lccccc}
+\toprule
+Pattern & TabImpute & MissForest & OT & HyperImpute & TabPFN \\
+\midrule
+\mcar & \textbf{0.819 ± 0.032} & 1.018 ± 0.144 & 1.004 ± 0.138 & 0.969 ± 0.091 & 1.115 ± 0.040 \\
+\colmar & \textbf{1.076 ± 0.081} & 1.197 ± 0.113 & 1.377 ± 0.168 & 1.117 ± 0.113 & 1.608 ± 0.166 \\
+\mnarself & \textbf{2.184 ± 0.215} & 2.580 ± 0.354 & 2.500 ± 0.247 & 2.636 ± 0.470 & 3.536 ± 0.485 \\
+\nnmar & \textbf{0.854 ± 0.041} & 1.070 ± 0.148 & 1.065 ± 0.154 & 1.114 ± 0.153 & 4.117 ± 3.022 \\
+\marblockneural & \textbf{0.939 ± 0.025} & 1.430 ± 0.373 & 1.489 ± 0.357 & 1.325 ± 0.325 & 1.797 ± 0.617 \\
+\polarmnar & 2.680 ± 0.653 & 4.433 ± 1.506 & 5.290 ± 2.340 & 5.492 ± 2.071 & \textbf{2.295 ± 0.490} \\
+\softpolarmnar & \textbf{2.051 ± 0.255} & 2.498 ± 0.410 & 2.584 ± 0.514 & 2.713 ± 0.446 & 2.721 ± 0.481 \\
+\latentmnar & \textbf{0.867 ± 0.030} & 1.052 ± 0.136 & 0.975 ± 0.084 & 1.082 ± 0.127 & 1.147 ± 0.059 \\
+\clustermnar & \textbf{0.872 ± 0.037} & 0.947 ± 0.055 & 0.965 ± 0.065 & 0.917 ± 0.041 & 1.085 ± 0.021 \\
+\twophasemnar & \textbf{0.917 ± 0.029} & 0.937 ± 0.030 & 1.022 ± 0.033 & 0.931 ± 0.047 & 1.656 ± 0.272 \\
+\censormnar & \textbf{4.181 ± 0.357} & 4.465 ± 0.376 & 4.442 ± 0.308 & 4.444 ± 0.486 & 5.932 ± 0.528 \\
+\midrule
+Overall & \textbf{1.585 ± 0.088} & 1.966 ± 0.165 & 2.065 ± 0.232 & 2.067 ± 0.215 & 2.455 ± 0.301 \\
+\bottomrule
+\end{tabular}
+\end{table}

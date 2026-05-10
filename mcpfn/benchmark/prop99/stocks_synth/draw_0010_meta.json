@@ -1,0 +1,42 @@
+{
+  "N": 50,
+  "T": 50,
+  "assignment": "stock_block_second_half",
+  "dataset": "stock_returns_block_mask",
+  "draw_id": 10,
+  "draw_name": "draw_0010",
+  "n_hidden": 625,
+  "post_col_start": 25,
+  "shape": {
+    "n_cols": 50,
+    "n_rows": 50
+  },
+  "source": "synthetic_factor_stock_matrix",
+  "treated_units": [
+    27,
+    12,
+    28,
+    47,
+    11,
+    24,
+    16,
+    38,
+    26,
+    17,
+    46,
+    9,
+    19,
+    6,
+    21,
+    23,
+    44,
+    18,
+    13,
+    7,
+    22,
+    32,
+    10,
+    1,
+    2
+  ]
+}

@@ -1,0 +1,22 @@
+datasets:
+  movielens:
+    1m:
+      url: "https://files.grouplens.org/datasets/movielens/ml-1m.zip"
+      archive: "ml-1m.zip"
+      ratings_file: "ml-1m/ratings.dat"
+      separator: "::"
+      has_header: false
+      columns: [user_id, item_id, rating, timestamp]
+      encoding: "latin-1"
+      rating_scale: [1, 5]
+  netflix:
+    prize:
+      url: null
+      # Netflix Prize is no longer distributed by Netflix. Preferred source:
+      # kaggle datasets download -d netflix-inc/netflix-prize-data
+      kaggle_slug: "netflix-inc/netflix-prize-data"
+      archive_hint: "netflix-prize-data.zip"
+      # Fallback archive mirror (academic torrents). The pipeline will not
+      # automatically fetch from this; instructions are logged.
+      archive_mirror: "https://archive.org/details/nf_prize_dataset.tar"
+      rating_scale: [1, 5]

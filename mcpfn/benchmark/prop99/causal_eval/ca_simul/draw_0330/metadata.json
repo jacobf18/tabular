@@ -1,0 +1,49 @@
+{
+  "N": 38,
+  "N0": 30,
+  "N1_realized": 8,
+  "Nt": 8,
+  "T": 31,
+  "T0": 25,
+  "T1_realized": 6,
+  "adoption_time": 25,
+  "adoption_times": null,
+  "assignment": "simultaneous",
+  "dataset": "california_smoking_controls",
+  "design": "simultaneous",
+  "draw_id": 330,
+  "draw_name": "draw_0330",
+  "n_missing_cells": 48,
+  "n_observed_cells": 1130,
+  "n_treated_cells": 48,
+  "outcome": "PacksPerCapita",
+  "post_col_end": 31,
+  "post_col_indices": [
+    25,
+    26,
+    27,
+    28,
+    29,
+    30
+  ],
+  "post_col_start": 25,
+  "shape": {
+    "n_cols": 31,
+    "n_rows": 38
+  },
+  "source": null,
+  "t0_ratio": 0.8064516129032258,
+  "treated_row_end": 30,
+  "treated_row_idx": null,
+  "treated_row_indices": [
+    2,
+    6,
+    11,
+    12,
+    13,
+    15,
+    18,
+    29
+  ],
+  "treated_row_start": 2
+}

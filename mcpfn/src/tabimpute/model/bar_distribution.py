@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 from typing_extensions import override
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 if TYPE_CHECKING:
@@ -524,16 +525,14 @@ class FullSupportBarDistribution(BarDistribution):
         assert last_dim == self.num_bars, f"{last_dim} vs {self.num_bars}"
         # ignore all position with nan values
 
-        scaled_bucket_log_probs = self.compute_scaled_log_probs(logits)
-
-        assert len(scaled_bucket_log_probs) == len(target_sample), (
-            len(scaled_bucket_log_probs),
-            len(target_sample),
-        )
-        log_probs = scaled_bucket_log_probs.gather(
-            -1,
-            target_sample.unsqueeze(-1),
-        ).squeeze(-1)
+        flat_logits = logits.reshape(-1, last_dim)
+        flat_targets = target_sample.reshape(-1)
+        nll_loss = F.cross_entropy(
+            flat_logits,
+            flat_targets,
+            reduction="none",
+        ).view_as(target_sample)
+        log_probs = -nll_loss - torch.log(self.bucket_widths[target_sample])
 
         side_normals = (
             self.halfnormal_with_p_weight_before(self.bucket_widths[0]),
