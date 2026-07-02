@@ -1,4 +1,6 @@
 import json
+import importlib.util
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -8,7 +10,9 @@ from tabimpute.model.bar_distribution import FullSupportBarDistribution
 from tabimpute.model.model_compressed_cross import (
     ColumnCompressionModel,
     CompressedCrossTabImputeModel,
+    ChunkSpan,
     RowCompressionModel,
+    make_chunk_spans,
 )
 from tabimpute.model.model_new_stable_memory_efficient import TabImputeModel
 
@@ -41,6 +45,7 @@ def tiny_compressor_kwargs(k_row: int = 2, k_col: int = 3) -> dict:
         "num_attention_heads": 4,
         "mlp_hidden_size": 64,
         "num_layers": 1,
+        "num_cls": 2,
         "attention_dropout": 0.0,
         "ffn_dropout": 0.0,
         "drop_path_rate": 0.0,
@@ -71,6 +76,148 @@ def build_tiny_compressed_model(num_outputs: int = 17) -> CompressedCrossTabImpu
         k_row=cfg["k_row"],
         k_col=cfg["k_col"],
     )
+
+
+def test_make_chunk_spans_are_non_overlapping():
+    assert make_chunk_spans(120, 50) == [
+        ChunkSpan(0, 50),
+        ChunkSpan(50, 100),
+        ChunkSpan(100, 120),
+    ]
+
+
+def test_region_type_embeddings_are_zero_initialized():
+    model = build_tiny_compressed_model(num_outputs=17)
+    assert torch.count_nonzero(model.region_type_embedding.weight) == 0
+
+
+def test_compressor_embedders_can_be_seeded_from_predictor():
+    model = build_tiny_compressed_model(num_outputs=17)
+    with torch.no_grad():
+        model.predictor.feature_encoder.mask_token.fill_(1.25)
+        model.predictor.feature_encoder.missingness_embedding.weight.fill_(0.5)
+        model.predictor.feature_encoder.row_cls_embedding.weight.fill_(0.75)
+        model.predictor.feature_encoder.col_cls_embedding.weight.fill_(-0.75)
+        for param in model.predictor.feature_encoder.observed_linear_layer.parameters():
+            param.fill_(0.125)
+
+    model.initialize_compressor_embedders_from_predictor()
+
+    for compressor in (model.row_compressor, model.column_compressor):
+        assert torch.equal(
+            compressor.scalar_embedder.mask_token,
+            model.predictor.feature_encoder.mask_token,
+        )
+        assert torch.equal(
+            compressor.scalar_embedder.missingness_embedding.weight,
+            model.predictor.feature_encoder.missingness_embedding.weight,
+        )
+        assert torch.equal(
+            compressor.row_cls_embedding.weight,
+            model.predictor.feature_encoder.row_cls_embedding.weight,
+        )
+        assert torch.equal(
+            compressor.col_cls_embedding.weight,
+            model.predictor.feature_encoder.col_cls_embedding.weight,
+        )
+        for compressor_param, predictor_param in zip(
+            compressor.scalar_embedder.observed_linear_layer.parameters(),
+            model.predictor.feature_encoder.observed_linear_layer.parameters(),
+        ):
+            assert torch.equal(compressor_param, predictor_param)
+
+
+def test_compressors_have_cls_tokens():
+    model = build_tiny_compressed_model(num_outputs=17)
+
+    assert model.row_compressor.num_cls == 2
+    assert model.column_compressor.num_cls == 2
+    assert model.row_compressor.row_cls_embedding.weight.shape == (2, 32)
+    assert model.row_compressor.col_cls_embedding.weight.shape == (2, 32)
+    assert model.column_compressor.row_cls_embedding.weight.shape == (2, 32)
+    assert model.column_compressor.col_cls_embedding.weight.shape == (2, 32)
+
+
+def test_compressor_transformers_can_be_seeded_from_predictor():
+    model = build_tiny_compressed_model(num_outputs=17)
+    with torch.no_grad():
+        for block in model.predictor.transformer_blocks:
+            block.feature_residual_scale.fill_(0.321)
+            block.datapoint_residual_scale.fill_(0.456)
+            block.ffn_residual_scale.fill_(0.789)
+
+    model.initialize_compressor_transformers_from_predictor()
+
+    for compressor in (model.row_compressor, model.column_compressor):
+        for compressor_block, predictor_block in zip(
+            compressor.transformer.blocks,
+            model.predictor.transformer_blocks,
+        ):
+            compressor_state = compressor_block.state_dict()
+            predictor_state = predictor_block.state_dict()
+            assert compressor_state.keys() == predictor_state.keys()
+            for key in compressor_state:
+                assert torch.equal(compressor_state[key], predictor_state[key])
+
+
+def test_split_optimizer_parameter_groups_cover_expected_weights():
+    script_path = Path(__file__).parent / "scripts" / "train_compressed_cross_rank10.py"
+    spec = importlib.util.spec_from_file_location(
+        "train_compressed_cross_rank10",
+        script_path,
+    )
+    train_script = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(train_script)
+
+    for freeze_predictor in (False, True):
+        model = build_tiny_compressed_model(num_outputs=17)
+        if freeze_predictor:
+            model.predictor.requires_grad_(False)
+        optimizer = train_script.build_split_optimizer(
+            model,
+            optimizer_name="adamw",
+            predictor_lr=1e-5,
+            compressor_lr=1e-4,
+            weight_decay=0.0,
+            optimizer_betas=(0.9, 0.999),
+            optimizer_eps=1e-8,
+        )
+        param_name_by_id = {id(param): name for name, param in model.named_parameters()}
+        grouped_param_ids = [
+            id(param) for group in optimizer.param_groups for param in group["params"]
+        ]
+        grouped_param_id_set = set(grouped_param_ids)
+        trainable_param_ids = {
+            id(param) for param in model.parameters() if param.requires_grad
+        }
+
+        assert len(grouped_param_ids) == len(grouped_param_id_set)
+        assert grouped_param_id_set == trainable_param_ids
+        assert id(model.region_type_embedding.weight) in grouped_param_id_set
+        assert id(model.off_axis_token) in grouped_param_id_set
+
+        groups_by_name = {group["name"]: group for group in optimizer.param_groups}
+        if freeze_predictor:
+            assert "predictor" not in groups_by_name
+        else:
+            predictor_names = {
+                param_name_by_id[id(param)]
+                for param in groups_by_name["predictor"]["params"]
+            }
+            assert predictor_names
+            assert all(name.startswith("predictor.") for name in predictor_names)
+
+        compressor_names = {
+            param_name_by_id[id(param)]
+            for param in groups_by_name["compressors"]["params"]
+        }
+        assert compressor_names
+        assert not any(name.startswith("predictor.") for name in compressor_names)
+        assert any(name.startswith("row_compressor.") for name in compressor_names)
+        assert any(name.startswith("column_compressor.") for name in compressor_names)
+        assert "region_type_embedding.weight" in compressor_names
+        assert "off_axis_token" in compressor_names
 
 
 def test_compressors_return_latent_rows_and_columns():
@@ -146,6 +293,8 @@ def test_forward_full_matrix_backward_flows_to_all_modules():
         param.grad is not None and torch.isfinite(param.grad).all()
         for param in model.column_compressor.parameters()
     )
+    assert model.region_type_embedding.weight.grad is not None
+    assert torch.isfinite(model.region_type_embedding.weight.grad).all()
 
 
 def test_compressed_cross_interface_impute_shape(tmp_path):

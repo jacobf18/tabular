@@ -60,6 +60,7 @@ BEST_TRANSFER_MODEL_CONFIG = {
     "residual_scale_init": 0.20,
     "rms_norm_eps": 1e-6,
     "embedding_dropout": 0.0,
+    "attention_batch_chunk_size": None,
 }
 
 BEST_TRANSFER_OPTIMIZER_CONFIG = {
@@ -354,6 +355,7 @@ class TransformerEncoderLayerStable(nn.Module):
         use_rope: bool = True,
         rope_base: float = 10000.0,
         rope_fraction: float = 1.0,
+        attention_batch_chunk_size: int | None = None,
     ):
         super().__init__()
         self.self_attention_between_features = AxialRoPESelfAttention(
@@ -393,6 +395,7 @@ class TransformerEncoderLayerStable(nn.Module):
             torch.full((1,), residual_scale_init)
         )
         self.ffn_residual_scale = nn.Parameter(torch.full((1,), residual_scale_init))
+        self.attention_batch_chunk_size = attention_batch_chunk_size
         self._last_feature_attention_weights = None
         self._last_datapoint_attention_weights = None
         self._last_feature_attention_stats = None
@@ -411,6 +414,27 @@ class TransformerEncoderLayerStable(nn.Module):
             self._last_feature_attention_stats = None
             self._last_datapoint_attention_stats = None
 
+    def _run_axis_attention(
+        self,
+        attention: AxialRoPESelfAttention,
+        src_flat: torch.Tensor,
+        rope_start_index: int,
+    ) -> torch.Tensor:
+        chunk_size = self.attention_batch_chunk_size
+        if (
+            chunk_size is None
+            or chunk_size <= 0
+            or src_flat.size(0) <= chunk_size
+            or attention.capture_attention_weights
+        ):
+            return attention(src_flat, rope_start_index=rope_start_index)
+
+        chunks = [
+            attention(chunk, rope_start_index=rope_start_index)
+            for chunk in src_flat.split(chunk_size, dim=0)
+        ]
+        return torch.cat(chunks, dim=0)
+
     def forward(
         self,
         src: torch.Tensor,
@@ -421,7 +445,8 @@ class TransformerEncoderLayerStable(nn.Module):
 
         src_norm = self.norm1(src)
         src_flat = src_norm.reshape(batch_size * rows_size, col_size, embedding_size)
-        src_att = self.self_attention_between_features(
+        src_att = self._run_axis_attention(
+            self.self_attention_between_features,
             src_flat,
             rope_start_index=num_cls_cols,
         )
@@ -437,7 +462,8 @@ class TransformerEncoderLayerStable(nn.Module):
         src_norm = self.norm2(src)
         src_t = src_norm.transpose(1, 2)
         src_flat = src_t.reshape(batch_size * col_size, rows_size, embedding_size)
-        src_att = self.self_attention_between_datapoints(
+        src_att = self._run_axis_attention(
+            self.self_attention_between_datapoints,
             src_flat,
             rope_start_index=num_cls_rows,
         )
@@ -533,6 +559,7 @@ class TabImputeModelStable(nn.Module):
         residual_scale_init: float = 0.10,
         rms_norm_eps: float = 1e-6,
         embedding_dropout: float = 0.0,
+        attention_batch_chunk_size: int | None = None,
     ):
         super().__init__()
         self.num_cls = num_cls
@@ -559,6 +586,7 @@ class TabImputeModelStable(nn.Module):
                     use_rope=use_rope,
                     rope_base=rope_base,
                     rope_fraction=rope_fraction,
+                    attention_batch_chunk_size=attention_batch_chunk_size,
                 )
                 for layer_idx in range(num_layers)
             ]

@@ -39,6 +39,7 @@ class TabImputeModelMemoryEfficient(torch.nn.Module):
         residual_scale_init: float = 0.10,
         rms_norm_eps: float = 1e-6,
         embedding_dropout: float = 0.0,
+        attention_batch_chunk_size: int | None = None,
         use_activation_checkpointing: bool = True,
         checkpoint_use_reentrant: bool = False,
     ):
@@ -70,6 +71,7 @@ class TabImputeModelMemoryEfficient(torch.nn.Module):
                     use_rope=use_rope,
                     rope_base=rope_base,
                     rope_fraction=rope_fraction,
+                    attention_batch_chunk_size=attention_batch_chunk_size,
                 )
                 for layer_idx in range(num_layers)
             ]

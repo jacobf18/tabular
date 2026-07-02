@@ -9,6 +9,8 @@ from tqdm import tqdm
 from pathlib import Path
 import sys
 from tabimpute.interface import ImputePFN, TabPFNImputer, TabPFNUnsupervisedModel
+from tabimpute.interface_rfm import RFMImputePFN, BoostMatFormerImputer
+from tabimpute.model.rfm_head_agop import RFMHeadAGOP
 from tabimpute.prepreocess import (
     RandomRowColumnPermutation, 
     RandomRowPermutation, 
@@ -621,9 +623,113 @@ if "mcpfn" in imputers:
 
     # mcpfn_imputers = build_mcpfn_imputers()
     
+    # Step 1 trained head (log_lambda, log_gamma_scale fitted on synthetic data).
+    _trained_head_ckpt = torch.load(
+        '/root/tabular/mcpfn/src/tabimpute/workdir/agop_head_dwip_v2_t002_step1/head_final.pt',
+        map_location='cpu', weights_only=False,
+    )
+    _trained_head_for_tuned = RFMHeadAGOP(iters=3)
+    _trained_head_for_tuned.load_state_dict(_trained_head_ckpt['head'])
+    _trained_head_for_per_matrix = RFMHeadAGOP(iters=3)
+    _trained_head_for_per_matrix.load_state_dict(_trained_head_ckpt['head'])
+
     mcpfn_imputers = [
-        {"name": "masters_mcar", 
-         "model": ImputePFN(device='cuda', max_num_rows=300, entry_wise_features=True, max_num_cols=10,preprocessors=default_preprocessors)}
+        # Boost: MatFormer's MLP prediction + xRFM column-wise residual correction.
+        {"name": "boost_matformer_dwip_v2_t002_a0p1",
+         "model": BoostMatFormerImputer(
+             device='cuda',
+             entry_wise_features=False,
+             json_config=ROUND2_T2_CONFIG,
+             checkpoint_path='/mnt/checkpoints_sweep/workdir/dwip_v2-trial_002/checkpoint_17000.pth',
+             max_num_rows=50,
+             max_num_cols=50,
+             blend_alpha=0.1,
+         )},
+        # # Step 1: warm-started head (synthetic-trained), no per-matrix tuning.
+        # {"name": "rfm_agop_dwip_v2_t002_trained",
+        #  "model": RFMImputePFN(
+        #      device='cuda',
+        #      entry_wise_features=False,
+        #      json_config=ROUND2_T2_CONFIG,
+        #      checkpoint_path='/mnt/checkpoints_sweep/workdir/dwip_v2-trial_002/checkpoint_17000.pth',
+        #      max_num_rows=50,
+        #      max_num_cols=50,
+        #      head=_trained_head_for_tuned,
+        #  )},
+        # # Step 1.5: warm-start + per-matrix Adam tuning of (log_lambda, log_gamma_scale).
+        # {"name": "rfm_agop_dwip_v2_t002_per_matrix",
+        #  "model": RFMImputePFN(
+        #      device='cuda',
+        #      entry_wise_features=False,
+        #      json_config=ROUND2_T2_CONFIG,
+        #      checkpoint_path='/mnt/checkpoints_sweep/workdir/dwip_v2-trial_002/checkpoint_17000.pth',
+        #      max_num_rows=50,
+        #      max_num_cols=50,
+        #      head=_trained_head_for_per_matrix,
+        #      per_matrix_steps=50,
+        #      per_matrix_lr=1e-2,
+        #      per_matrix_val_frac=0.1,
+        #  )},
+        # {"name": "masters_mcar",
+        #  "model": ImputePFN(device='cuda', max_num_rows=300, entry_wise_features=True, max_num_cols=10,preprocessors=default_preprocessors)},
+        # {"name": "rfm_agop_dwip_v2_t002",
+        #  "model": RFMImputePFN(
+        #      device='cuda',
+        #      entry_wise_features=False,
+        #      json_config=ROUND2_T2_CONFIG,
+        #      checkpoint_path='/mnt/checkpoints_sweep/workdir/dwip_v2-trial_002/checkpoint_17000.pth',
+        #      max_num_rows=50,
+        #      max_num_cols=50,
+        #      head=RFMHeadAGOP(iters=3),
+        #  )},
+        # {"name": "tabimpute_curriculum_100x100_rank10_best_chunked_100x100",
+        #  "model": ImputePFN(
+        #      device='cuda',
+        #      entry_wise_features=False,
+        #      json_config=ROUND2_T2_CONFIG,
+        #      checkpoint_path='/root/tabular/mcpfn/src/tabimpute/workdir/tabimpute-new-stable_v2-rank_10_10-100x100-from_50x50_step30000/checkpoint_42500.pth',
+        #      model_family='new_stable',
+        #      max_num_rows=100,
+        #      max_num_cols=100,
+        #  )},
+        # {"name": "tabimpute_memory_efficient_200x200_rank10_step60000_chunked_200x200",
+        #  "model": ImputePFN(
+        #      device='cuda',
+        #      entry_wise_features=False,
+        #      json_config=ROUND2_T2_CONFIG,
+        #      checkpoint_path='/root/tabular/mcpfn/src/tabimpute/workdir/tabimpute-new-stable-memory-efficient_v2-rank_10_10-200x200-from_100x100_step45000/checkpoint_60000.pth',
+        #      model_family='new_stable_memory_efficient',
+        #      max_num_rows=200,
+        #      max_num_cols=200,
+        #  )},
+        {"name": "dwip_v2-trial_002",
+         "model": ImputePFN(
+             device='cuda',
+             entry_wise_features=False,
+             json_config={"config": {
+                 "embedding_size": 768,
+                 "num_attention_heads": 16,
+                 "mlp_hidden_size": 1536,
+                 "num_layers": 8,
+                 "num_outputs": 5000,
+                 "num_cls": 12,
+                 "use_rope": True,
+                 "rope_base": 10000.0,
+                 "rope_fraction": 0.5,
+                 "use_absolute_positional_embeddings": False,
+                 "positional_damping_factor": 0.1,
+                 "attention_dropout": 0.0,
+                 "ffn_dropout": 0.03,
+                 "drop_path_rate": 0.0,
+                 "residual_scale_init": 0.7,
+                 "embedding_dropout": 0.0,
+                 "rms_norm_eps": 1e-6,
+             }},
+             checkpoint_path='/mnt/checkpoints_sweep/workdir/dwip_v2-trial_002/checkpoint_17000.pth',
+             model_family='new_stable',
+             max_num_rows=50,
+             max_num_cols=50,
+         )},
     ]
 
 

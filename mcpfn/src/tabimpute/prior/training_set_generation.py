@@ -69,6 +69,48 @@ def _safe_logit(prob: float) -> float:
     return float(np.log(clipped / (1.0 - clipped)))
 
 
+def _sample_uniform_config(
+    config: dict,
+    low_key: str,
+    high_key: str,
+    default_low: float,
+    default_high: float,
+) -> float:
+    low = float(config.get(low_key, default_low))
+    high = float(config.get(high_key, default_high))
+    if high < low:
+        raise ValueError(f"{high_key} must be >= {low_key}")
+    if high == low:
+        return low
+    return float(np.random.uniform(low, high))
+
+
+def _standardize_np(values: np.ndarray, eps: float = 1e-6) -> np.ndarray:
+    centered = values - float(values.mean())
+    std = float(centered.std())
+    if std < eps:
+        return np.zeros_like(values)
+    return centered / std
+
+
+def _metadata_average(rows: list[dict]) -> dict[str, float]:
+    if not rows:
+        return {}
+    keys = sorted({key for row in rows for key in row})
+    out = {}
+    for key in keys:
+        values = []
+        for row in rows:
+            value = row.get(key)
+            if isinstance(value, (int, float, np.integer, np.floating, bool)):
+                value = float(value)
+                if np.isfinite(value):
+                    values.append(value)
+        if values:
+            out[key] = float(np.mean(values))
+    return out
+
+
 def _sample_profile_p_missing(config: dict) -> float:
     anchor_prob = float(config.get("profile_p_missing_anchor_prob", 0.25))
     anchor_value = float(config.get("profile_p_missing_anchor_value", 0.40))
@@ -355,6 +397,179 @@ class RobustPCAPrior(LatentFactorPrior):
         return pd.DataFrame(Y, columns=L_df.columns)
 
 
+class RecSysBiasResidualPrior:
+    """
+    Generates dense recommendation matrices with explicit global, user, and item
+    bias terms plus a lower-energy collaborative residual.
+
+    The optional residual output mode returns rating - generated_bias_baseline,
+    while still exposing the full generated rating matrix to compatible
+    missingness patterns so MNAR exposure is driven by user/item popularity and
+    preference rather than by the centered residual target.
+    """
+
+    def __init__(self, config: dict):
+        self.config = config
+        self.last_metadata = {}
+        self.last_exposure_signal = None
+        self.last_rating_matrix = None
+        self.last_bias_surface = None
+        self.last_residual_matrix = None
+
+    def _sample_centered_vector(self, size: int, std: float, distribution: str) -> np.ndarray:
+        if distribution == "lognormal":
+            values = np.random.lognormal(mean=0.0, sigma=1.0, size=size)
+        elif distribution == "pareto":
+            alpha = float(self.config.get("recsys_bias_pareto_alpha", 2.5))
+            values = np.random.pareto(alpha, size=size) + 1.0
+            signs = np.random.choice([-1.0, 1.0], size=size)
+            values = values * signs
+        else:
+            values = np.random.normal(size=size)
+        return _standardize_np(values) * float(std)
+
+    def _sample_residual(self, n_rows: int, n_cols: int, rank: int) -> np.ndarray:
+        rank = max(1, min(int(rank), n_rows, n_cols))
+        left, _ = np.linalg.qr(np.random.normal(size=(n_rows, rank)))
+        right, _ = np.linalg.qr(np.random.normal(size=(n_cols, rank)))
+        alpha = _sample_uniform_config(
+            self.config,
+            "recsys_bias_residual_alpha_low",
+            "recsys_bias_residual_alpha_high",
+            0.4,
+            0.9,
+        )
+        head_boost = _sample_uniform_config(
+            self.config,
+            "recsys_bias_residual_head_boost_low",
+            "recsys_bias_residual_head_boost_high",
+            1.0,
+            3.0,
+        )
+        singulars = (np.arange(1, rank + 1, dtype=float)) ** (-alpha)
+        singulars[: max(1, rank // 8)] *= head_boost
+        residual = (left * singulars[np.newaxis, :]) @ right.T
+        return _standardize_np(residual)
+
+    def generate_complete_matrix(self) -> pd.DataFrame:
+        n_rows = np.random.randint(
+            self.config["num_rows_low"], self.config["num_rows_high"] + 1
+        )
+        n_cols = np.random.randint(
+            self.config["num_cols_low"], self.config["num_cols_high"] + 1
+        )
+        global_mean = _sample_uniform_config(
+            self.config,
+            "recsys_bias_global_mean_low",
+            "recsys_bias_global_mean_high",
+            3.3,
+            3.7,
+        )
+        user_std = _sample_uniform_config(
+            self.config,
+            "recsys_bias_user_std_low",
+            "recsys_bias_user_std_high",
+            0.25,
+            0.60,
+        )
+        item_std = _sample_uniform_config(
+            self.config,
+            "recsys_bias_item_std_low",
+            "recsys_bias_item_std_high",
+            0.35,
+            0.80,
+        )
+        residual_scale = _sample_uniform_config(
+            self.config,
+            "recsys_bias_residual_scale_low",
+            "recsys_bias_residual_scale_high",
+            0.15,
+            0.60,
+        )
+        noise_std = _sample_uniform_config(
+            self.config,
+            "recsys_bias_noise_std_low",
+            "recsys_bias_noise_std_high",
+            0.05,
+            0.25,
+        )
+        rank_low = int(self.config.get("recsys_bias_residual_rank_low", 5))
+        rank_high = int(self.config.get("recsys_bias_residual_rank_high", 30))
+        rank_high = max(rank_low, min(rank_high, n_rows, n_cols))
+        rank = np.random.randint(rank_low, rank_high + 1)
+
+        user_dist = str(self.config.get("recsys_bias_user_distribution", "normal"))
+        item_dist = str(self.config.get("recsys_bias_item_distribution", "normal"))
+        user_bias = self._sample_centered_vector(n_rows, user_std, user_dist)
+        item_bias = self._sample_centered_vector(n_cols, item_std, item_dist)
+        baseline = global_mean + user_bias[:, np.newaxis] + item_bias[np.newaxis, :]
+
+        residual = self._sample_residual(n_rows, n_cols, rank) * residual_scale
+        noise = np.random.normal(scale=noise_std, size=(n_rows, n_cols))
+        rating = baseline + residual + noise
+
+        rating_min = float(
+            self.config.get("recsys_bias_rating_min", self.config.get("recsys_rating_min", 1.0))
+        )
+        rating_max = float(
+            self.config.get("recsys_bias_rating_max", self.config.get("recsys_rating_max", 5.0))
+        )
+        clip_prob = float(
+            self.config.get(
+                "recsys_bias_rating_clip_probability",
+                self.config.get("recsys_rating_clip_probability", 1.0),
+            )
+        )
+        quant_prob = float(
+            self.config.get(
+                "recsys_bias_rating_quantization_probability",
+                self.config.get("recsys_rating_quantization_probability", 0.8),
+            )
+        )
+        clipped = np.random.rand() < clip_prob
+        quantized = np.random.rand() < quant_prob
+        if clipped:
+            rating = np.clip(rating, rating_min, rating_max)
+        if quantized:
+            step = float(self.config.get("recsys_bias_rating_quantization_step", 0.5))
+            rating = np.round((rating - rating_min) / step) * step + rating_min
+            rating = np.clip(rating, rating_min, rating_max)
+
+        self.last_exposure_signal = torch.tensor(rating, dtype=torch.float32)
+        self.last_rating_matrix = torch.tensor(rating, dtype=torch.float32)
+        self.last_bias_surface = torch.tensor(baseline, dtype=torch.float32)
+        self.last_residual_matrix = torch.tensor(rating - baseline, dtype=torch.float32)
+        output_mode = str(self.config.get("recsys_bias_output_mode", "rating"))
+        if output_mode == "residual":
+            target = rating - baseline
+        elif output_mode == "rating":
+            target = rating
+        else:
+            raise ValueError(
+                "recsys_bias_output_mode must be either 'rating' or 'residual'"
+            )
+
+        total_var = float(np.var(rating)) + 1e-12
+        self.last_metadata = {
+            "recsys_bias_global_mean": global_mean,
+            "recsys_bias_user_std": user_std,
+            "recsys_bias_item_std": item_std,
+            "recsys_bias_residual_scale": residual_scale,
+            "recsys_bias_noise_std": noise_std,
+            "recsys_bias_residual_rank": float(rank),
+            "recsys_bias_user_var_share": float(np.var(user_bias[:, None]) / total_var),
+            "recsys_bias_item_var_share": float(np.var(item_bias[None, :]) / total_var),
+            "recsys_bias_residual_var_share": float(np.var(residual) / total_var),
+            "recsys_bias_noise_var_share": float(np.var(noise) / total_var),
+            "recsys_bias_target_mean": float(np.mean(target)),
+            "recsys_bias_target_std": float(np.std(target)),
+            "recsys_bias_rating_clipped": float(clipped),
+            "recsys_bias_rating_quantized": float(quantized),
+            "recsys_bias_output_is_residual": float(output_mode == "residual"),
+        }
+        return pd.DataFrame(target, columns=[f"item_{i}" for i in range(n_cols)])
+
+
 # Missingness Patterns
 class BaseMissingness:
     def __init__(self, config: dict):
@@ -427,6 +642,166 @@ class MNARRecSysPattern(BaseMissingness):
             if len(matching_items) > 0:
                 mask[i, matching_items] = True
         X[~mask] = torch.nan
+        return X
+
+
+class MNARRecSysExposurePattern(BaseMissingness):
+    """
+    MNAR recommendation exposure model with heavy-tailed user/item activity,
+    preference-dependent observation, and optional cluster exposure effects.
+    """
+
+    def __init__(self, config: dict):
+        super().__init__(config)
+        self.last_metadata = {}
+        self.exposure_signal = None
+
+    def set_exposure_signal(self, signal: torch.Tensor) -> None:
+        self.exposure_signal = signal.detach().clone().to(dtype=torch.float32)
+
+    def _sample_centered_scores(self, size: int, sigma: float, distribution: str) -> torch.Tensor:
+        if distribution == "pareto":
+            alpha = float(self.config.get("recsys_exposure_pareto_alpha", 2.0))
+            scores = torch.from_numpy(np.random.pareto(alpha, size=size) + 1.0).float()
+        elif distribution == "normal":
+            scores = torch.randn(size) * float(sigma)
+        else:
+            scores = torch.from_numpy(
+                np.random.lognormal(mean=0.0, sigma=float(sigma), size=size)
+            ).float()
+        scores = scores - scores.mean()
+        std = scores.std(unbiased=False)
+        if float(std) > 1e-6:
+            scores = scores / std
+        return scores * float(sigma)
+
+    def _target_density(self) -> float:
+        if "recsys_exposure_density_low" in self.config or "recsys_exposure_density_high" in self.config:
+            low_key, high_key = "recsys_exposure_density_low", "recsys_exposure_density_high"
+        elif "recsys_density_low" in self.config or "recsys_density_high" in self.config:
+            low_key, high_key = "recsys_density_low", "recsys_density_high"
+        else:
+            density = 1.0 - float(self.config.get("p_missing", 0.95))
+            return min(max(density, 1e-4), 1.0 - 1e-4)
+        low = float(self.config.get(low_key, self.config.get(high_key, 0.05)))
+        high = float(self.config.get(high_key, low))
+        return min(max(float(np.random.uniform(low, high)), 1e-4), 1.0 - 1e-4)
+
+    @staticmethod
+    def _standardize_torch(values: torch.Tensor) -> torch.Tensor:
+        centered = values - values.mean()
+        std = centered.std(unbiased=False)
+        if float(std) < 1e-6:
+            return torch.zeros_like(values)
+        return centered / std
+
+    def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
+        n_users, n_items = X.shape
+        density = self._target_density()
+        device = X.device
+
+        user_sigma = _sample_uniform_config(
+            self.config,
+            "recsys_exposure_user_activity_sigma_low",
+            "recsys_exposure_user_activity_sigma_high",
+            self.config.get("recsys_user_activity_sigma_low", 1.0),
+            self.config.get("recsys_user_activity_sigma_high", 1.5),
+        )
+        item_sigma = _sample_uniform_config(
+            self.config,
+            "recsys_exposure_item_popularity_sigma_low",
+            "recsys_exposure_item_popularity_sigma_high",
+            self.config.get("recsys_item_popularity_sigma_low", 1.5),
+            self.config.get("recsys_item_popularity_sigma_high", 2.5),
+        )
+        user_dist = str(
+            self.config.get(
+                "recsys_exposure_user_activity_distribution",
+                self.config.get("recsys_user_activity_distribution", "lognormal"),
+            )
+        )
+        item_dist = str(
+            self.config.get(
+                "recsys_exposure_item_popularity_distribution",
+                self.config.get("recsys_item_popularity_distribution", "lognormal"),
+            )
+        )
+        user_activity = self._sample_centered_scores(n_users, user_sigma, user_dist).to(device)
+        item_popularity = self._sample_centered_scores(n_items, item_sigma, item_dist).to(device)
+
+        if self.exposure_signal is not None and tuple(self.exposure_signal.shape) == tuple(X.shape):
+            preference = self.exposure_signal.to(device=device, dtype=X.dtype)
+        else:
+            preference = X
+        preference = torch.nan_to_num(preference, nan=float(torch.nanmean(X)))
+        preference = self._standardize_torch(preference)
+
+        pref_weight = _sample_uniform_config(
+            self.config,
+            "recsys_exposure_preference_weight_low",
+            "recsys_exposure_preference_weight_high",
+            0.20,
+            0.75,
+        )
+        logits = (
+            user_activity[:, None]
+            + item_popularity[None, :]
+            + float(pref_weight) * preference
+        )
+
+        n_user_clusters = int(self.config.get("recsys_exposure_n_user_clusters", 8))
+        n_item_clusters = int(self.config.get("recsys_exposure_n_item_clusters", 12))
+        cluster_std = float(
+            self.config.get(
+                "recsys_exposure_cluster_bonus_std",
+                self.config.get("recsys_cluster_bonus_std_high", 0.5),
+            )
+        )
+        if n_user_clusters > 0 and n_item_clusters > 0 and cluster_std > 0:
+            user_clusters = torch.randint(0, n_user_clusters, (n_users,), device=device)
+            item_clusters = torch.randint(0, n_item_clusters, (n_items,), device=device)
+            cluster_bonus = torch.randn(
+                n_user_clusters,
+                n_item_clusters,
+                device=device,
+                dtype=logits.dtype,
+            ) * cluster_std
+            logits = logits + cluster_bonus[user_clusters[:, None], item_clusters[None, :]]
+
+        logits = logits - logits.mean()
+        low, high = -40.0, 40.0
+        for _ in range(int(self.config.get("recsys_exposure_binary_steps", 40))):
+            mid = 0.5 * (low + high)
+            realized = float(torch.sigmoid(logits + mid).mean())
+            if realized < density:
+                low = mid
+            else:
+                high = mid
+        p_obs = torch.sigmoid(logits + 0.5 * (low + high))
+        mask = torch.rand_like(p_obs) < p_obs
+
+        if bool(self.config.get("recsys_exposure_force_row_col_coverage", True)):
+            empty_rows = torch.where(mask.sum(dim=1) == 0)[0]
+            if len(empty_rows) > 0:
+                cols = torch.argmax(p_obs[empty_rows], dim=1)
+                mask[empty_rows, cols] = True
+            empty_cols = torch.where(mask.sum(dim=0) == 0)[0]
+            if len(empty_cols) > 0:
+                rows = torch.argmax(p_obs[:, empty_cols], dim=0)
+                mask[rows, empty_cols] = True
+
+        X[~mask] = torch.nan
+        row_counts = mask.sum(dim=1).float()
+        col_counts = mask.sum(dim=0).float()
+        self.last_metadata = {
+            "recsys_exposure_density_requested": float(density),
+            "recsys_exposure_density_realized": float(mask.float().mean()),
+            "recsys_exposure_row_count_median": float(torch.median(row_counts)),
+            "recsys_exposure_row_count_p99": float(torch.quantile(row_counts, 0.99)),
+            "recsys_exposure_col_count_median": float(torch.median(col_counts)),
+            "recsys_exposure_col_count_p99": float(torch.quantile(col_counts, 0.99)),
+            "recsys_exposure_preference_weight": float(pref_weight),
+        }
         return X
 
 
@@ -1447,6 +1822,259 @@ class MixedPattern(BaseMissingness):
         return pattern._induce_missingness(X)
 
 
+class RecSysBiasResidualExposedHoldoutPrior:
+    """
+    Synthetic rec-sys batch provider for exposed-holdout training.
+
+    It separates unexposed entries from held-out exposed ratings:
+    context entries are visible to the model, target entries receive loss, and
+    unexposed entries are ignored by the loss.
+    """
+
+    def __init__(
+        self,
+        config: dict,
+        batch_size: int = 10,
+        device: str = "cpu",
+        verbose: bool = False,
+        entry_wise_features: bool = False,
+    ):
+        if entry_wise_features:
+            raise ValueError(
+                "RecSysBiasResidualExposedHoldoutPrior only supports matrix batches."
+            )
+        self.config = config
+        self.batch_size = batch_size
+        self.device = device
+        self.verbose = verbose
+        self.generator_type = "rec_sys_bias_residual_exposed_holdout"
+        self.last_batch_metrics = {}
+
+    def _sample_batch_shape(self) -> tuple[int, int]:
+        n_rows = np.random.randint(
+            self.config["num_rows_low"], self.config["num_rows_high"] + 1
+        )
+        n_cols = np.random.randint(
+            self.config["num_cols_low"], self.config["num_cols_high"] + 1
+        )
+        return int(n_rows), int(n_cols)
+
+    def _sample_target_fraction(self) -> float:
+        return _sample_uniform_config(
+            self.config,
+            "recsys_holdout_target_fraction_low",
+            "recsys_holdout_target_fraction_high",
+            0.10,
+            0.30,
+        )
+
+    def _build_exposure_mask(
+        self,
+        rating: torch.Tensor,
+        generator: RecSysBiasResidualPrior,
+    ) -> tuple[torch.Tensor, dict]:
+        exposure = MNARRecSysExposurePattern(self.config)
+        exposure.set_exposure_signal(generator.last_exposure_signal)
+        exposed_matrix = exposure._induce_missingness(rating.clone())
+        exposure_mask = torch.isfinite(exposed_matrix)
+        return exposure_mask, getattr(exposure, "last_metadata", {}) or {}
+
+    @staticmethod
+    def _split_exposure_mask(
+        exposure_mask: torch.Tensor,
+        target_fraction: float,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        random_values = torch.rand_like(exposure_mask.float())
+        target_mask = exposure_mask & (random_values < target_fraction)
+        observed_indices = torch.where(exposure_mask.flatten())[0]
+        if observed_indices.numel() == 0:
+            raise ValueError("Exposure mask has no observed entries.")
+        if not bool(target_mask.any()):
+            chosen = observed_indices[
+                torch.randint(observed_indices.numel(), (), device=observed_indices.device)
+            ]
+            target_mask = target_mask.flatten()
+            target_mask[chosen] = True
+            target_mask = target_mask.reshape_as(exposure_mask)
+        context_mask = exposure_mask & ~target_mask
+        if not bool(context_mask.any()) and observed_indices.numel() > 1:
+            target_indices = torch.where(target_mask.flatten())[0]
+            keep_target = target_indices[0]
+            context_candidate = observed_indices[observed_indices != keep_target]
+            chosen = context_candidate[
+                torch.randint(
+                    context_candidate.numel(),
+                    (),
+                    device=context_candidate.device,
+                )
+            ]
+            target_mask = target_mask.flatten()
+            context_mask = context_mask.flatten()
+            target_mask[chosen] = False
+            context_mask[chosen] = True
+            target_mask = target_mask.reshape_as(exposure_mask)
+            context_mask = context_mask.reshape_as(exposure_mask)
+        return context_mask, target_mask
+
+    def _fit_bias_surface(
+        self,
+        rating: torch.Tensor,
+        context_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        reg = float(self.config.get("recsys_holdout_bias_ridge_reg", 2.0))
+        iters = int(self.config.get("recsys_holdout_bias_ridge_iters", 30))
+        observed = context_mask.to(dtype=rating.dtype)
+        observed_count = observed.sum().clamp_min(1.0)
+        global_mean = (rating * observed).sum() / observed_count
+        user_bias = torch.zeros(rating.shape[0], dtype=rating.dtype, device=rating.device)
+        item_bias = torch.zeros(rating.shape[1], dtype=rating.dtype, device=rating.device)
+
+        for _ in range(max(1, iters)):
+            residual = rating - global_mean - item_bias[None, :]
+            user_denom = observed.sum(dim=1) + reg
+            user_bias = (residual * observed).sum(dim=1) / user_denom.clamp_min(1.0)
+            user_bias = user_bias - user_bias.mean()
+
+            residual = rating - global_mean - user_bias[:, None]
+            item_denom = observed.sum(dim=0) + reg
+            item_bias = (residual * observed).sum(dim=0) / item_denom.clamp_min(1.0)
+            item_bias = item_bias - item_bias.mean()
+
+            residual = rating - user_bias[:, None] - item_bias[None, :]
+            global_mean = (residual * observed).sum() / observed_count
+
+        return global_mean + user_bias[:, None] + item_bias[None, :]
+
+    def _target_values(
+        self,
+        generator: RecSysBiasResidualPrior,
+        context_mask: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, dict]:
+        rating = generator.last_rating_matrix
+        known_bias_surface = generator.last_bias_surface
+        if rating is None or known_bias_surface is None:
+            raise ValueError("RecSysBiasResidualPrior did not expose rating metadata.")
+
+        mode = str(self.config.get("recsys_holdout_target_mode", "rating"))
+        if mode == "rating":
+            bias_surface = known_bias_surface
+            target = rating
+            mode_id = 0.0
+        elif mode == "residual_known_bias":
+            bias_surface = known_bias_surface
+            target = rating - bias_surface
+            mode_id = 1.0
+        elif mode == "residual_fitted_bias":
+            bias_surface = self._fit_bias_surface(rating, context_mask)
+            target = rating - bias_surface
+            mode_id = 2.0
+        else:
+            raise ValueError(
+                "recsys_holdout_target_mode must be one of "
+                "'rating', 'residual_known_bias', or 'residual_fitted_bias'."
+            )
+        return target, bias_surface, {"recsys_holdout_target_mode_id": mode_id}
+
+    def _make_one(self, config: dict) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
+        generator = RecSysBiasResidualPrior({**config, "recsys_bias_output_mode": "rating"})
+        generator.generate_complete_matrix()
+        rating = generator.last_rating_matrix
+        if rating is None:
+            raise ValueError("RecSysBiasResidualPrior did not produce ratings.")
+
+        exposure_mask, exposure_metadata = self._build_exposure_mask(rating, generator)
+        target_fraction = self._sample_target_fraction()
+        context_mask, loss_mask = self._split_exposure_mask(
+            exposure_mask,
+            target_fraction=target_fraction,
+        )
+        target, bias_surface, target_metadata = self._target_values(generator, context_mask)
+
+        raw_input = torch.full_like(target, torch.nan)
+        raw_input[context_mask] = target[context_mask]
+        normalized_input, (mean, std) = normalize_data(
+            raw_input.unsqueeze(1),
+            return_scaling=True,
+        )
+        normalized_target = normalize_data(
+            target.unsqueeze(1),
+            mean=mean,
+            std=std,
+        )
+        batch_x = normalized_input.squeeze(1)
+        batch_target = normalized_target.squeeze(1)
+
+        with torch.no_grad():
+            rating_target = rating[loss_mask]
+            bias_target = bias_surface[loss_mask]
+            residual_target = (rating - bias_surface)[loss_mask]
+            bias_rmse = torch.sqrt(torch.mean((bias_target - rating_target) ** 2))
+            residual_zero_rmse = torch.sqrt(torch.mean(residual_target ** 2))
+
+        metadata = {}
+        metadata.update(getattr(generator, "last_metadata", {}) or {})
+        metadata.update(exposure_metadata)
+        metadata.update(target_metadata)
+        metadata.update(
+            {
+                "recsys_holdout_target_fraction": float(target_fraction),
+                "recsys_holdout_exposure_density": float(exposure_mask.float().mean()),
+                "recsys_holdout_context_density": float(context_mask.float().mean()),
+                "recsys_holdout_target_density": float(loss_mask.float().mean()),
+                "recsys_holdout_context_count": float(context_mask.sum()),
+                "recsys_holdout_target_count": float(loss_mask.sum()),
+                "recsys_holdout_bias_only_rmse": float(bias_rmse),
+                "recsys_holdout_residual_zero_rmse": float(residual_zero_rmse),
+            }
+        )
+        return batch_x, batch_target, loss_mask, exposure_mask, context_mask, metadata
+
+    @torch.no_grad()
+    def get_batch(self, batch_size: Optional[int] = None):
+        if batch_size is None:
+            batch_size = self.batch_size
+        n_rows, n_cols = self._sample_batch_shape()
+        fixed_config = copy.deepcopy(self.config)
+        fixed_config["num_rows_low"] = fixed_config["num_rows_high"] = n_rows
+        fixed_config["num_cols_low"] = fixed_config["num_cols_high"] = n_cols
+        if "latent_rank_high" in fixed_config:
+            fixed_config["latent_rank_high"] = min(
+                fixed_config["latent_rank_high"], n_rows, n_cols
+            )
+
+        batch_x_list = []
+        batch_target_list = []
+        loss_mask_list = []
+        exposure_mask_list = []
+        context_mask_list = []
+        metadata_rows = []
+        for _ in range(batch_size):
+            (
+                batch_x,
+                batch_target,
+                loss_mask,
+                exposure_mask,
+                context_mask,
+                metadata,
+            ) = self._make_one(fixed_config)
+            batch_x_list.append(batch_x)
+            batch_target_list.append(batch_target)
+            loss_mask_list.append(loss_mask)
+            exposure_mask_list.append(exposure_mask)
+            context_mask_list.append(context_mask)
+            metadata_rows.append(metadata)
+
+        self.last_batch_metrics = _metadata_average(metadata_rows)
+        weights = torch.ones(batch_size, device=self.device)
+        return (
+            torch.stack(batch_x_list, dim=0),
+            torch.stack(batch_target_list, dim=0),
+            torch.stack(loss_mask_list, dim=0),
+            torch.stack(exposure_mask_list, dim=0),
+            torch.stack(context_mask_list, dim=0),
+        ), weights
+
+
 # Main class
 class MissingnessPrior(IterableDataset):
     """
@@ -1458,6 +2086,7 @@ class MissingnessPrior(IterableDataset):
         "latent_factor": LatentFactorPrior,
         "nonlinear_factor": NonLinearFactorPrior,
         "robust_pca": RobustPCAPrior,
+        "rec_sys_bias_residual": RecSysBiasResidualPrior,
         "generator_mix": GeneratorMixturePrior,
         "priormix_v1": lambda cfg: GeneratorMixturePrior(
             {**cfg, "generator_profile_name": "priormix_v1"}
@@ -1478,6 +2107,7 @@ class MissingnessPrior(IterableDataset):
         ),
         # Specific MNAR Patterns
         "mnar_rec_sys": MNARRecSysPattern,
+        "mnar_rec_sys_exposure": MNARRecSysExposurePattern,
         "mnar_panel": MNARPanelPattern,
         "mnar_sequential": MNARSequentialPattern,
         "mnar_polarization": MNARPolarizationPattern,
@@ -1532,6 +2162,7 @@ class MissingnessPrior(IterableDataset):
         self.num_missing = num_missing
         self.device = device
         self.entry_wise_features = entry_wise_features
+        self.last_batch_metrics = {}
 
     @torch.no_grad()
     def get_batch(self, batch_size: Optional[int] = None):
@@ -1558,13 +2189,15 @@ class MissingnessPrior(IterableDataset):
             new_config["num_rows_high"] = n_rows
             new_config["num_cols_low"] = n_cols
             new_config["num_cols_high"] = n_cols
-            new_config["latent_rank_high"] = min(
-                new_config["latent_rank_high"], n_rows, n_cols
-            )  # Ensure rank is not too high
+            if "latent_rank_high" in new_config:
+                new_config["latent_rank_high"] = min(
+                    new_config["latent_rank_high"], n_rows, n_cols
+                )  # Ensure rank is not too high
 
             self.generator = self.generator_map[self.generator_type](new_config)
             
         pattern_weights = []
+        metadata_rows = []
         while step < self.batch_size:
             # for i in tqdm(range(self.batch_size), desc="Generating batches"):
             # try:
@@ -1590,6 +2223,12 @@ class MissingnessPrior(IterableDataset):
                     "Normalization produced non-finite values for the complete target matrix "
                     f"(generator_type={self.generator_type}, shape={tuple(X.shape)})"
                 )
+            if hasattr(self.missingness_inducer, "set_exposure_signal") and hasattr(
+                self.generator, "last_exposure_signal"
+            ):
+                exposure_signal = getattr(self.generator, "last_exposure_signal")
+                if exposure_signal is not None:
+                    self.missingness_inducer.set_exposure_signal(exposure_signal)
             X_missing = self.missingness_inducer._induce_missingness(X.clone())
             # pattern_weights.append(self.missingness_inducer.weights[pattern_name])
             pattern_weights.append(1.0)
@@ -1605,6 +2244,13 @@ class MissingnessPrior(IterableDataset):
                     "Observed-value normalization produced non-finite target values "
                     f"(generator_type={self.generator_type}, shape={tuple(X.shape)})"
                 )
+            metadata = {}
+            if hasattr(self.generator, "last_metadata"):
+                metadata.update(getattr(self.generator, "last_metadata", {}) or {})
+            if hasattr(self.missingness_inducer, "last_metadata"):
+                metadata.update(getattr(self.missingness_inducer, "last_metadata", {}) or {})
+            if metadata:
+                metadata_rows.append(metadata)
             
             
             if self.entry_wise_features:
@@ -1631,6 +2277,7 @@ class MissingnessPrior(IterableDataset):
 
         X_full = torch.stack(X_list, dim=0)
         y_full = torch.stack(y_list, dim=0)
+        self.last_batch_metrics = _metadata_average(metadata_rows)
 
         # d is the number of columns. This should always be the same across datasets.
         d = torch.tensor(X_list[0].shape[1], device=self.device).repeat(len(X_list))

@@ -1,0 +1,560 @@
+================================================================================
+RFMHeadAGOP — experiment roadmap
+Context: After plugging RFMHeadAGOP onto a frozen dwip_v2-trial_002 backbone
+and writing rfm_agop_dwip_v2_t002.npy across the full UCI grid (12 datasets x
+3 patterns x 3 repeats), the cold head lands at mean normalized RMSE = 1.165,
+mid-pack. MatFormer (same backbone + trained MLP decoder) is at 1.010 and xRFM
+(column-wise on raw features) is at 0.965. The remaining gap is ~15% behind
+MatFormer, ~20% behind xRFM. This document lays out the next experiments in
+order, cheapest first.
+================================================================================
+
+
+FINDINGS (architecture comparison vs the xRFM bar in the plot)
+==============================================================
+
+Discovered by inspecting xrfm_wrapper.py and the xrfm library source.
+
+(F1) The xRFM bar in the UCI plot does NOT actually use leaf partitioning.
+
+  The tree-build branch at xrfm/xrfm.py:587 says:
+      if n_samples <= self.max_leaf_size:  should_create_leaf = True
+  We set max_leaf_size = 60_000 (and the library default is also 60k).
+  The largest UCI dataset (california_housing) has 20,640 rows — well under
+  the threshold. So the recursive split branch never triggers on any of the
+  12 UCI datasets. Each (dataset, column) pair is fitted with a SINGLE root
+  leaf RFM. No tree, no overlap, no AGOP-driven splits.
+
+  Implication. Our intuition that "leaf partitioning is the key to xRFM
+  beating us on UCI" is probably wrong. xRFM's advantage must come from
+  something other than the tree on these datasets — most likely the
+  combination of (per-column MICE decomposition + diagonal M + 3 AGOP iters
+  on raw features). Adding our own tree (Step 3 below) would help only if
+  the matrix is BIG enough to fit in a tree (none of these are) or if
+  intra-matrix heterogeneity benefits from explicit partition.
+
+(F2) The xRFM bar's effective settings (from xrfm_wrapper.py).
+
+  iters             3            (library default 5; paper uses 5)
+  diag              True         (library default False; M is diagonal)
+  bandwidth         10.0 fixed   (mode='constant'; no per-matrix adaptation)
+  reg (lambda)      1e-3         (single global value; never tuned)
+  kernel            l2_high_dim  (Laplace family)
+  application       column-wise  (one RFM per column with NaNs, on mean-
+                                 filled other columns + binary indicators)
+
+(F3) Implication for hypotheses about what's making xRFM win.
+
+  Probable contributors, in order of plausibility:
+    (a) Column-wise decomposition. xRFM fits a fresh regressor per column.
+        Easier problem per call: predict one column from others; lots of
+        observed-cell training data per column. Our head's per-cell
+        transductive setup is structurally different.
+    (b) Diagonal M. xRFM uses M as a per-feature scaling (D=2d-2 params),
+        not a rank-r factor like ours. Simpler, more stable.
+    (c) Operating on raw features. Avoids the "embedding tuned for MLP
+        decoder, not kernel ridge" mismatch our head has.
+    (d) Laplace kernel (which we already use).
+
+(F4) Two new experiment directions suggested by these findings.
+
+  Beyond the existing Steps 1.5 -> 2 -> 3:
+    (D1) Diagonal-M variant of our head. Replace the SVD-truncated factor
+         with a diagonal Mahalanobis (M = diag(d)). Simpler, more stable;
+         matches what xRFM uses on UCI.
+    (D2) Column-wise variant of our head. Instead of one transductive solve
+         per patch over all cells, run a separate solve per column where the
+         "anchors" are observed-cell rows in that column and the "queries"
+         are missing-cell rows. Mirrors xRFM's column-wise application.
+         More invasive but closer to xRFM's actual pipeline.
+
+  Add these to the plan only if Step 1.5 and Step 2 don't close the gap.
+
+
+STEP 1 — Train lambda and gamma_scale, backbone frozen
+------------------------------------------------------
+
+Goal. Replace the cold-init head scalars (lambda_init=1e-2, gamma_scale_init=1.0)
+with values learned on the same synthetic prior the tabimpute backbone was
+pretrained on. Expected payoff: closes 10-30% of the gap, modest.
+
+Why this first. The two head scalars are the only thing in our current setup
+that has zero training signal. Training them is cheap, fast, and either closes
+the gap (great — ship) or doesn't (then we know the bottleneck is elsewhere,
+and we move to Step 2).
+
+What's learnable.
+  - log_lambda                 — ridge regularizer for the kernel solve.
+  - log_gamma_scale            — multiplicative correction on per-patch median
+                                  bandwidth.
+  All other parameters frozen:
+  - Backbone (transformer)     — loaded from dwip_v2-trial_002 checkpoint.
+  - M (per-patch Mahalanobis)  — recomputed per patch via AGOP. Not a
+                                  parameter; not trained.
+
+Forward pass per patch (during training, same as inference).
+    sqrtM_factor = None
+    for t in range(iters=3):
+        D_ss = pairwise_dist(Phi_S, Phi_S, sqrtM_factor)
+        gamma = exp(log_gamma_scale) * D_ss.median()      # uses learned scalar
+        K_ss = exp(-D_ss / gamma) + softplus(log_lambda)*I # uses learned scalar
+        alpha = solve(K_ss, y_S)
+        if t < 2:
+            G = anchor_gradients(...)
+            sqrtM_factor = update_sqrtM(G)
+            if detach_M: sqrtM_factor = sqrtM_factor.detach()
+    # Final predict
+    K_ts = ...
+    y_hat = K_ts @ alpha
+
+Gradient flow. detach_M=True severs M's contribution to the autograd graph
+after each update. So gradients only flow through the FINAL solve into:
+    log_lambda  (via the ridge term)
+    log_gamma_scale (via gamma in the kernel)
+    Phi_S (via D_ss — but the backbone is frozen, so this gradient is dropped)
+
+Why iters=3 at training (not iters=1). gamma = exp(log_gamma_scale) * median(
+pairwise distance UNDER M_final). With iters=1, M_final = I and gamma is
+calibrated against raw embedding-space distances. With iters=3 at inference,
+M_final = M_2 and the same gamma_scale gives a totally different bandwidth.
+Match the training and inference iter count so the learned scalars are
+calibrated for the regime they will actually be used in.
+
+Training configuration.
+    iters                = 3
+    detach_M             = True
+    batch_size           = 8     (8 synthetic matrices per step)
+    optimizer            = Adam, lr=1e-2 (high because only 2 scalars)
+    steps                = 250-500
+    backbone             = frozen, dwip_v2-trial_002 checkpoint
+    synthetic data prior = same one used by train_new_rfm.py
+    detection of convergence: log_lambda and log_gamma_scale settle within
+                              a tight band over ~50 consecutive steps.
+
+Expected wall time. ~30 min (mostly backbone forwards; the head itself is
+cheap; the optimizer is updating 2 scalars).
+
+Code path. Adapt train_new_rfm.py:
+  1. Replace `RFMHead(...)` with `RFMHeadAGOP(iters=3, detach_M=True)`.
+  2. Freeze backbone: `for p in model.parameters(): p.requires_grad = False`.
+  3. Optimizer sees only head.log_lambda and head.log_gamma_scale.
+  4. Save: `{"head": head.state_dict(), "config": ROUND2_T2_CONFIG}` to a
+     new path, e.g. `runs/agop_head_trained_on_dwip_v2_t002/head.pt`.
+
+Inference after training. In get_uci_errors.py, register a new imputer:
+    {"name": "rfm_agop_dwip_v2_t002_trained",
+     "model": RFMImputePFN(
+         checkpoint_path=<dwip_v2 backbone>,
+         json_config=ROUND2_T2_CONFIG,
+         max_num_rows=50, max_num_cols=50,
+         head=load_trained_head(<head.pt>)),
+    }
+Then run get_uci_errors.py to write rfm_agop_dwip_v2_t002_trained.npy across
+all 108 configs, and add to plot_uci_negative_rmse.py.
+
+Stop criterion. If trained head closes >=50% of the gap to MatFormer (i.e.,
+mean RMSE <= 1.085), ship; further training of backbone is optional. If it
+closes <50% (mean RMSE still > 1.085), the embeddings themselves are the
+bottleneck and we MUST move to Step 2.
+
+
+STEP 1.5 — Per-matrix tuning of lambda and gamma_scale at inference
+-------------------------------------------------------------------
+
+Goal. After Step 1, the head's two scalars are a global compromise over the
+synthetic distribution. Per-matrix tuning lets each UCI matrix briefly fit
+its own (lambda, gamma_scale) on its OWN observed cells before final
+imputation. Expected payoff: closes a meaningful additional chunk of the
+gap, especially on datasets where the synthetic-trained globals are poorly
+calibrated for the specific matrix structure.
+
+Why this is fair to add as a comparison. Most other baselines in the UCI
+bar plot already fit per-matrix on observed cells:
+  - xRFM fits a fresh xRFM per (column, matrix); its AGOP iterations
+    do per-matrix M-fitting using the matrix's own observed cells.
+  - MICE/ICE iteratively refit per-matrix regressions.
+  - MissForest, KNN, GAIN, MIWAE all fit to the matrix at hand.
+The only baselines that DON'T per-matrix-fit are the pretrained ones
+(MatFormer/TabImpute with their MLP decoders). Our setup matches the
+xRFM/MICE pattern: a pretrained backbone for features, then per-matrix
+fitting of the cheap head parameters on the matrix's own observed cells.
+This is not "tuning on the test set" because never touches the true
+masked values; it only sees observed cells.
+
+What's tuned per matrix.
+  - log_lambda
+  - log_gamma_scale
+  Backbone still frozen. M still per-patch AGOP-fitted internally.
+
+Per-matrix recipe (inside RFMImputePFN.impute(X)).
+  1. Take X's observed cells.
+  2. Randomly hold out per_matrix_val_frac (default 0.1) of them as a val
+     set for the head.
+  3. For per_matrix_steps Adam steps (default ~50):
+       a. Forward through frozen backbone + AGOP head, predicting the val
+          cells given the remaining observed cells as anchors.
+       b. Compute MSE on val cells.
+       c. Backprop into log_lambda and log_gamma_scale.
+       d. Adam step (lr ~1e-2, same as Step 1 since 2 scalars only).
+  4. After tuning, RE-USE ALL OBSERVED CELLS as anchors and predict the
+     ACTUAL missing cells. Save imputed matrix.
+
+Starting point options.
+  (a) Warm-start from Step 1's synthetic-trained values (recommended) — fewer
+      inner steps required (~30-50) since we begin near a good point.
+  (b) Cold-start from defaults — needs ~100 inner steps; cleaner story
+      ("the head is purely transductive"); slightly slower per matrix.
+
+Cost. Per matrix, 50 Adam steps x ~50ms backbone-forward = ~2-5 sec.
+108 UCI configs => +5-10 minutes vs the current full-eval pipeline.
+
+Configuration to add to RFMImputePFN.
+    per_matrix_steps      int   = 50      (Adam inner steps; 0 disables)
+    per_matrix_lr         float = 1e-2    (lr for the two scalars)
+    per_matrix_val_frac   float = 0.1     (fraction of observed cells held out)
+    head_init_path        str|None        (optional warm-start checkpoint)
+
+Code path.
+  1. Add the four args to RFMImputePFN.__init__.
+  2. Override impute(X) so that, if per_matrix_steps > 0, a brief Adam loop
+     runs on the 2 head scalars using the matrix's own observed cells before
+     calling super().impute(X).
+  3. Register a new imputer entry in get_uci_errors.py with name
+     "rfm_agop_dwip_v2_t002_per_matrix" using head_init_path pointing at
+     the head_final.pt from Step 1.
+  4. Run get_uci_errors.py, regenerate plot, compare.
+
+Stop criterion. If per-matrix tuning closes most of the gap to MatFormer
+(mean RMSE <= ~1.02), this is a defensible final result for Step 1 territory
+and we can decide whether Step 2 (backbone retraining) is still worth it.
+
+
+STEP 1.7 — MLP-boosting: AGOP corrects MatFormer's residuals
+------------------------------------------------------------
+
+Goal. Stop throwing away the trained MLP decoder. Use it as a first-pass
+imputer and have the AGOP head model only the residuals it misses. Expected
+payoff: at worst, falls back to MatFormer's number (1.010); at best, adds
+genuine improvement by capturing structure the MLP missed.
+
+Rationale. The MLP decoder was trained on the same synthetic prior we're now
+training the AGOP head on. It already encodes a strong predictor (1.010
+RMSE on UCI). Replacing it with a cold AGOP head throws away ~10M params of
+learned predictive structure for the sake of having a kernel-method head.
+Boosting (residual stacking) keeps the MLP's strength and lets AGOP add
+whatever residual signal it can capture.
+
+Inference recipe.
+  Per patch:
+    Phi             = backbone(X_patch, return_embeddings=True)
+    y_mlp_full      = bar_dist.median(decoder(Phi))           # (R, C) initial guess
+    residuals_obs   = y_obs - y_mlp_full[observed]            # what MLP missed at obs cells
+    # Feed residuals as "targets" to AGOP head:
+    y_resid_pred    = agop_head.predict(Phi, residuals_obs, observed_mask)
+    y_final         = y_mlp_full + y_resid_pred               # (R, C) refined
+  Use y_final[missing] as the prediction.
+
+Why this is strictly safe. Even if AGOP learns nothing useful (or hurts),
+you can blend:
+    y_final = (1 - beta) * y_mlp_full + beta * (y_mlp_full + y_resid_pred)
+            = y_mlp_full + beta * y_resid_pred
+with beta in [0, 1] (per-matrix or learned). beta = 0 falls back to plain
+MatFormer; beta = 1 is the full boosting. Optimizing beta on a held-out
+fraction of observed cells (per matrix) lets the system reject AGOP when
+it's not helping.
+
+Architecture decision: which "MLP" to use.
+  Option (i)  — use the full MLP and its bar-distribution median:
+               y_mlp = bar_dist.median(decoder(Phi)).
+               Direct, uses the decoder exactly as trained.
+  Option (ii) — use the MLP's penultimate activations (1536-dim hidden) as
+               richer features for the AGOP kernel itself (concatenate with
+               the 768-d embeddings, or replace them entirely).
+               More speculative; the MLP's intermediate layers were trained
+               for downstream bar-distribution prediction, not as features.
+
+Recommendation. Start with (i) — it's the cleanest interpretation of
+"don't throw away the MLP." (ii) is a separate experiment to consider only
+if (i) wins and we want to push further.
+
+Code path.
+  1. Subclass RFMImputePFN as RFMBoostingImputePFN (or add a `mode` flag).
+  2. Override _run_model_direct so that BOTH the decoder and the AGOP head
+     run on the embeddings; the decoder produces y_mlp, the head predicts
+     residuals.
+  3. Optional beta parameter (default 1.0). If <1.0, blend predictions.
+  4. Register as "rfm_agop_boost_dwip_v2_t002" in get_uci_errors.py.
+
+Cost. Roughly 2x the per-patch compute of the current AGOP head: both the
+decoder forward and the head forward happen. Decoder is a small MLP, so
+the relative slowdown is modest (~30-50%).
+
+Stop criterion. If boosting matches or beats MatFormer's 1.010, we have a
+genuinely additive system. If it ties MatFormer exactly (beta -> 0 in
+practice), AGOP has nothing to add on top of the MLP and our head's role is
+limited to "alternative to MLP" rather than "improvement on top of MLP."
+
+
+STEP 2 — Post-train (backbone + head jointly), warm-started from Step 1
+-----------------------------------------------------------------------
+
+Goal. Adapt the backbone's embeddings so they're well-suited to the AGOP
+kernel head, instead of the MLP bar-distribution decoder they were originally
+trained for. This is structurally equivalent to LLM-style post-training: the
+backbone is warm-started from a pretrained checkpoint, the head is swapped,
+and the joint system is fine-tuned under a new objective. Expected payoff:
+closes most of the remaining gap; can match or beat MatFormer at 1.010.
+
+Why this. The dwip_v2-trial_002 backbone was trained jointly with its MLP
+decoder for a 5000-class bar-distribution objective. Its embeddings are
+optimized for that specific decoder's inductive bias. A kernel-ridge head
+wants embeddings where "similarity in embedding space" maps to "similarity
+in target value" — that's a different geometric property. Step 2 lets the
+backbone re-adapt under joint training with the new head.
+
+Analogy to LLM post-training.
+                            LLM world                    Our setup
+  Pretraining               next-token on web text       bar-distribution NLL
+                                                          on synthetic tabular
+  Pretrained artifact       base GPT/Llama                dwip_v2-trial_002
+  Post-training             SFT / RLHF / DPO              Step 2: swap MLP for
+                                                          RFMHeadAGOP, fine-tune
+                                                          backbone+head jointly
+  Result                    chat/instruct model           backbone tuned for
+                                                          kernel ridge
+
+This is the same "head-swap fine-tune" pattern used in vision transfer
+learning, NLP SFT, etc. We're treating dwip_v2-trial_002 as a foundation
+checkpoint and post-training it for a new objective.
+
+What's learnable.
+  - All backbone weights (~100M params).
+  - log_lambda (head scalar).
+  - log_gamma_scale (head scalar).
+  - M still NOT learnable; recomputed per patch via AGOP.
+
+Concrete training configuration.
+    iters_train          = 1                (with detach_M=True, gradient
+                                              only flows through the LAST
+                                              solve. Extra iters add forward
+                                              cost without gradient benefit.
+                                              Train cheap, infer richer.)
+    iters_inference      = 3                (full AGOP at inference time;
+                                              cheap, no gradient implications)
+    detach_M             = True             (stops backprop through nested
+                                              SVDs; required for stable training)
+    batch_size           = 16               (backbone needs more averaging
+                                              than 2 scalars; smaller hurts
+                                              gradient quality, larger hits VRAM)
+    num_anchors          = 1024             (matches inference)
+    total_steps          = 15000-25000      (~30% of dwip_v2's original 50k+
+                                              pretraining steps; post-training
+                                              is shorter than pretraining)
+    optimizer            = AdamW with TWO PARAM GROUPS:
+        backbone_lr      = 3e-5             (~7x lower than original pretrain
+                                              lr of 2e-4; preserves pretraining)
+        head_lr          = 1e-2             (same as Step 1; high lr for 2
+                                              scalars; head also warm-started
+                                              from Step 1's head_final.pt)
+        backbone_wd      = 0.02             (matches original pretraining)
+        head_wd          = 0.0              (scalars don't need regularization)
+    warmup_steps         = 500              (prevents disrupting backbone in
+                                              first aggressive grad steps)
+    min_lr_ratio         = 0.05             (cosine decay floor)
+    grad_clip_norm       = 0.5              (matches original pretraining)
+    warm-start backbone  = dwip_v2-trial_002/checkpoint_17000.pth weights
+    warm-start head      = agop_head_dwip_v2_t002_step1/head_final.pt
+    synthetic prior      = same hardcoded prior as Step 1
+                            (latent_factor, MCAR, rank 1-11, 10-50 rows/cols).
+
+Per-step forward and backward.
+  1. Sample batch of B=16 synthetic matrices from MissingnessPrior.
+  2. observed = ~isnan(batch_X).
+  3. feats = backbone(batch_X, return_embeddings=True)
+     ← gradient flows here now (backbone unfrozen).
+  4. loss, mae = head(feats, batch_target, observed, num_anchors=1024)
+     ← head.forward runs iters=1 AGOP step + final solve + MSE on missing.
+  5. loss.backward()
+  6. clip grad norm to 0.5
+  7. optimizer.step()
+  8. scheduler.step()
+  Gradient flow inside head.forward():
+    - K_ss ridge term       → log_lambda
+    - gamma = exp(log_gamma_scale) * median   → log_gamma_scale
+    - K_ss build via Phi_S  → backbone weights (Phi_S = embeddings)
+    - M (AGOP-produced)     → detached, no gradient
+
+Code path.
+  1. Copy train_new_rfm_agop.py -> train_new_rfm_agop_joint.py.
+  2. Remove the backbone freeze; let model.parameters() require grad.
+  3. Replace single-group optimizer with two-group AdamW (backbone, head).
+  4. Load warm-start head from Step 1's head_final.pt.
+  5. Build RFMHeadAGOP(iters=1, detach_M=True) for training.
+  6. Save checkpoint_<step>.pth every 500 steps containing
+     {model, head, optimizer, scheduler, step, _arch, _prior}.
+
+Launch command (example).
+    python -m tabimpute.train_new_rfm_agop_joint \
+      --base_checkpoint /mnt/checkpoints_sweep/workdir/dwip_v2-trial_002/checkpoint_17000.pth \
+      --warm_start_head_ckpt /root/tabular/mcpfn/src/tabimpute/workdir/agop_head_dwip_v2_t002_step1/head_final.pt \
+      --run_name agop_joint_dwip_v2_t002 \
+      --max_steps 20000 \
+      --batch_size 16 \
+      --backbone_lr 3e-5 \
+      --head_lr 1e-2 \
+      --warmup_steps 500 \
+      --weight_decay 0.02 \
+      --grad_clip_norm 0.5 \
+      --iters 1 \
+      --checkpoint_every 500
+
+Validation during training.
+  Every 250 steps, run a fixed held-out synthetic batch (different seed)
+  through the current (backbone, head), compute MSE on missing cells, log
+  to metrics.jsonl. Save best-val checkpoint to checkpoint_best.pth so we
+  can pick the best snapshot if late training overfits.
+
+Three sanity checks to monitor during training.
+  - Loss decreasing: if MSE doesn't drop below initial, backbone isn't
+    learning (lr too low? gradient flow broken?).
+  - log_lambda / log_gamma_scale stable: head is warm-started, so they
+    shouldn't move wildly. If they do, head_lr is too high.
+  - Validation tracks training: divergence => backbone overfitting to the
+    synthetic prior, or drifting too far from pretraining geometry.
+
+Expected wall time. 6-15 GPU-hours for 20k steps at batch_size=16. Same
+shape as the original MatFormer pretraining run, but shorter (post-training).
+
+Inference integration after training finishes.
+  1. Load the final (or best-val) checkpoint:
+       ck = torch.load("checkpoint_20000.pth", weights_only=False)
+       # Existing path loads backbone weights from ck["model"]
+       # New: also load head from ck["head"]
+  2. Build head: RFMHeadAGOP(iters=3); head.load_state_dict(ck["head"]).
+  3. Pass head to RFMImputePFN(..., head=head, per_matrix_steps=0).
+  4. Register in get_uci_errors.py as "rfm_agop_dwip_v2_t002_joint".
+  5. Optionally also register "..._joint_per_matrix" with per_matrix_steps=50
+     to compose Step 2 (better backbone) with Step 1.5 (per-matrix tuning).
+  6. Run UCI eval, add to plot, regenerate.
+
+Risk checklist.
+  Catastrophic forgetting of pretraining   → low backbone_lr, weight decay,
+                                              warmup, validate against synthetic.
+  Loss diverges early                       → head is warm-started (not fresh);
+                                              warmup smooths first steps.
+  NaN in backbone gradients (numerics)      → detach_M=True, fp32 head solve,
+                                              grad clip already in pipeline.
+  Out of memory at B=16                     → fall back to B=8; minor signal hit.
+  Training too slow                         → reduce to 10k steps, can resume.
+
+Stop criterion.
+  - Mean UCI RMSE <= MatFormer (1.010). Ship.
+  - Plateau after 25k steps with gap remaining. Architecture has a cap with
+    this head; move to D1 (diagonal M) or D2 (column-wise) variants from
+    Findings F4, or to Step 3 if intra-matrix heterogeneity looks like the
+    issue.
+
+
+STEP 3 — Smarter leaf partitioning (replacing naive patching)
+-------------------------------------------------------------
+
+Goal. Improve the per-patch AGOP estimate by tiling the matrix into patches
+where the rows are similar (instead of contiguous in row index). Expected
+payoff: 5-15% additional improvement on top of Step 2; mostly on datasets
+where rows are heterogeneous.
+
+Why this last. The current ImputePFN tiling is "rows 0..49, 50..99, 100..149,
+..." — purely positional, with no overlap. xRFM's leaf splits are
+AGOP-driven, balanced-median, and overlapping. Porting that mechanism would
+make each patch's rows more homogeneous, give AGOP cleaner gradient signal,
+and avoid sharp boundary effects between adjacent patches.
+
+Three levels, in order of complexity.
+
+Level 1 — AGOP-informed row sorting before tiling. EASIEST.
+  1. Compute a cheap row-level projection v of the matrix:
+       - simplest: top PC of mean-filled column-standardized matrix.
+       - better: a scout-RFM AGOP top eigenvector on a small subset, mirroring
+         xRFM's 'top_vector_agop_on_subset'.
+  2. Project rows: proj = X @ v.
+  3. Sort rows by proj.
+  4. Tile the SORTED rows: rows ranked 0..49 -> tile 1, 50..99 -> tile 2, ...
+  5. Run backbone + head on each tile as before; after predicting, scatter
+     predictions back to original row positions.
+
+  Wins. Each tile clusters "similar" rows, so AGOP has more homogeneous data
+  and produces a cleaner M.
+  Costs. One extra projection per matrix (~ms). No backbone change. One small
+  permutation bookkeeping change in the imputation runner.
+  Where it lives. Override _get_imputation_chunk in RFMImputePFN; do the sort
+  before iterating tiles, undo the permutation before returning.
+
+Level 2 — Add overlap between adjacent tiles. CHEAP ADD-ON TO LEVEL 1.
+  Same as Level 1, but the last 10% of rows in each tile also appear as the
+  first 10% of the next tile. Cells in the overlap region get two predictions;
+  average them. Direct port of xRFM's `overlap_fraction=0.1` mechanism.
+  Wins. Smooths the boundary between tiles, avoids sharp prediction
+  discontinuities at tile edges.
+  Costs. Slightly more compute (10-20% more tiles processed), plus prediction
+  averaging in the overlap region.
+
+Level 3 — Full xRFM-style recursive tree of leaves. MOST INVASIVE.
+  At inference time, build a binary tree over the matrix's rows using
+  AGOP-driven splits (`top_vector_agop_on_subset`), recursing until each leaf
+  has <= 50 rows (so the leaf fits in the backbone's input window).
+  At prediction time, route each query row down the tree to its leaf, run
+  backbone + head on that leaf, predict.
+
+  Wins. Most faithful to the xRFM paper's tree structure. Adaptive partition
+  shape per dataset.
+  Costs. Need to write tree-build + tree-route logic from scratch (~200 lines).
+  Per-matrix tree build adds cost at inference time, though small.
+  Risk. ImputePFN's machinery assumes a simple tile grid; a tree breaks that
+  abstraction and needs the runner rewired.
+
+  Likely only worth Level 3 if Level 1 + 2 give a noticeable bump and there's
+  reason to think the partition geometry is still a bottleneck.
+
+Stop criterion for Step 3. Try Level 1 first; if it improves the bad
+datasets (blood_transfusion, libras_movement) by >=10%, do Level 2 too.
+Level 3 only if Level 1 + 2 + Steps 1-2 still leave a meaningful gap and the
+partition mechanism looks like the remaining bottleneck.
+
+
+================================================================================
+Summary table
+================================================================================
+
+Step  What's trained               Wall time       Expected RMSE improvement
+1     log_lambda, log_gamma_scale  ~30 min         1.165 -> ~1.08-1.13 (modest)
+1.5   per-matrix tuning of the 2   +5-10 min over  1.10 -> ~1.02-1.05 (good)
+      scalars at inference         the eval run
+1.7   none — MLP boosting          inference-only  >= MatFormer's 1.010 (safe floor)
+2     backbone + 2 scalars         6-15 hours      ~1.05 or below (substantial)
+3a    none — patching change       few hours code  ~5-10% bump on hard datasets
+3b    none — overlap addition      few hours code  small additional bump
+3c    none — full tree             ~1 day code     unclear; only if 3a/3b help
+
+Order of execution:
+  1. Step 1 (cheap; deterministic outcome). DONE.
+  2. Step 1.5 (per-matrix tuning) — uses Step 1 as warm-start; cheap; comparable
+     to xRFM/MICE's per-matrix fitting protocol. Recommended next.
+  3. Step 1.7 (MLP boosting) — orthogonal to 1.5 and stacks with it. Worth
+     trying because it has a known safe floor (MatFormer's 1.010).
+  4. Evaluate after 1.5 and 1.7; if gap is closed, ship.
+  5. Step 2 (large investment; biggest expected lift) — only if 1.5 + 1.7
+     don't get there.
+  6. Step 3 if a meaningful gap remains AND the bad-dataset pattern suggests
+     partition geometry is the issue.
+
+Things NOT in this plan but worth keeping in mind:
+  - Bandwidth / iter / lambda hyperparameter sweeps (cheap but lower-impact;
+    Step 1 supersedes the bandwidth question, and iter sweeps are most useful
+    at inference time which is free).
+  - Diag-M variant (xRFM paper uses diag=True by default). If full M proves
+    unstable per-patch on tiny tiles, restricting to diag may help. Add as
+    a fallback if numerical issues appear in Step 2.
+  - Gaussian (RBF) kernel instead of Laplace. Smoother gradient; useful if
+    Laplace's gradient discontinuity at d=0 turns out to cause SVD
+    instability. Try only if motivated by an actual failure.
+================================================================================

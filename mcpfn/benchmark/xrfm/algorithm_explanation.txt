@@ -136,3 +136,251 @@ piecewise-locally-linear-feature-map kernel method, with the "where to
 break the pieces" decision driven by a learned (not random / CART-
 greedy) projection.
 ================================================================================
+
+
+================================================================================
+RFM as a head on a frozen tabimpute backbone
+Scripts: uci/run_rfm_frozen.py, uci/run_rfm_test_time_agop.py
+Head:    src/tabimpute/model/rfm_head.py  (RFMHead)
+================================================================================
+
+The same RFM idea (kernel ridge with a learned Mahalanobis matrix M in
+the kernel) is reused inside the tabimpute eval pipeline — but instead
+of operating on raw inputs with a Laplace kernel, it operates on a
+transformer's per-cell embeddings with a linear kernel. The transformer
+provides the nonlinearity; RFM provides a transductive head.
+
+
+5. The pipeline
+---------------
+
+For a partially-observed matrix X of shape (R, C) with observed-cell set
+O subset of [R] x [C]:
+
+    X  --[ Backbone f_theta ]-->  Phi  shape (R, C, D)
+                              -->  [ Head h_psi ]  -->  Y_hat shape (R, C)
+
+Backbone (TabImputeModelStable, model_new_stable.py:508). A transformer
+with row- and column-attention. Forward produces a per-cell embedding
+phi_ij in R^D for every cell. Called as
+
+    model(X, return_embeddings=True)
+
+so that the post-transformer hidden state Phi is returned and the
+decoder is bypassed (model_new_stable.py:607-609). The backbone is
+frozen in both scripts (decoder weights are explicitly stripped at
+run_rfm_frozen.py:53).
+
+
+6. Original decoder head vs RFM head
+------------------------------------
+
+Original head (DecoderStable, model_new_stable.py:481). A small
+pointwise MLP:
+
+    D --> mlp_hidden --> GELU --> mlp_hidden --> GELU --> num_outputs
+
+Applied independently to each cell:
+
+    y_hat_ij = MLP(phi_ij)               (D-dim --> scalar, per cell)
+
+No cross-cell interaction at decode time. All context must already be
+baked into phi_ij by the transformer.
+
+RFM head (rfm_head.py:10). Replaces the MLP with a transductive
+kernel-ridge regressor over cells. Given anchor cells S subset of O with
+observed targets y_S:
+
+    K_ss = Phi_S L L^T Phi_S^T + lam * I        shape (|S|, |S|)
+    alpha = K_ss^{-1} y_S                       shape (|S|,)
+    y_hat_ij = phi_ij^T L L^T Phi_S^T alpha     for (i,j) not in O
+
+Learnable parameters: psi = (L, lam), with L in R^(D x r). So
+M = L L^T is a low-rank (rank r) Mahalanobis matrix, same role as M in
+xRFM proper. Init: L ~ N(0, 1/r) so E[L L^T] = I (warm-start as plain
+dot-product kernel).
+
+What changes:
+
+  - Prediction at cell (i,j) now depends on phi_ij AND on all anchor
+    embeddings phi_st AND on the observed values y_st (entering via
+    alpha). The original head used only phi_ij.
+  - The head is transductive: predictions condition on which cells are
+    observed in THIS specific matrix.
+  - Parameter count drops from O(D * mlp_hidden) to O(D*r + 1).
+
+
+7. Shapes through the kernel ridge solve
+----------------------------------------
+
+Per patch (one 50x50 subsample, flattened cells):
+
+    Phi_S     shape (|S|, D)    anchor design matrix
+    y_S       shape (|S|,)      observed targets at anchors
+    L         shape (D, r)      Mahalanobis factor
+
+    Phi_S L   shape (|S|, r)    projected to r-dim feature space
+    K_ss      shape (|S|, |S|)  (Phi_S L)(Phi_S L)^T + lam * I
+    alpha     shape (|S|,)      K_ss^{-1} y_S    <-- the linear solve
+
+For missing cells T:
+
+    Phi_T L   shape (|T|, r)
+    K_ts      shape (|T|, |S|)
+    y_hat_T   shape (|T|,)      K_ts alpha
+
+Notes on dimensionality:
+
+  - The anchor design matrix is (|S|, D). |S| = min(num_anchors,
+    # observed cells), capped at 1024. D = backbone hidden size.
+  - Effective feature dim after L is r (= agop_rank, default 32), not D.
+    The kernel is doing ridge regression with an r-dim feature map.
+  - The matrix actually inverted is |S| x |S|. Cost is O(|S|^3), not
+    O(D^3). With |S| <= 1024 this is cheap.
+
+
+Worked example. UCI eval defaults: 50x50 patch, missingness=0.4,
+num_anchors=1024, agop_rank=32. Backbone is the standard tabimpute-
+stable config (embedding_size=768, num_layers=8).
+
+  Patch flattening
+    R' = 50, C' = 50                  --> 2500 cells total
+    ~60% observed (missingness 0.4)   --> ~1500 observed, ~1000 missing
+    D = 768
+    r = 32
+
+  Backbone forward
+    X         shape (1, 50, 50)       input patch (NaNs at missing)
+    Phi       shape (1, 50, 50, 768)  per-cell embeddings
+              flattened to (2500, 768) before the head
+
+  Anchor / query split (observed mask of the patch)
+    |S| = min(1024, 1500) = 1024      sampled uniformly from observed
+    |T| = 1000                        all missing cells
+
+  Anchor side
+    Phi_S     shape (1024, 768)       D-dim anchor embeddings
+    y_S       shape (1024,)           standardized observed values
+    L         shape (768, 32)         Mahalanobis factor (learnable)
+    Phi_S @ L shape (1024, 32)        projected anchor features
+
+  Kernel matrix and solve
+    K_ss      shape (1024, 1024)      (Phi_S L)(Phi_S L)^T + lam I
+    alpha     shape (1024,)           torch.linalg.solve(K_ss, y_S)
+
+  Query side
+    Phi_T     shape (1000, 768)
+    Phi_T @ L shape (1000, 32)
+    K_ts      shape (1000, 1024)      (Phi_T L)(Phi_S L)^T
+    y_hat_T   shape (1000,)           K_ts @ alpha   <-- predictions
+
+  Cost
+    Backbone forward dominates GPU memory; the head is tiny.
+    Head matmuls: (1024 x 768) @ (768 x 32) = 25 MFLOPs per Phi*L,
+    K_ss build: (1024 x 32) @ (32 x 1024) = 33 MFLOPs,
+    Solve: O(1024^3) ~= 1 GFLOP, single solve per patch.
+    Total per patch is well under 1 ms on a modern GPU once Phi is in
+    hand; eval cost is essentially the 20 backbone forwards per matrix.
+
+  What changes if you turn knobs
+    r=8   (smaller AGOP rank) --> Phi_S L is (1024, 8); K_ss still
+                                  (1024, 1024) — solve cost unchanged,
+                                  but feature geometry is much more
+                                  constrained.
+    num_anchors=256           --> Phi_S is (256, 768), K_ss is
+                                  (256, 256). Solve is 64x cheaper but
+                                  more variance per patch.
+    max_rows=max_cols=100     --> patch is 10000 cells; ~6000 observed
+                                  still capped to |S|=1024, but |T|
+                                  grows to ~4000 so K_ts is
+                                  (4000, 1024).
+    L = None (M = I)          --> skip the projection; kernel is
+                                  Phi_S Phi_S^T directly, shape still
+                                  (1024, 1024) but built in D=768
+                                  space rather than r=32 space.
+
+
+8. The two scripts
+------------------
+
+run_rfm_frozen.py (Phase 0.5: frozen everything)
+  - Loads psi = (L, lam) directly from the checkpoint's "head" entry
+    (line 60); falls back to random L or M = I if absent.
+  - Per patch: one forward pass through Phi --> one closed-form solve
+    via RFMHead.forward (rfm_head.py:102). No gradient steps.
+  - Question: what did pretraining bake into the kernel?
+
+run_rfm_test_time_agop.py (test-time fit of the head)
+  - Re-initializes RFMHead fresh per patch (per_patch_test_time_fit,
+    line 31). Backbone forward still happens once per patch and Phi is
+    detached.
+  - Inner loop (inner_steps Adam steps, default 100):
+      a. Random split of observed cells -> fit anchors A (1-q frac) +
+         heldout H (q frac, default q=0.1).
+      b. Closed-form solve on A, predict H, MSE loss.
+      c. Backprop into L and log_lambda only (Phi detached).
+  - Final solve: use all observed cells (capped at num_anchors) as
+    anchors -> predict the originally-missing cells -> score.
+  - Question: if we throw away the trained head and re-learn the
+    kernel from each patch's own observed support, how much do we
+    recover? This is test-time meta-learning of M.
+
+
+9. Tunable parameters
+---------------------
+
+Head itself (RFMHead):
+  lambda_init    initial ridge lam (softplus param + floor)
+                 default 1e-2 (frozen script) / 10.0 (test-time)
+  lambda_floor   min lam, default 1e-4
+  agop_rank (r)  rank of L. None --> M = I (plain dot-product).
+                 default None (frozen) / 32 (test-time)
+  embed_dim (D)  set automatically from backbone
+
+Inference protocol (both scripts):
+  --num_anchors      cap on |S|, default 1024
+  --max_rows         patch rows R', default 50
+  --max_cols         patch cols C', default 50
+  --num_subsamples   patches per UCI matrix, default 20
+  --seed             RNG for patch sampling and inner splits
+  --device           cuda --> bf16 backbone forward
+
+Test-time-only (run_rfm_test_time_agop.py):
+  --inner_steps      Adam steps on head per patch, default 100
+  --inner_lr         Adam LR, default 5e-2
+  --heldout_frac     q in leave-K-out, default 0.1
+  --min_obs_for_fit  skip patches with fewer obs, default 64
+  --agop_rank        no fallback to identity here; required
+
+Hard-coded (not exposed as CLI flags but conceptually tunable):
+  - Kernel form: linear in M-space (Phi M Phi^T). No exponent /
+    bandwidth knobs (unlike xRFM's Laplace kernel).
+  - Anchor selection: uniform random over observed cells.
+  - Per-column standardization: always on (standardize, line 64).
+  - Patch row/col sampling: uniform random.
+
+Main sweep surface in practice:
+  Frozen:     agop_rank, lambda_init, num_anchors
+  Test-time:  + inner_steps, inner_lr, heldout_frac
+
+
+10. Relation to xRFM proper
+---------------------------
+
+                xRFM (algorithm 1-2 above)         RFMHead here
+  Kernel        Laplace exp(-||sqrtM x - sqrtM z|| / gamma)
+                                                   Linear Phi M Phi^T
+  M update      Closed-form AGOP:                  Gradient descent on
+                M = (1/N) sum_z grad_f grad_f^T,   low-rank factor L,
+                iterated                           M = L L^T
+  Locality      Tree of RFMs, AGOP-driven splits   None — backbone
+                                                   provides nonlinearity
+  Init          M = I                              L ~ N(0, 1/r) so
+                                                   E[L L^T] = I
+
+One-liner. xRFM = Laplace kernel + AGOP-learned M + tree. RFMHead =
+linear kernel + GD-learned low-rank M, on top of a frozen transformer.
+The transformer takes the role the tree plays in xRFM — it produces
+locally informative features, after which a single global kernel ridge
+suffices.
+================================================================================

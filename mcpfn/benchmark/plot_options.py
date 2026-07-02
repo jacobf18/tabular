@@ -144,6 +144,8 @@ CAUSAL_INTERSECTION_METHODS = {
     "hyperimpute", "knn", "softimpute",
     "masters_mcar",
     "xrfm",
+    "boost_matformer_dwip_v2_t002_a0p1",
+    "boost_matformer_dwip_v2_t002_a0p05",
 }
 
 # Missingness patterns

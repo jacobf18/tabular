@@ -156,11 +156,28 @@ def main():
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--device", default="cuda")
     p.add_argument("--out", type=Path, required=True)
+    p.add_argument("--head", choices=["rfm", "agop"], default="rfm",
+                   help="Kernel head: 'rfm' (linear + low-rank L) or 'agop' "
+                        "(Laplace + closed-form AGOP iteration).")
+    p.add_argument("--iters", type=int, default=3,
+                   help="AGOP iterations per patch (only used when --head agop).")
+    p.add_argument("--gamma_scale_init", type=float, default=1.0,
+                   help="Initial multiplier on adaptive bandwidth (only used when --head agop).")
     args = p.parse_args()
 
     dtype = torch.bfloat16 if args.device.startswith("cuda") else torch.float32
     model, head_sd = load_backbone(args.checkpoint, device=args.device, dtype=dtype)
-    if head_sd is not None and "L" in head_sd:
+    if args.head == "agop":
+        from tabimpute.model.rfm_head_agop import RFMHeadAGOP
+        head = RFMHeadAGOP(
+            lambda_init=args.lambda_init,
+            gamma_scale_init=args.gamma_scale_init,
+            iters=args.iters,
+        ).to(args.device)
+        print(f"[setup] AGOP head: iters={args.iters}, "
+              f"lambda={float(head.lam.item()):.4f}, "
+              f"gamma_scale={float(torch.exp(head.log_gamma_scale).item()):.3f}")
+    elif head_sd is not None and "L" in head_sd:
         embed_dim, agop_rank = head_sd["L"].shape
         head = RFMHead(lambda_init=args.lambda_init,
                        agop_rank=agop_rank, embed_dim=embed_dim).to(args.device)
@@ -212,6 +229,9 @@ def main():
         "num_subsamples": args.num_subsamples,
         "num_anchors": args.num_anchors,
         "lambda_init": args.lambda_init,
+        "head": args.head,
+        "iters": args.iters if args.head == "agop" else None,
+        "gamma_scale_init": args.gamma_scale_init if args.head == "agop" else None,
         "max_rows": args.max_rows,
         "max_cols": args.max_cols,
         "seed": args.seed,

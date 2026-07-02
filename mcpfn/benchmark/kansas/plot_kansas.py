@@ -73,7 +73,9 @@ def aggregate(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-TABIMPUTE_KEEP = {"dwip-v2-1", "dwip-v2-1-T", "dwip-v2-1-avg", "masters_mcar"}
+TABIMPUTE_KEEP = {"dwip-v2-1", "dwip-v2-1-T", "dwip-v2-1-avg", "masters_mcar",
+                  "boost_matformer_dwip_v2_t002_a0p1",
+                  "boost_matformer_dwip_v2_t002_a0p05"}
 MATFORMER_LABEL = "MatFormer"
 
 EXTRA_LABELS = {
@@ -84,6 +86,8 @@ EXTRA_LABELS = {
     "dwip-v2-1": MATFORMER_LABEL,
     "dwip-v2-1-T": f"{MATFORMER_LABEL} (transpose)",
     "dwip-v2-1-avg": f"{MATFORMER_LABEL} (avg)",
+    "boost_matformer_dwip_v2_t002_a0p1":  f"{MATFORMER_LABEL} + xRFM residual (α=0.1)",
+    "boost_matformer_dwip_v2_t002_a0p05": f"{MATFORMER_LABEL} + xRFM residual (α=0.05)",
 }
 
 
@@ -129,9 +133,15 @@ def bar_with_errors(ax, df_sorted, value_col, se_col, ylabel, hline=None):
 
 EXCLUDE_METHODS = {"miracle", "hyperimpute_mean", "mice"}
 
+# MatFormer + xRFM residual variants: omitted from the figures.
+XRFM_RESIDUAL_METHODS = {
+    "boost_matformer_dwip_v2_t002_a0p1",
+    "boost_matformer_dwip_v2_t002_a0p05",
+}
+
 
 def plot_rmse_tau(summary: pd.DataFrame, out: Path, y_max: float) -> None:
-    df = summary.sort_values("rmse", ascending=False).reset_index(drop=True)
+    df = summary.sort_values("rmse", ascending=True).reset_index(drop=True)
     fig, ax = plt.subplots(figsize=FIGURE_SIZES["standard"])
     bar_with_errors(ax, df, "rmse", "rmse_se",
                     ylabel=r"RMSE of $\hat\tau$ (95% CI)")
@@ -159,7 +169,7 @@ def plot_bias_tau(summary: pd.DataFrame, out: Path, y_max: float) -> None:
 
 
 def plot_treated_block_rmse(summary: pd.DataFrame, out: Path, y_max: float) -> None:
-    df = summary.sort_values("tb_rmse", ascending=False).reset_index(drop=True)
+    df = summary.sort_values("tb_rmse", ascending=True).reset_index(drop=True)
     fig, ax = plt.subplots(figsize=FIGURE_SIZES["standard"])
     bar_with_errors(ax, df, "tb_rmse", "tb_rmse_se",
                     ylabel="Treated-block cell RMSE (95% CI)")
@@ -214,6 +224,7 @@ def main() -> None:
     df = pd.read_csv(per_draw_path)
     summary = aggregate(df)
     summary = summary[~summary["method"].isin(EXCLUDE_METHODS)]
+    summary = summary[~summary["method"].isin(XRFM_RESIDUAL_METHODS)]
     summary = summary[~summary["method"].apply(is_other_tabimpute_variant)]
     summary = summary[summary["method"].isin(CAUSAL_INTERSECTION_METHODS)].reset_index(drop=True)
 

@@ -22,17 +22,19 @@ class ChunkSpan:
 def make_chunk_spans(size: int, chunk_size: int) -> list[ChunkSpan]:
     if chunk_size <= 0:
         raise ValueError(f"chunk_size must be positive, got {chunk_size}")
-    if chunk_size >= size:
-        return [ChunkSpan(0, size)]
-    spans: list[ChunkSpan] = []
+    if size <= 0:
+        raise ValueError(f"size must be positive, got {size}")
+
+    num_chunks = max(1, (size + chunk_size - 1) // chunk_size)
+    base_size = size // num_chunks
+    extra = size % num_chunks
+    spans = []
     start = 0
-    while start + chunk_size < size:
-        spans.append(ChunkSpan(start, start + chunk_size))
-        start += chunk_size
-    if start < size:
-        final_span = ChunkSpan(max(0, size - chunk_size), size)
-        if not spans or spans[-1] != final_span:
-            spans.append(final_span)
+    for chunk_idx in range(num_chunks):
+        width = base_size + (1 if chunk_idx < extra else 0)
+        end = start + width
+        spans.append(ChunkSpan(start, end))
+        start = end
     return spans
 
 
@@ -145,7 +147,60 @@ class AxialEmbeddingTransformer(nn.Module):
         return x
 
 
-class RowCompressionModel(nn.Module):
+class CompressorClsMixin:
+    def _init_cls_tokens(self, num_cls: int, embedding_size: int) -> None:
+        self.num_cls = num_cls
+        self.row_cls_embedding = nn.Embedding(num_cls, embedding_size)
+        self.col_cls_embedding = nn.Embedding(num_cls, embedding_size)
+
+    def _prepend_cls(self, real_tokens: torch.Tensor) -> torch.Tensor:
+        batch_size, rows, cols, embedding_size = real_tokens.shape
+        device = real_tokens.device
+        dtype = real_tokens.dtype
+        indices = torch.arange(self.num_cls, device=device, dtype=torch.long)
+
+        row_cls_tokens = self.row_cls_embedding(indices).to(dtype)
+        row_cls = row_cls_tokens.unsqueeze(0).unsqueeze(0).expand(
+            batch_size,
+            rows,
+            self.num_cls,
+            embedding_size,
+        )
+
+        col_cls_tokens = self.col_cls_embedding(indices).to(dtype)
+        col_cls = col_cls_tokens.unsqueeze(0).unsqueeze(2).expand(
+            batch_size,
+            self.num_cls,
+            cols,
+            embedding_size,
+        )
+
+        row_corner = row_cls_tokens.unsqueeze(0).expand(
+            self.num_cls,
+            self.num_cls,
+            embedding_size,
+        )
+        col_corner = col_cls_tokens.unsqueeze(1).expand(
+            self.num_cls,
+            self.num_cls,
+            embedding_size,
+        )
+        corner = (row_corner + col_corner).unsqueeze(0).expand(
+            batch_size,
+            self.num_cls,
+            self.num_cls,
+            embedding_size,
+        )
+
+        top_block = torch.cat([corner, col_cls], dim=2)
+        bottom_block = torch.cat([row_cls, real_tokens], dim=2)
+        return torch.cat([top_block, bottom_block], dim=1)
+
+    def _remove_cls(self, tokens: torch.Tensor) -> torch.Tensor:
+        return tokens[:, self.num_cls :, self.num_cls :, :]
+
+
+class RowCompressionModel(CompressorClsMixin, nn.Module):
     """Compresses a column-aligned source chunk into K latent rows."""
 
     def __init__(
@@ -155,6 +210,7 @@ class RowCompressionModel(nn.Module):
         mlp_hidden_size: int,
         num_layers: int,
         k_row: int,
+        num_cls: int = 12,
         attention_dropout: float = 0.0,
         ffn_dropout: float = 0.0,
         drop_path_rate: float = 0.0,
@@ -169,6 +225,7 @@ class RowCompressionModel(nn.Module):
         self.k_row = k_row
         self.scalar_embedder = ScalarGridEmbedder(embedding_size)
         self.query_rows = nn.Parameter(torch.zeros(1, k_row, 1, embedding_size))
+        self._init_cls_tokens(num_cls, embedding_size)
         self.transformer = AxialEmbeddingTransformer(
             embedding_size=embedding_size,
             num_attention_heads=num_attention_heads,
@@ -197,11 +254,17 @@ class RowCompressionModel(nn.Module):
         batch_size, _, cols, _ = real_tokens.shape
         query = self.query_rows.expand(batch_size, self.k_row, cols, -1)
         tokens = torch.cat([real_tokens, query], dim=1)
-        tokens = self.transformer(tokens)
+        tokens = self._prepend_cls(tokens)
+        tokens = self.transformer(
+            tokens,
+            num_cls_rows=self.num_cls,
+            num_cls_cols=self.num_cls,
+        )
+        tokens = self._remove_cls(tokens)
         return tokens[:, -self.k_row :, :, :]
 
 
-class ColumnCompressionModel(nn.Module):
+class ColumnCompressionModel(CompressorClsMixin, nn.Module):
     """Compresses a row-aligned source chunk into K latent columns."""
 
     def __init__(
@@ -211,6 +274,7 @@ class ColumnCompressionModel(nn.Module):
         mlp_hidden_size: int,
         num_layers: int,
         k_col: int,
+        num_cls: int = 12,
         attention_dropout: float = 0.0,
         ffn_dropout: float = 0.0,
         drop_path_rate: float = 0.0,
@@ -225,6 +289,7 @@ class ColumnCompressionModel(nn.Module):
         self.k_col = k_col
         self.scalar_embedder = ScalarGridEmbedder(embedding_size)
         self.query_cols = nn.Parameter(torch.zeros(1, 1, k_col, embedding_size))
+        self._init_cls_tokens(num_cls, embedding_size)
         self.transformer = AxialEmbeddingTransformer(
             embedding_size=embedding_size,
             num_attention_heads=num_attention_heads,
@@ -253,7 +318,13 @@ class ColumnCompressionModel(nn.Module):
         batch_size, rows, _, _ = real_tokens.shape
         query = self.query_cols.expand(batch_size, rows, self.k_col, -1)
         tokens = torch.cat([real_tokens, query], dim=2)
-        tokens = self.transformer(tokens)
+        tokens = self._prepend_cls(tokens)
+        tokens = self.transformer(
+            tokens,
+            num_cls_rows=self.num_cls,
+            num_cls_cols=self.num_cls,
+        )
+        tokens = self._remove_cls(tokens)
         return tokens[:, :, -self.k_col :, :]
 
 
@@ -276,6 +347,42 @@ class CompressedCrossTabImputeModel(nn.Module):
         self.k_col = k_col
         self.embedding_size = predictor.feature_encoder.embedding_size
         self.off_axis_token = nn.Parameter(torch.zeros(1, 1, 1, self.embedding_size))
+        self.region_type_embedding = nn.Embedding(4, self.embedding_size)
+        nn.init.zeros_(self.region_type_embedding.weight)
+
+    @torch.no_grad()
+    def initialize_compressor_embedders_from_predictor(self) -> None:
+        """Seed compressor scalar embedders from the predictor's scalar encoder."""
+        predictor_encoder = self.predictor.feature_encoder
+        for compressor in (self.row_compressor, self.column_compressor):
+            compressor.scalar_embedder.observed_linear_layer.load_state_dict(
+                predictor_encoder.observed_linear_layer.state_dict()
+            )
+            compressor.scalar_embedder.mask_token.copy_(predictor_encoder.mask_token)
+            compressor.scalar_embedder.missingness_embedding.load_state_dict(
+                predictor_encoder.missingness_embedding.state_dict()
+            )
+            if compressor.num_cls == predictor_encoder.num_cls:
+                compressor.row_cls_embedding.load_state_dict(
+                    predictor_encoder.row_cls_embedding.state_dict()
+                )
+                compressor.col_cls_embedding.load_state_dict(
+                    predictor_encoder.col_cls_embedding.state_dict()
+                )
+
+    @torch.no_grad()
+    def initialize_compressor_transformers_from_predictor(self) -> None:
+        """Seed compressor axial blocks from the predictor's pretrained blocks."""
+        predictor_blocks = self.predictor.transformer_blocks
+        for compressor in (self.row_compressor, self.column_compressor):
+            layers_to_copy = min(
+                len(compressor.transformer.blocks),
+                len(predictor_blocks),
+            )
+            for layer_idx in range(layers_to_copy):
+                compressor.transformer.blocks[layer_idx].load_state_dict(
+                    predictor_blocks[layer_idx].state_dict()
+                )
 
     def _embed_target_real_tokens(self, target_chunk: torch.Tensor) -> torch.Tensor:
         encoder = self.predictor.feature_encoder
@@ -346,6 +453,37 @@ class CompressedCrossTabImputeModel(nn.Module):
         top_block = torch.cat([corner, col_cls], dim=2)
         bottom_block = torch.cat([row_cls, real_tokens], dim=2)
         return torch.cat([top_block, bottom_block], dim=1)
+
+    def _add_region_type_embeddings(
+        self,
+        target_tokens: torch.Tensor,
+        row_context: torch.Tensor,
+        col_context: torch.Tensor,
+        off_axis: torch.Tensor | None,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None]:
+        target_type = self.region_type_embedding.weight[0].to(
+            device=target_tokens.device,
+            dtype=target_tokens.dtype,
+        )
+        row_type = self.region_type_embedding.weight[1].to(
+            device=target_tokens.device,
+            dtype=target_tokens.dtype,
+        )
+        col_type = self.region_type_embedding.weight[2].to(
+            device=target_tokens.device,
+            dtype=target_tokens.dtype,
+        )
+        off_axis_type = self.region_type_embedding.weight[3].to(
+            device=target_tokens.device,
+            dtype=target_tokens.dtype,
+        )
+
+        target_tokens = target_tokens + target_type.view(1, 1, 1, -1)
+        row_context = row_context + row_type.view(1, 1, 1, -1)
+        col_context = col_context + col_type.view(1, 1, 1, -1)
+        if off_axis is not None:
+            off_axis = off_axis + off_axis_type.view(1, 1, 1, -1)
+        return target_tokens, row_context, col_context, off_axis
 
     def _run_predictor_from_embeddings(
         self,
@@ -455,6 +593,24 @@ class CompressedCrossTabImputeModel(nn.Module):
 
         context_rows = row_context.shape[1]
         context_cols = col_context.shape[2]
+        off_axis = None
+        if context_rows and context_cols:
+            off_axis = self.off_axis_token.expand(
+                target_tokens.shape[0],
+                context_rows,
+                context_cols,
+                self.embedding_size,
+            )
+
+        target_tokens, row_context, col_context, off_axis = (
+            self._add_region_type_embeddings(
+                target_tokens,
+                row_context,
+                col_context,
+                off_axis,
+            )
+        )
+
         if context_cols:
             top = torch.cat([target_tokens, col_context], dim=2)
         else:
@@ -462,12 +618,6 @@ class CompressedCrossTabImputeModel(nn.Module):
 
         if context_rows:
             if context_cols:
-                off_axis = self.off_axis_token.expand(
-                    target_tokens.shape[0],
-                    context_rows,
-                    context_cols,
-                    self.embedding_size,
-                )
                 bottom = torch.cat([row_context, off_axis], dim=2)
             else:
                 bottom = row_context
@@ -589,6 +739,7 @@ def build_compressor_config_from_predictor(
         "num_layers": num_layers
         if num_layers is not None
         else predictor_config["num_layers"],
+        "num_cls": predictor_config.get("num_cls", 12),
         "attention_dropout": predictor_config.get("attention_dropout", 0.0),
         "ffn_dropout": predictor_config.get("ffn_dropout", 0.0),
         "drop_path_rate": predictor_config.get("drop_path_rate", 0.0),

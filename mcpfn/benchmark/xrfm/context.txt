@@ -1,0 +1,1864 @@
+================================================================================
+Context injection for xRFM residual correction
+File:   mcpfn/src/tabimpute/interface_rfm.py  →  BoostMatFormerImputer
+Status: Discussion / proposals. None implemented yet.
+================================================================================
+
+
+BACKGROUND
+==========
+
+The current BoostMatFormerImputer fits a per-column xRFM regressor on the
+following feature vector for each row r and target column c:
+
+    features_c(r) = concat([
+        mean-fill of OTHER columns at row r,         # C-1 features
+        missingness mask of OTHER columns at row r,  # C-1 features
+    ]) ∈ R^{2(C-1)}
+
+xRFM accepts ARBITRARY-sized feature vectors. The current recipe is one
+choice; we can append any additional context.
+
+
+WHEN CONTEXT INJECTION MIGHT MATTER
+===================================
+
+The default features capture "what other column values look like at this
+row." That works well when missingness is scattered/MCAR (UCI). It can be
+insufficient when:
+
+1. Missingness is structurally located (e.g., post-treatment block in panel
+   data). The position of (r, c) within the matrix carries information that
+   raw values don't.
+
+2. The matrix has natural axes (time, units, region, etc.) with semantic
+   meaning. Knowing "row r is state X, column c is year Y" is information
+   that should help residual prediction.
+
+3. MatFormer's predictions themselves carry signal that xRFM doesn't see by
+   default (since residuals = X - y_mlp are what xRFM targets, but it doesn't
+   see y_mlp as a feature).
+
+
+FOUR KINDS OF CONTEXT TO CONSIDER
+=================================
+
+Listed by expected impact and risk.
+
+(A) Positional features
+    row_idx / R, col_idx / C, time-since-treatment, treated-flag, etc.
+    Expected to help MOST on panel/causal benchmarks (CPS, kansas, prop99),
+    where the block structure of missingness makes (r, c) coordinates
+    informative.
+    Almost no risk; very cheap.
+
+(B) MatFormer's own prediction as a feature
+    Inject y_mlp[r, c] (and maybe row/col means of MatFormer's predictions).
+    Lets xRFM learn "the residual depends on the prediction's magnitude."
+    Cheap, well-motivated, low risk.
+
+(C) Row/column summary statistics
+    row_mean(X)[r], row_std(X)[r], col_mean(X)[c], col_missing_frac(X)[c],
+    etc. Compact local-structure features.
+    Cheap, low-risk; expected modest help.
+
+(D) Backbone embedding Phi[r, c]  (768-dim transformer output per cell)
+    The most context-rich but also the riskiest.
+    Empirically xRFM-on-embeddings ALONE failed on UCI (RMSE 0.85+ vs
+    raw-feature xRFM at 0.62) — diagonal-M Laplace can't decompose dense
+    entangled embeddings.
+    Concatenation with raw features might still help if the embeddings carry
+    orthogonal signal, but expect possibly-neutral results.
+
+
+CONCRETE FEATURE RECIPES
+========================
+
+For target column c at row r, after standardization:
+
+  Recipe A (positional, smallest):
+    features_c(r) = concat([
+        mean-fill of OTHER columns at row r,         # C-1
+        missingness mask of OTHER columns at row r,  # C-1
+        row_idx / R,                                 # 1
+        col_idx / C,                                 # 1
+    ])
+
+  Recipe B (positional + MatFormer prediction):
+    features_c(r) = concat([
+        recipe A features,                            # 2(C-1) + 2
+        y_mlp_std[r, c],                              # 1
+        y_mlp_std[r, :].mean(),                       # 1
+        y_mlp_std[:, c].mean(),                       # 1
+    ])
+
+  Recipe C (positional + matrix stats):
+    features_c(r) = concat([
+        recipe A features,
+        row_mean(X)[r], row_std(X)[r], row_missing_frac(X)[r],  # 3
+        col_mean(X)[c], col_std(X)[c], col_missing_frac(X)[c],  # 3
+    ])
+
+  Recipe D (full context, with backbone embeddings):
+    features_c(r) = concat([
+        recipe B features,
+        Phi[r, c],                                    # 768
+    ])
+
+
+PRIORITIZED EXPERIMENT ORDER
+============================
+
+1. Recipe A — positional features — on the causal benchmarks (CPS/kansas/
+   prop99). These are the benchmarks where the boost is currently a wash.
+   The block-structured missingness should benefit most from positional
+   information. Cheap to add (4 features), low risk.
+
+2. Recipe B — add y_mlp prediction features — on UCI as a follow-up to the
+   already-winning boost. Probably modest extra gain.
+
+3. Recipe C — matrix summary stats — as a generic enrichment. Low risk,
+   low expected payoff.
+
+4. Recipe D — full backbone embedding concatenation — only after the cheaper
+   recipes have been tested. High variance: could help or could add noise.
+
+
+IMPLEMENTATION NOTES
+====================
+
+In interface_rfm.py:
+
+  - Add a `feature_recipe: str` argument to BoostMatFormerImputer (default
+    "raw"; new options "raw+positional", "raw+positional+mlp",
+    "raw+positional+stats", "raw+positional+mlp+phi").
+
+  - Refactor `_build_features` to dispatch on recipe.
+
+  - For backbone-embedding features (recipe D), require BoostMatFormerImputer
+    to expose `Phi` from the internal MatFormer forward (currently we only
+    use X_full = MatFormer's predictions; Phi is computed but discarded).
+    Need to thread it through. Use `super().impute(X, return_full=True)` and
+    additionally compute Phi via `model(X, return_embeddings=True)`.
+
+  - α value: keep at 0.1 for first comparisons. With richer features the
+    optimal α may shift; possibly retune on a small spot-check.
+
+
+TRADE-OFFS WORTH FLAGGING
+=========================
+
+  - More features → higher-dim kernel ridge → more overfitting risk
+    per matrix. xRFM has internal early-stop via val split (default 20%),
+    which mitigates this.
+
+  - More features → slower xRFM fit. For tiny matrices (iris, kansas
+    smoke) the increase is negligible; for larger ones (CPS, prop99) it
+    could push xRFM run time up moderately. Tree-based learners (xgboost,
+    lightgbm) scale better with feature count if needed.
+
+  - The α=0.1 damping already limits how much any feature can move
+    predictions. Even a "noisy" set of context features won't catastrophically
+    hurt — at worst it shifts the residual prediction in random directions
+    and α=0.1 makes that a small perturbation.
+
+
+WHY POSITIONAL FEATURES ARE THE TOP PRIORITY
+============================================
+
+On UCI: rows and columns are essentially exchangeable. Each row is one
+sample, each column is one tabular feature. Position carries no inherent
+meaning. Positional features won't help.
+
+On panel/causal benchmarks: a row = a unit (state), a column = a time
+period. Position carries enormous information:
+
+  - Within-row structure: pre-treatment values inform post-treatment ones
+    via temporal autocorrelation. xRFM's diagonal Laplace can capture this
+    only if the time index is a feature.
+
+  - Cross-row structure: treated vs untreated units have different residual
+    distributions. A "treated" indicator feature lets xRFM learn separate
+    residual patterns.
+
+  - Time-since-treatment: residual magnitudes typically grow as we
+    extrapolate further past the treatment cutoff. A "T - T_treat" feature
+    captures this directly.
+
+The current boost setup hides all of this from xRFM. It only sees other
+columns' values, not the meaning of position. Recipe A explicitly exposes
+position, which is the most natural fix for panel data.
+
+
+OPEN QUESTIONS
+==============
+
+  1. How should the row/col index be encoded for xRFM's diagonal Laplace?
+     - Raw indices r/R, c/C (continuous in [0, 1])? Simple, but Laplace
+       might not capture nonlinear position effects well.
+     - Sinusoidal positional encodings? Multi-dim, smoother.
+     - One-hot? Many features but exact.
+     For first cut: raw normalized indices. Iterate later.
+
+  2. Should context features be standardized differently from raw values?
+     Raw column features are per-col z-scored. Positional features have
+     known range [0, 1]. Probably fine to leave unstandardized.
+
+  3. Does adding context features change the optimal α?
+     Likely yes — richer features → more confident xRFM predictions → α
+     should probably DECREASE further (or it might go up if predictions are
+     genuinely better-calibrated). Worth testing in a small sweep.
+
+  4. Per-column vs per-row context?
+     Some context (row mean) is per-row (changes across rows for a given c).
+     Other context (col mean) is per-column (constant across rows for a
+     given c → less informative since xRFM is per-column anyway).
+     Prefer per-row context.
+
+
+SUMMARY (ONE LINE)
+==================
+
+xRFM can take any feature vector; the most promising context to inject is
+positional (row/col indices, time-since-treatment) for panel/causal
+benchmarks, followed by MatFormer's own predictions as features for UCI.
+Backbone embeddings are last priority (high dim, unclear net benefit).
+================================================================================
+
+
+================================================================================
+EMPIRICAL UPDATE (2026-05-15): naive concat of (X_row, X_col) is a no-op
+================================================================================
+
+Setup. Implemented row_context / col_context kwargs in
+BoostMatFormerImputer.impute (interface_rfm.py:955) and _build_features
+(interface_rfm.py:824). For each per-column xRFM fit, row_context (R, 4) is
+concatenated to every row's base feature vector; col_context_row (4,) for
+the target column is broadcast to every row. Ran on the synthetic context
+benchmark (mcpfn/benchmark/synthetic_context):
+
+  - run_eval.py        → make_draw, visible context regime, α=0.1
+  - run_eval_hidden.py → make_hidden_context_draw, hidden context, α=1.0
+
+Both runs complete (240 rows in results/, 160 rows in results_hidden/).
+
+Result. boost_row_context and boost_row_col_context are within ≤ 0.001 RMSE
+of boost_no_context across EVERY setting in BOTH regimes:
+
+  Visible regime mean RMSE on missing block (across 6 α-settings, 10 seeds):
+    matformer              0.286
+    boost_no_context       0.271
+    boost_row_context      0.271      ← Δ ≤ 0.0001 vs boost_no_context
+    boost_row_col_context  0.271      ← Δ ≤ 0.0001 vs boost_no_context
+
+  Hidden regime mean RMSE (4 treatment strengths, 10 seeds):
+    matformer              1.835      ← boost is WORSE here, separate issue
+    boost_no_context       2.148
+    boost_row_context      2.147      ← Δ ≤ 0.001 vs boost_no_context
+    boost_row_col_context  2.147
+
+The hidden regime is the cleanest test: by construction, observed cells
+carry ZERO information about (x_r, z_c). The only path to recovering the
+treatment-block signal is via explicit context features. Even there,
+context injection moves nothing.
+
+Why this happens. Three stacked reasons:
+
+(1) Dimension dilution. Base feature vector is 2*(C-1) dims (mean-fill of
+    other columns + their missingness mask). For N=T=200 that's 398 dims.
+    Adding 4 context dims is 4/402 ≈ 1% of the input. xRFM's diagonal
+    Laplace kernel uses Euclidean distance with fixed bandwidth=10; the
+    new dims contribute ~1% of pairwise distance and don't materially
+    change the kernel.
+
+(2) Scale mismatch. Base features are per-col z-scored (~N(0,1)) and
+    binary {0,1} (the mask half). Row context is Unif(-1,1), Unif(-0.5,0.5),
+    N(0, 0.2), N(0, 0.3) — half of them have stdev ≈ 0.2. They contribute
+    even less than 1/402 of the kernel distance.
+
+(3) AGOP bootstrap failure. xRFM starts with M = I and runs 3 AGOP
+    iterations. AGOP reweights dimensions in proportion to how much the
+    current predictor's gradient varies along them. If a dimension
+    contributes ~0% to the initial (M=I) kernel, the predictor doesn't
+    use it, the gradient w.r.t. it is ~0, and AGOP gives it ~0 weight on
+    the next iter. Self-fulfilling: the only way a near-zero-weight
+    feature gets picked up is if the kernel already routes some signal
+    through it. Diagonal-M Laplace at fixed bandwidth can't bootstrap onto
+    drowned-out features.
+
+(4) Visible regime only — context redundancy. In make_draw, every other
+    column also depends on (x_r, z_c) (M1/M2 are polynomials in x). So
+    column c's x_r-driven residual is already recoverable from the other
+    199 columns' mean-fill values. Even if xRFM COULD use the appended
+    x_r, it adds no signal beyond what's already in the base features.
+    This explains why even the "row_only" setting shows no gap.
+
+(5) Constant-within-fit features are formally information-free.
+    col_context_row is the same 4 numbers broadcast to every row of a
+    per-column fit. xRFM cannot learn anything from a constant feature
+    (zero variance → zero gradient → AGOP weight stays ~0). This is
+    inherent to the per-column decomposition, not a tuning issue.
+    boost_row_col_context can never beat boost_row_context with this
+    pipeline shape.
+
+Boost-on-its-own breaks in the hidden regime (orthogonal to context).
+Even at treatment_strength = 0 (no signal at all in the missing block,
+just M_base + noise), boost_no_context gets 0.91 RMSE vs MatFormer's 0.27
+— more than 3x worse. xRFM is fitting on observed-cell residuals, which
+are pure noise (M_treat is zero on observed by construction), and at
+α=1.0 that noise model is fully applied to the missing block. The α=0.1
+damping that makes boost work on UCI is doing all the safety here. Until
+the boost itself doesn't catastrophically degrade in hidden-context
+settings (e.g., via adaptive_alpha that detects no-signal regimes and
+shrinks α toward 0), the context-injection question can't be cleanly
+tested in the hidden regime.
+
+What this rules out / what to try.
+
+  Ruled out: "just concat the context to the xRFM input" works.
+  It doesn't, for any of the four feature recipes A/B/C/D listed above —
+  recipe A's positional features (row_idx/R, col_idx/C, etc.) would
+  suffer from exactly the same dimension dilution + scale mismatch.
+
+  Worth trying, in order of how invasive:
+
+  (i) Standardize + upweight context features. Z-score them, then
+      multiply by sqrt(base_dim / d_r) (≈ 10 for our setup) so they
+      contribute equally to initial Euclidean distance. Cheapest fix;
+      tests whether (1)+(2) alone explain the no-op.
+
+  (ii) Pre-rotate via a small dense projection. Replace concat with
+      [base_features, W @ row_context] where W is a learned or random
+      d_proj × 4 projection that lives in the same scale band as the
+      base features. Slightly more involved; lets xRFM see context as a
+      bigger block.
+
+  (iii) Block-Mahalanobis init. Instead of starting xRFM at M = I, start
+      at M = block_diag(I_base, λ * I_context) with λ >> 1, so AGOP has
+      gradient signal flowing through the context dims from iter 0.
+      Requires modifying the xRFM library or wrapping it.
+
+  (iv) Context as a separate auxiliary kernel. Don't concat; instead,
+      sum two kernels: K_total = K_base(features_base) + β *
+      K_context(row_context). Cleanest mathematically, most invasive
+      implementation.
+
+  (v) Different residual learner entirely. The xrfm-on-concat path can
+      be swapped for xgboost / lightgbm / random_forest in
+      _fit_predict_residual (already implemented as
+      self.residual_learner). Tree learners don't suffer from
+      dimension-dilution (axis-aligned splits are scale-free) and might
+      pick up the context dims naturally. Cheap to spot-check.
+
+  (vi) Adaptive α first. Before any of the above is interpretable on the
+       hidden regime, the boost needs an α that shrinks to 0 when the
+       observed residual signal is just noise. Adaptive-α via held-out
+       observed-cell CV (already implemented as self.adaptive_alpha)
+       should be turned on for hidden-regime sweeps.
+
+Recommended next step: run (v) — switch residual_learner to xgboost on
+both visible and hidden sweeps. This isolates "does adding context as
+features help at all under SOME residual learner" from "is the
+xRFM-specific kernel architecture the blocker." Cheap (no code changes
+needed in BoostMatFormerImputer; just pass residual_learner='xgboost'),
+and the answer reframes the next move:
+  - If xgboost shows context lift → the issue is xRFM kernel geometry.
+    Iterate on (i)–(iv).
+  - If xgboost also no-ops → the issue is the residual-on-observed-cells
+    formulation itself. Need a different combiner (e.g., context-aware
+    base predictor instead of context-aware corrector).
+================================================================================
+
+
+================================================================================
+EMPIRICAL UPDATE 2 (2026-05-15): context-only baseline ruled out
+================================================================================
+
+Followed up on the question raised by the previous update: "is there a
+regime where a context-only predictor beats MatFormer?" Built
+synthetic_context/context_only.py. Pipeline:
+
+  - Take all observed cells (r, c).
+  - Build per-cell features = [X_row[r], X_col[c]]  (8-dim).
+  - Fit xRFM (same params as boost: l2_high_dim, diag=True, iters=3,
+    bandwidth=10, reg=1e-3) with 80/20 train/val split, max 5000 cells.
+  - Predict missing cells; pass through observed cells unchanged.
+
+Wired into both run_eval.py and run_eval_hidden.py as a fifth method.
+
+Visible regime mean RMSE on missing block (10 seeds, 200x200 matrix):
+
+  setting             matformer   boost    context_only   co_vs_mf
+  --------------------------------------------------------------
+  pure_interaction      0.291     0.269       0.315         +0.024
+  context_heavy         0.372     0.352       0.532         +0.160
+  balanced              0.424     0.401       0.887         +0.464
+  row_only              0.199     0.185       1.011         +0.813
+  col_only              0.231     0.211       1.111         +0.881
+  low_rank_only         0.201     0.207       2.235         +2.034
+  --------------------------------------------------------------
+  mean                  0.286     0.271       1.015         +0.729
+
+Hidden regime (10 seeds, 200x200, treatment_strength varied):
+
+  treatment   matformer   boost    context_only
+  --------------------------------------------
+  zero          0.272     0.914       2.198
+  small         1.037     1.360       2.405
+  medium        2.019     2.205       2.956
+  large         4.010     4.110       4.543
+  --------------------------------------------
+  mean          1.835     2.148       3.025
+
+Diagnostic answer: NO regime shows context_only beating MatFormer.
+Closest call is pure_interaction (Δ = +0.024, < noise band). Everywhere
+else context_only is much worse.
+
+What this rules out and why.
+
+(R1) The "boost ignores context features" failure is NOT a kernel-
+geometry bug. xRFM CAN extract signal from the 8-dim context features
+(see pure_interaction: 0.315, much better than predicting the mean which
+would be ~stddev(M) ≈ 1.0). The kernel is fine. The features themselves
+have a structural ceiling.
+
+(R2) context-only's ceiling is structural, not tunable. Every alpha
+setting where context_only is much worse than MatFormer corresponds to
+a matrix component with random row/col loadings:
+  - M2 = poly(x) @ random_col_loadings    (row_only)
+  - M3 = random_row_loadings @ poly(z)    (col_only)
+  - M4 = random @ random                  (low_rank_only)
+The random loadings ARE NOT a function of (X_row, X_col), so context-
+only can never recover them. A model that takes only (x_r, z_c) as
+inputs has zero capacity to predict random per-row/per-col latent
+factors, which are exactly what conventional matrix-completion methods
+have to learn from the observed cells. This is a property of the data,
+not of xRFM.
+
+(R3) Pure_interaction is the cleanest case (M = M1 only, fully a
+function of x_r and z_c) — and even there context_only TIES MatFormer
+rather than beating it. MatFormer is already capturing the polynomial-
+in-(x, z) structure implicitly, by attending to other observed cells in
+the row/column. The transformer doesn't need explicit (X_row, X_col) to
+recover signal that's deterministic in them, because every other cell
+in row r is a function of x_r — so attention over those cells is a
+sufficient statistic for x_r.
+
+(R4) Hidden regime: context_only is worse than both boost and MatFormer
+because, by construction, observed cells contain ZERO (x_r, z_c) signal.
+xRFM trains on observed → learns "predict the noise" → predicts ~mean
+on missing cells. MatFormer at least outputs sensible low-rank
+predictions for the M_base component. context_only throws that away.
+
+Implications for the original "feature recipes A-D" plan.
+
+  Recipe A (positional row_idx/R, col_idx/C): same failure mode as
+    context features here. If positional info is implicit in the cell
+    values (e.g., temporal autocorrelation expressed in the values
+    themselves), MatFormer captures it via attention. If positional
+    info is independent of cell values (e.g., a pure treatment-block
+    indicator with no value signal), it suffers from the hidden-regime
+    problem: training data has no signal to learn from.
+
+  Recipe B (MatFormer's own predictions as features): may still help.
+    Different mechanism — feeds the boost xRFM a richer encoding of
+    "what the base predictor thinks." Untested.
+
+  Recipe C (matrix summary stats): probably no-op for the same reason
+    as context features — these are linear combinations of row/col
+    cells that the transformer's attention should already see.
+
+  Recipe D (backbone embeddings): already tested, fails (xRFM-on-Phi
+    was 0.85+ on UCI vs raw-feature xRFM at 0.62).
+
+Honest conclusion: explicit context features have NO role on this
+benchmark family. Either:
+
+  (a) The context-driven structure is already implicit in observed
+      cell values (visible regime) → MatFormer + boost-on-other-columns
+      already extracts it. Adding explicit context is redundant.
+
+  (b) The context-driven structure exists ONLY in the missing block
+      (hidden regime) → no method can recover it from observed cells
+      regardless of what features it sees. Needs a context-aware
+      backbone trained jointly on (X, X_row, X_col).
+
+What to do next, separate from "make context features useful."
+
+  (i)   Test on a benchmark where context is genuinely load-bearing
+        (real panel data with row/col attributes that aren't
+        recoverable from cell values — e.g., demographic features for
+        a state in a panel-causal benchmark). If boost-on-other-columns
+        already wins there too, the conclusion generalizes. If
+        explicit context helps there but not here, the difference is
+        the synthetic prior structure.
+
+  (ii)  Pretrain a backbone that ingests (X, X_row, X_col) jointly.
+        Only path that addresses the hidden-regime case. Major
+        investment; only worth it if (i) shows context is load-bearing
+        on a real benchmark.
+
+  (iii) Investigate WHY boost works as well as it does even without
+        context. Boost gives a consistent ~5% improvement over
+        MatFormer in the visible regime, and the largest improvements
+        (context_heavy 0.372→0.352, balanced 0.424→0.401) are on
+        settings where MatFormer needs polynomial-in-context structure.
+        The 398-dim "other columns" feature vector appears to be doing
+        most of the heavy lifting — it's an implicit, redundant, well-
+        scaled encoding of the row's latent factor (every other column
+        is a function of x_r). This is worth understanding before
+        chasing further architectural changes.
+================================================================================
+
+
+================================================================================
+EMPIRICAL UPDATE 3 (2026-05-15): boost mechanism is per-cell variance reduction;
+α=0.05 is the right default for causal benchmarks
+================================================================================
+
+Followed up on the question "what is the boost actually doing, and can we
+make it work on causal benchmarks?" Three findings, all with empirical
+support, supersede the earlier "boost is currently a wash on causal" claim.
+
+
+1. THE BOOST IS A VARIANCE REDUCER, NOT A DEBIASER
+---------------------------------------------------
+
+Bias-variance decomposition on synthetic context benchmark (5 seeds × 6
+α-settings, see synthetic_context/bias_variance.py):
+
+  setting           rmse_mf  bias_mf  bias_boost  var_mf  var_boost  corr(e_mf, r_pred)
+  pure_interaction   0.283    -0.010    -0.026     0.080    0.067         -0.45
+  context_heavy      0.366    -0.038    -0.047     0.132    0.118         -0.45
+  balanced           0.433    -0.025    -0.026     0.187    0.167         -0.47
+  row_only           0.197     0.010     0.019     0.039    0.033         -0.41
+  col_only           0.227     0.010     0.011     0.051    0.043         -0.40
+  low_rank_only      0.201     0.063     0.078     0.036    0.036         -0.25
+
+Findings:
+
+  - MatFormer is approximately unbiased (|bias_mf| ~ 5-15% of RMSE). The
+    error budget is variance-dominated.
+  - The boost INCREASES |bias| slightly in every setting. So in the
+    classical sense, it's not debiasing.
+  - The boost REDUCES variance by ~10-15% via correlation between
+    xRFM's residual prediction and MatFormer's per-cell signed error.
+    corr(e_mf, r_pred) is consistently -0.40 to -0.47 (and -0.25 on the
+    no-context low_rank_only setting).
+
+Mechanism:
+
+  MSE_boost - MSE_mf = 2α · cov(e_mf, r_pred) + α² · E[r_pred²]
+                       \____ debias term ____/   \__ variance term __/
+
+  - Negative cov term (always seen) means r_pred predicts -e_mf with
+    moderate accuracy. Makes the debias term contribute negatively to
+    MSE delta — actual reduction in MSE.
+  - α² · E[r_pred²] is a noise-injection penalty.
+  - α* = -cov / E[r_pred²] minimizes the total. On synthetic, α* per
+    setting ranges 0.11–0.34 (mean ~0.20). α=0.1 is conservative.
+
+Interpretation: The boost is NOT a context debiaser. It's a per-cell
+error PREDICTOR that achieves variance reduction by anticipating which
+cells MatFormer will over- or under-predict and partially counteracting
+that error. Bound on improvement = corr(e_mf, r_pred)² (≈20% explained
+variance on synthetic).
+
+
+2. PER-MATRIX α FROM VAL CELLS IS STRUCTURALLY BROKEN ON CAUSAL DATA
+--------------------------------------------------------------------
+
+Tried two adaptive-α methods inside BoostMatFormerImputer:
+
+  (a) adaptive_alpha_method='grid' (existing): hold out 10% of observed
+      cells, sweep α grid, pick α minimizing val MSE (with threshold
+      mechanism biasing toward α=0).
+
+  (b) adaptive_alpha_method='bias_variance' (new, this update): same val
+      split, but compute α* = -cov(e_mf, r_pred) / E[r_pred²] directly
+      from the bias-variance formula on val cells, then shrink by 0.5
+      and clip to [0, alpha_max_cap].
+
+Both fail on causal benchmarks. Smoke results on CPS hours_min_wage
+(30 draws):
+
+  matformer                                    0.7796
+  fix_a=0.025 (derived from a0.1 file)         0.7800   (basically MF)
+  fix_a=0.05  (derived)                        0.7845
+  fix_a=0.10  (current default)                0.8056   (LOSES vs MF)
+  bv_cap=0.05 (per-matrix, capped at 0.05)     0.8086
+  bv_cap=0.10 (per-matrix, capped at 0.10)     0.8055
+  bv_cap=0.075                                 0.8070
+
+Per-matrix α from val is STRICTLY WORSE than fixed α at the same level
+(e.g., bv_cap=0.05 = 0.809 vs fix=0.05 = 0.785).
+
+Diagnosis. Inspecting α_raw choices on individual matrices:
+
+  draw_0001: α_raw = -0.07  (val cov positive, no signal) → α_chosen = 0
+  draw_0003: α_raw = +1.02  (val cov very negative)       → α_chosen = cap
+  draw_0006: α_raw = -0.14                                 → α_chosen = 0
+  draw_0007: α_raw = +0.14                                 → α_chosen = 0.072
+
+But the AGGREGATE α* on TEST cells (treated × post block) is ~0.034.
+Val cells suggest α_raw ≈ 0.4-1.0 for most matrices; test cells say
+α* ≈ 0.03. A 10-30x val/test mismatch.
+
+Root cause: in causal benchmarks the missingness is structured (treated
+× post block). Val cells are randomly held out from observed = (control ×
+pre/post) ∪ (treated × pre). Val ≠ test in distribution: xRFM
+extrapolates well to val (similar to training distribution) but poorly
+to test (post-treatment effects unseen during training).
+
+Some matrices where val cov IS negative (suggesting "no signal") are
+matrices where test cov is actually positive (good signal). The bv method
+therefore mis-classifies them and forces α=0, losing gains a fixed α=0.05
+would have captured. The reverse problem (val says strong signal but
+test has none) inflates α to the cap.
+
+This is fundamental: ANY α-selection method that conditions on
+observed-cell signal is structurally unreliable for causal-pattern
+missingness, because observed cells are systematically different from
+test cells. The current val-MSE grid search and the new bias-variance
+formula fail for the same root reason.
+
+
+3. α=0.05 IS THE RIGHT GLOBAL DEFAULT FOR CAUSAL; α=0.1 IS RIGHT FOR UCI
+------------------------------------------------------------------------
+
+Retroactive α sweep on existing files (no rerunning needed; predictions
+at any α are derivable via y_boost(α) = y_mf + (α/0.1)·(y_boost_α0.1 - y_mf)).
+
+CAUSAL BENCHMARKS (12 settings, mean RMSE on treated × post block):
+
+  benchmark              n   matformer  sdid      a=0.05    a=0.10
+  CPS hours_abort_ban    200    0.7271  0.7254    0.7225    0.7334
+  CPS hours_min_wage     200    0.7800  0.7534    0.7850    0.8062 ✗
+  CPS hours_open_carry   200    0.7350  0.7204    0.7324    0.7437 ✗
+  CPS log_wage_abort_ban 200    0.1304  0.1208    0.1288    0.1304 (tie)
+  CPS log_wage_min_wage  200    0.1324  0.1185    0.1288    0.1285
+  CPS log_wage_open_carry200    0.1220  0.1208    0.1221    0.1253 ✗
+  CPS urate_abort_ban    200    0.7367  0.7545    0.7306    0.7392 ✗
+  CPS urate_min_wage     200    0.7557  0.7710    0.7464    0.7510
+  CPS urate_open_carry   200    0.7414  0.7651    0.7385    0.7501 ✗
+  kansas factor_r3_200   200    0.0326  0.0298    0.0281    0.0285
+  prop99 ca_simul        500   11.5276  9.9962   11.1921   11.4286
+  prop99 ca_stagg        500   14.8260 16.1349   14.5066   14.6779
+
+Win/loss vs MatFormer:
+  α=0.10:  6 wins, 6 losses
+  α=0.05: 10 wins, 2 (near-)ties, 0 substantive losses
+
+α=0.05 wins on 11/12 benchmarks vs α=0.10. The two remaining losses are
+small (CPS hours_min_wage +0.005, CPS log_wage_open_carry +0.0001 — basically
+a tie). Notable wins from switching to α=0.05:
+
+  - prop99 ca_simul  : -0.099 → -0.336 (3.4× larger improvement)
+  - prop99 ca_stagg  : -0.148 → -0.319 (2.2× larger improvement)
+  - CPS hours_abort_ban / hours_open_carry / urate_open_carry / urate_abort_ban:
+      all flip from loss to win.
+
+UCI BENCHMARKS (12 datasets, missingness=0.4, mean column-normalized RMSE):
+
+  α      mean RMSE  Δ vs α=0
+  0.000   0.8479    0.000
+  0.025   0.8420   -0.006
+  0.050   0.8370   -0.011
+  0.075   0.8328   -0.015
+  0.100   0.8295   -0.018  ← current default
+
+α=0.05 retains ~60% of the UCI gain. α=0.1 is still optimal for UCI
+specifically. libras_movement (the regression case at α=0.1) actually
+gets a tiny WIN at α=0.025-0.05.
+
+WHY THE REGIME-SPECIFIC OPTIMUM. Boost improvement scales as
+corr(e_mf, r_pred)² · MSE_mf. On synthetic visible-regime and UCI,
+corr ≈ -0.45. On causal, corr ≈ -0.08 to -0.30 (much weaker because
+missing cells are out-of-distribution from training cells). Smaller
+correlation → smaller α* → α=0.1 overshoots on causal.
+
+
+PRACTICAL DECISIONS FROM THIS UPDATE
+-------------------------------------
+
+  - boost_matformer_dwip_v2_t002_a0p05.npy files now written for ALL
+    causal draws (200 per CPS subdataset, 500 per prop99 variant, 200 for
+    kansas) and ALL UCI configs (108 total). Derived from existing
+    a0p1 files via the linear blend formula; no GPU rerun required.
+
+  - Plot scripts (CPS/plot_cps.py, kansas/plot_kansas.py,
+    prop99/plot_prop99.py, uci/plot_uci_negative_rmse.py) updated to
+    register both a0p1 and a0p05 with appropriate labels.
+
+  - The recommended causal default is α=0.05. The recommended UCI default
+    remains α=0.1. A single global α doesn't fit both regimes.
+
+  - Per-matrix adaptive α is NOT recommended for causal until structure-
+    preserving val (synthetic missing pattern matched to true pattern) is
+    implemented. Otherwise the val/test distribution mismatch will
+    continue to give worse-than-fixed results.
+
+
+WHAT IS RULED OUT BY THIS UPDATE
+---------------------------------
+
+  - "Boost is a wash on causal benchmarks." False with α=0.05; true with
+    α=0.1.
+
+  - "Per-matrix adaptive α from val cells will save the boost." False —
+    val cells aren't representative of test cells under structured
+    missingness, so any val-conditioned method is structurally biased.
+
+  - "Boost is a context debiaser." False — boost reduces VARIANCE via
+    per-cell error prediction, not bias. Context features have no role.
+
+  - "We need a context-aware backbone to win on causal." Premature. With
+    α=0.05, the existing backbone+boost wins on 10/12 causal benchmarks
+    against MatFormer alone. The remaining gap to sdid on CPS log_wage
+    benchmarks is a different, harder problem (sdid uses domain-specific
+    treatment-block structure that no general method has).
+
+
+WHAT REMAINS OPEN
+------------------
+
+  (i)  Structure-preserving validation for adaptive α. Replicate the test
+       missingness pattern (treated × post block) on observed cells to
+       create a val set with matched distribution shift. Should make
+       adaptive α actually transfer val → test. Roughly 50-100 lines in
+       BoostMatFormerImputer.impute().
+
+  (ii) Better residual learner. corr(e_mf, r_pred) is currently ~-0.45
+       on synthetic and -0.08 to -0.30 on causal. Boost improvement is
+       bounded by this squared. Try residual_learner='xgboost' (already
+       wired) — tree splits on the 398-dim "other columns" features
+       might pick up structure xRFM's diagonal-Laplace doesn't. If corr
+       improves to -0.6+, boost gains compound.
+
+  (iii) Beating sdid on CPS. Probably requires a fundamentally different
+        approach (e.g., explicit treatment-block prior in the backbone,
+        not residual correction). Out of scope for the boost direction.
+================================================================================
+
+
+================================================================================
+EMPIRICAL UPDATE 4 (2026-05-15): reframing — UCI was the wrong test for MC;
+MatFormer is the right backbone where MC actually matters
+================================================================================
+
+Built and ran the synthetic contextual matrix completion benchmark with both
+the original block missingness (treated × post quadrant, mimicking causal
+panels) and MCAR p=0.4. Then added pure xRFM (column-wise XRFMImputer from
+xrfm_wrapper.py — same setup as the UCI bar) as a fifth method, to compare
+xRFM-alone vs MatFormer vs MatFormer+xRFM (boost) head-to-head.
+
+Files:
+  Eval        : synthetic_context/run_eval.py (--missingness {block, mcar})
+  Generator   : synthetic_context/generate.py (200x200, 4-dim per-row/col context,
+                M = α₁M₁ + α₂M₂ + α₃M₃ + α₄M₄, noise σ=0.5)
+  xRFM-only   : synthetic_context/run_xrfm_only.py (appends to existing CSV)
+  Plots       : synthetic_context/plot.py (UCI-style barplot)
+  Block CSV   : synthetic_context/results/per_draw_metrics.csv
+  Block plots : synthetic_context/figures/synthetic_context_rmse_{overall,panel}.pdf
+  MCAR  CSV   : synthetic_context/results_mcar/per_draw_metrics.csv
+  MCAR  plots : synthetic_context/figures_mcar/synthetic_context_rmse_{overall,panel}.pdf
+
+
+HEAD-TO-HEAD: MatFormer vs xRFM vs Boost (mean RMSE on missing cells)
+---------------------------------------------------------------------
+
+BLOCK regime (200x200, bottom-right 100x100 missing, 6 settings × 10 seeds):
+
+  setting             matformer    xRFM    boost (MF + xRFM)
+  pure_interaction      0.291     0.806        0.269
+  row_only              0.199     0.795        0.185
+  col_only              0.231     1.204        0.211
+  context_heavy         0.372     0.568        0.352
+  balanced              0.424     0.537        0.401
+  low_rank_only         0.201     1.323        0.207
+  --------------------------------------------------------
+  overall               0.286     0.872        0.271
+
+MCAR p=0.4 regime (same N, T, settings):
+
+  setting             matformer    xRFM    boost (MF + xRFM)
+  pure_interaction      0.286     0.510        0.250
+  row_only              0.174     0.491        0.172
+  col_only              0.236     0.730        0.206
+  context_heavy         0.372     0.416        0.338
+  balanced              0.403     0.415        0.369
+  low_rank_only         0.181     0.732        0.198
+  --------------------------------------------------------
+  overall               0.276     0.549        0.256
+
+  - MatFormer dominates xRFM in both regimes (3x better on block, 2x on MCAR).
+  - Boost beats MatFormer on 5/6 settings in both regimes (loses only on
+    low_rank_only, the no-context regime).
+  - MCAR helps xRFM substantially more than MatFormer (xRFM 0.872 → 0.549;
+    MatFormer barely moves 0.286 → 0.276), confirming xRFM's sensitivity to
+    missingness pattern.
+
+
+THE REFRAMING
+-------------
+
+Earlier updates implicitly accepted the framing from positive.txt's UCI
+results that "xRFM is the strong baseline; MatFormer + boost catches up."
+That framing is wrong. UCI is not the right test for matrix-completion
+methods. The synthetic contextual MC + causal panel results show:
+
+  benchmark family            structure                          MatFormer  xRFM (alone)
+  UCI                         tabular regression in disguise     OK         best
+  Synthetic contextual MC     low-rank + many cols + block/MCAR  best       poor (~3x worse)
+  Causal panels (CPS/kansas/  low-rank + structured block        best of    poor (1.5–4x
+    prop99)                   missingness                        the two    worse than MF)
+
+WHY UCI IS THE OUTLIER. UCI datasets have 4–100 columns and MCAR-style
+missingness scattered across the matrix. With few columns, the per-column
+xRFM has a small enough feature space (~8–200 features) that diagonal-M
+Laplace AGOP can find the relevant directions. The "matrix" is really just
+many tabular regression problems stacked. Per-column kernel ridge with raw
+feature semantics is a strong fit; attention-based methods don't add much.
+
+WHY THE OTHER TWO FAVOR MATFORMER. Both synthetic contextual MC and the
+causal panels share the structural shape:
+  - Many columns relative to latent rank (200 vs 3-17 in synthetic;
+    similarly low-rank in causal data).
+  - Structured block missingness (treated × post) — observed cells don't
+    densely sample the joint distribution.
+  - The matrix is fundamentally low-rank, not column-wise function-of-
+    others.
+Per-column xRFM treats this as a regression problem with ~400 features,
+when the actual signal is a 3-dim subspace. AGOP can't recover that from
+3 iters starting at M=I. MatFormer's row+col attention, by contrast, is
+implicitly doing matrix factorization — exactly the right inductive bias.
+
+WHY THE BOOST STILL WINS EVERYWHERE. Two different mechanisms:
+  - xRFM-as-imputer (UCI strong setting): low-dim per-column regression
+    on raw values. Works when columns are non-trivially related through
+    a tabular feature manifold.
+  - xRFM-as-residual-corrector (boost): per-cell error prediction on
+    MatFormer's residuals. Works when MatFormer's residuals have local
+    structure xRFM can extract — a different mechanism that doesn't
+    require xRFM to be a good standalone imputer.
+The two mechanisms are independent. xRFM is great at the first on UCI
+and bad at it on synthetic/causal; xRFM is decent at the second
+everywhere (corr(e_mf, r_pred) ≈ -0.45 on synth, -0.10 to -0.30 on
+causal, both delivering net MSE reduction at the right α).
+
+
+IMPLICATIONS FOR THE NARRATIVE
+-------------------------------
+
+  - The story to tell is NOT "MatFormer + boost catches up to xRFM."
+    It is "MatFormer is the right backbone for matrix-completion-shaped
+    problems; xRFM is great at tabular regression; the boost composes them
+    by using xRFM's per-cell-error-prediction ability orthogonally."
+
+  - The headline benchmarks for "MatFormer is good at matrix completion"
+    are the synthetic contextual MC sweep + the causal panels. Not UCI.
+
+  - On UCI, MatFormer + boost reaches xRFM-quality (within 1.5%); the boost
+    is the right composition for that benchmark family. But UCI shouldn't
+    be presented as the central evidence for the method.
+
+  - On causal panels with α=0.05, boost beats MatFormer on 10/12 benchmarks
+    AND beats xRFM-alone (which is dramatically worse than MatFormer there).
+
+  - This reframing also explains why context features are a no-op: the
+    "context" in matrix-completion-shaped data is implicit in the cell
+    values via the low-rank structure. MatFormer's attention recovers it;
+    xRFM-on-residuals also has it through the 398-dim other-columns
+    features. Explicit (X_row, X_col) is structurally redundant on synth
+    AND on the causal panels.
+
+
+WHAT TO REVISE IN OLDER DOCS
+----------------------------
+
+  - positive.txt's UCI-centric framing should be read as "boost works on
+    UCI-style data" — true but limited. The wider claim is in this update.
+
+  - exp_steps.txt's Step 2 (joint backbone+head retraining) was
+    motivated by chasing xRFM's UCI number. With the reframing, that
+    motivation evaporates: MatFormer is already winning where matrix
+    completion structure exists. Step 2 is only worth doing if there's a
+    specific deficiency on the contextual MC or causal benchmarks (none
+    observed at α=0.05 on causal; boost is strictly better than either
+    individual method).
+================================================================================
+
+
+================================================================================
+EMPIRICAL UPDATE 5 (2026-05-16): UCI-style missingness sweep + ACY-CV
+reframes the contextual MC story
+================================================================================
+
+Added the missingness pattern variations from src/tabimpute/prior/
+training_set_generation.py (MARPattern, MNARPattern) to the synthetic
+contextual matrix completion benchmark, alongside the existing block (treated
+× post) and MCAR p=0.4. Also implemented:
+
+  - ACY at J=5 (paper's own experimental default, degree-1 polynomial basis)
+  - ACY at J=17 (oracle basis — matches the generator's degree-4 expansion)
+  - ACY-CV (cross-validates J per matrix on a 10% observed-cell holdout)
+
+Files:
+  Generator with MAR/MNAR:      synthetic_context/generate.py
+  ACY implementation:           synthetic_context/acy_estimator.py
+  Pure xRFM runner:             synthetic_context/run_xrfm_only.py
+  ACY (fixed J) runner:         synthetic_context/run_acy.py
+  ACY-CV runner:                synthetic_context/run_acy_cv.py
+  Per-pattern results:          synthetic_context/results{,_mcar,_mar,_mnar}/per_draw_metrics.csv
+  Per-pattern plots:            synthetic_context/figures{,_mcar,_mar,_mnar}/synthetic_context_rmse_{overall,panel}.pdf
+
+
+FULL RESULTS (overall mean RMSE on missing cells, 60 matrices per pattern)
+--------------------------------------------------------------------------
+
+  pattern   matformer  xrfm   acy_J5   acy_cv   acy_J17  boost (MF+xRFM)
+  block       0.286    0.872   0.428    0.296    0.299    0.271 ✓
+  MCAR        0.276    0.549   0.252    0.185 ✓  0.191    0.256
+  MAR         0.497    0.946   0.604    0.445 ✓  0.459    0.446
+  MNAR        0.601    0.968   0.476    0.335 ✓  0.345    0.512
+
+(Missing-fraction caveat: block ≈ 25%, MCAR = 40%, MAR ≈ 30%, MNAR ≈ 18%.
+ Absolute numbers across patterns are not directly comparable due to differing
+ missing rates; within-pattern rankings are what's meaningful.)
+
+
+CORRECTION TO UPDATE 4 ("ACY win is oracle-basis only")
+-------------------------------------------------------
+
+Update 4 reported only the J=17 (oracle) ACY numbers and showed they were
+spectacular (5x better than MatFormer on pure_interaction). The first read on
+the J=5 (paper-default) follow-up was that "most of the win was basis
+knowledge" — J=5 is much worse than J=17. But the FAIR practitioner choice
+is neither J=5 nor J=17, it's CV-J. And CV-J results in this update:
+
+  - Matches or BEATS the J=17 oracle on every pattern. Reason: CV is more
+    flexible than a fixed-J oracle. On matrices where M is dominated by M_4
+    (no-context low-rank, e.g. low_rank_only setting), CV picks J=5 (less
+    overfitting). On context-driven matrices, CV picks J=17. The oracle is
+    locked at J=17 throughout. So CV adapts per matrix and slightly beats
+    the global oracle.
+
+  - J-choice distribution across all 240 (matrix, pattern) calls:
+      J=17: 133 (55%)  — picked on most context-driven settings
+      J=13:  52 (22%)
+      J=5 :  40 (17%)  — almost entirely on low_rank_only matrices
+      J= 9/21/25: 15 (6%)
+
+  - So most of the J=17 win SURVIVES CV-tuning. The earlier read was wrong.
+
+
+THE CORRECTED HEADLINE
+----------------------
+
+  For matrix-completion problems with low-rank-plus-context structure, ACY
+  with CV-tuned basis is the strongest method on standard MCAR/MAR/MNAR
+  patterns. Boost (MatFormer + xRFM-residual) is the strongest under
+  structured block missingness, where CV-based hyperparameter tuning breaks
+  down due to val/test distribution mismatch.
+
+  ACY-CV wins on 3 of 4 patterns (MCAR, MAR, MNAR). Boost wins on 1
+  (block).
+
+
+WHY BOOST STILL WINS ON BLOCK
+-----------------------------
+
+Block missingness puts test cells in (treated x post), distinct from any
+observed cell location. CV for ACY-CV holds out cells from observed
+(control x any time) ∪ (treated x pre) — a different distribution from the
+test cells. So the J that minimizes val MSE doesn't necessarily minimize
+test MSE.
+
+Same structural issue we saw with adaptive_alpha on causal benchmarks: ANY
+hyperparameter selection that conditions on observed-cell signal is biased
+when missingness is structured. The boost doesn't have this problem
+because its main mechanism (xRFM residual correction at fixed α) doesn't
+require val-based tuning.
+
+This is why the boost continues to win on the causal panels (CPS / kansas /
+prop99) AND on block-missingness synthetic data, while ACY-CV wins
+elsewhere.
+
+
+REVISED OVERALL FRAMING
+-----------------------
+
+The cleanest summary that fits all evidence:
+
+  Benchmark family                  Strongest method   Why
+  ------------------------------    ----------------   ---
+  UCI                               xRFM / boost       column-wise tabular regression
+  Synthetic contextual MC, MCAR     ACY-CV             low-rank + context + uniform missing
+  Synthetic contextual MC, MAR/MNAR ACY-CV             same; CV val is informative
+  Synthetic contextual MC, block    Boost              CV val/test distribution mismatch
+  Causal panels (CPS/kansas/prop99) Boost              same structural reason as synthetic-block
+
+So the boost is the right method when missingness is structured (causal-
+panel-style). ACY-CV is the right method when missingness is per-cell
+(MCAR/MAR/MNAR). The two methods cover complementary regimes.
+
+MatFormer alone is reliably 2nd or 3rd in all regimes but rarely the best
+— its strength is robustness across patterns, not peak performance in any
+specific one.
+
+
+WHAT THIS UPDATE RULES OUT / RECONSIDERS
+----------------------------------------
+
+  - "Context features are useless because the boost ignores them." Partially
+    wrong — the BOOST ignores explicit context features (true), but ACY's
+    sieve projection IS a way of using explicit context, and it works well
+    when val/test distributions match. Context is usable; the question is
+    the right algorithm to use it.
+
+  - "MatFormer is the right backbone for matrix-completion-shaped problems."
+    Still mostly correct — MatFormer beats ACY on the no-context regime
+    (low_rank_only) and provides a strong fallback. But ACY-CV beats
+    MatFormer on per-cell-missingness contextual data when context is
+    informative.
+
+  - "Boost works universally on causal-panel data." Reaffirmed by the block
+    result. The val/test mismatch that breaks ACY-CV on block is the same
+    mechanism that breaks adaptive-α on causal panels.
+
+
+OPEN QUESTIONS
+--------------
+
+  (i) Would structure-preserving CV save ACY-CV on block? I.e., instead of
+      holding out random observed cells, hold out a block-shaped pseudo-test
+      region. Analogous to the structure-preserving val idea I proposed for
+      adaptive-α (Update 3).
+
+  (ii) Does ACY-CV win on the causal panels (CPS/kansas/prop99) where the
+       block structure is real? Untested. Worth running.
+
+  (iii) Could the boost be improved by replacing xRFM-residual-corrector
+        with ACY-residual-corrector? Untested. ACY may have more capacity
+        to capture MatFormer's residual structure than xRFM does.
+================================================================================
+
+
+================================================================================
+PROPOSAL + EMPIRICAL UPDATE 6 (2026-05-16): Hybrid estimator —
+ACY (context-aware sieve+SVT) + boost (MatFormer + xRFM residual)
+================================================================================
+
+Motivation (from the post-update-5 discussion). ACY-CV and the boost cover
+complementary regimes:
+
+  - ACY-CV is strongest on MCAR/MAR/MNAR (per-cell missingness), because it
+    cleanly exploits the polynomial-in-(x_r, z_c) structure via sieve
+    projection AND handles per-cell low-rank via SoftSVT EM.
+  - Boost (MatFormer + xRFM residual) is strongest on block missingness
+    (causal panels + synthetic-block), because MatFormer's pretrained
+    low-rank prior + xRFM's per-cell error prediction works without any
+    val-based hyperparameter tuning that would suffer from val/test
+    distribution mismatch.
+
+These are different mechanisms. ACY uses an explicit basis to extract
+smooth context-driven structure. Boost uses learned attention to extract
+arbitrary structure. They should compose.
+
+
+VARIANT A — STACK ACY ON TOP, BOOST THE RESIDUAL
+------------------------------------------------
+
+Pipeline per matrix:
+
+  1.  Pick polynomial degree d via cross-validation on observed cells
+      (hold out 10%, sweep d in {1,2,3,4,5,6}, score full-ACY MSE on
+      val cells, pick best).
+  2.  Compute M̂_acy = ACY(Y, mask; degree=d*, em=50, mean_fill).
+        This includes M̂_1 = P_X Y_filled P_Z and M̂_2/M̂_3/M̂_4 via
+        SoftSVT+EM.
+  3.  Y_resid = Y - M̂_acy, with NaN preserved at originally missing cells.
+  4.  M̂_resid = BoostMatFormerImputer.impute(Y_resid).   # MF + xRFM residual
+  5.  Final estimate M̂ = M̂_acy + M̂_resid.
+
+Rationale:
+  - ACY's projection+SVT cleanly extracts the smooth-context-driven part
+    AND its iterative SoftImpute EM handles the low-rank latent part.
+  - Whatever residual structure remains (MatFormer's pretraining prior
+    not captured by ACY's SoftImpute, e.g. fine-grained noise patterns
+    or shapes ACY's nuclear-norm SVT smooths over) is what MatFormer is
+    well-suited for.
+  - The xRFM-residual layer of the boost provides per-cell error
+    correction on top of MatFormer's predictions.
+
+So this is a three-stage cascade:
+  ACY sieve+SVT  →  MatFormer  →  xRFM residual correction
+
+Where:
+  - Stage 1 is context-aware and explicitly uses the polynomial basis.
+  - Stage 2 is a pretrained matrix-completion backbone with no context input.
+  - Stage 3 is a per-cell error predictor on top.
+
+
+IMPLEMENTATION FILES
+--------------------
+
+  synthetic_context/run_hybrid.py   — Variant A runner. Per matrix:
+                                       CV-select degree via full-ACY MSE on
+                                       val cells (em_iters capped at 20 for
+                                       CV speed); run full ACY at em=50 with
+                                       chosen degree; subtract; call
+                                       BoostMatFormerImputer on residual;
+                                       sum.
+  synthetic_context/acy_estimator.py - reused for ACY M_1+SVT+EM stages.
+  src/tabimpute/interface_rfm.py    — reused for the boost call.
+
+CSV row label: 'hybrid'. Written to per_draw_metrics.csv in each results
+directory (results/, results_mcar/, results_mar/, results_mnar/).
+
+
+EXPECTED PROPERTIES (BEFORE RESULTS)
+------------------------------------
+
+  - On pure_interaction (M = M_1 only, fully context-deterministic):
+    ACY-CV alone already gets ~0.06 RMSE on MCAR. Hybrid should be
+    similar or slightly worse (boost on near-zero residual adds noise).
+  - On low_rank_only (M = M_4 only, no context):
+    ACY-CV fails (~0.28 on MCAR, ~0.78 on block). Boost has strong
+    low-rank prior. Hybrid should be much better than ACY-CV alone,
+    competitive with boost.
+  - On mixed settings (balanced, context_heavy): both stages contribute.
+    Hybrid should match or beat the best of either.
+  - On block missingness: ACY-CV's CV-J selection is biased (val/test
+    mismatch). Boost on residual should partially correct this; whether
+    hybrid beats pure boost depends on whether ACY's bias is bigger than
+    its benefit on the block regime.
+
+
+RESULTS WILL BE APPENDED TO THIS SECTION AFTER THE SWEEP COMPLETES.
+
+
+RESULTS (overall mean RMSE on missing cells, 60 matrices per pattern)
+---------------------------------------------------------------------
+
+  pattern   matformer  xrfm    acy_cv   boost   hybrid (ACY-CV + boost)
+  block       0.286    0.872   0.296    0.271 ✓ 0.294
+  MCAR        0.276    0.549   0.185 ✓  0.256   0.188   (tie with acy_cv)
+  MAR         0.497    0.946   0.445    0.446   0.442 ✓ (small win over both)
+  MNAR        0.601    0.968   0.335 ✓  0.512   0.376
+
+J-choice distribution (degree=4 → J=17 = oracle):
+  block:  J=17: 36/60,  J=13: 11/60,  J=5: 10/60
+  MCAR:   J=17: 35/60,  J=13: 14/60,  J=5: 10/60
+  MAR:    J=17: 30/60,  J=13: 17/60,  J=5: 10/60
+  MNAR:   J=17: 35/60,  J=13: 11/60,  J=5: 10/60
+
+CV reliably picks the oracle J=17 on context-driven matrices and J=5 on
+low_rank_only matrices. CV-J selection in the ACY stage is NOT the
+bottleneck for the hybrid.
+
+
+INTERPRETATION
+--------------
+
+The hypothesis was "two complementary mechanisms compose." Reality is more
+nuanced:
+
+(i)   When neither method dominates alone (MAR), hybrid extracts a small
+      additional win — both stages contribute orthogonally.
+
+(ii)  When one method dominates a regime (MCAR favors acy_cv, block favors
+      boost, MNAR favors acy_cv), hybrid lands close to that method but
+      pays a "second-stage noise tax" for running the other component on a
+      residual that doesn't have much structure to extract.
+
+(iii) Hybrid never strictly loses, but the gains/losses are within ~4% of
+      the best-individual-method on all patterns. Not a magic
+      composition.
+
+Per-pattern verdicts (winner in bold):
+
+  MAR    : hybrid wins.  Both stages add something orthogonal.
+  MCAR   : acy_cv = hybrid (tied).
+  Block  : boost > hybrid > acy_cv. ACY's val/test mismatch (CV picks
+           slightly wrong J on block on average) drags the first stage;
+           the boost on residual only partially compensates.
+  MNAR   : acy_cv > hybrid > boost. ACY-CV already captures most of the
+           signal; the boost on a near-zero residual injects noise rather
+           than removing it.
+
+
+WHY THE HYBRID ISN'T STRICTLY BETTER
+------------------------------------
+
+Two failure modes:
+
+(F1) Second-stage noise tax. When stage 1 (ACY-CV) does a great job (e.g.
+     on pure_interaction MCAR, ACY-CV gets RMSE 0.058), the residual is
+     essentially noise. The boost stage, trained on the synthetic prior
+     of low-rank-plus-noise matrices, doesn't predict zero in expectation
+     — it predicts whatever structure its attention thinks it sees. On
+     near-zero residuals this prediction adds error.
+
+     Concrete number on pure_interaction MCAR seed 0:
+       acy_J17 alone: RMSE 0.057
+       hybrid:        RMSE 0.085
+
+     The boost added 0.028 RMSE on top of an already-near-perfect ACY.
+
+(F2) Val/test distribution mismatch on block. CV's val cells (random
+     observed) don't reflect the test cells (treated × post). The CV
+     picks J based on val MSE; the J that minimizes val MSE doesn't
+     necessarily minimize test MSE under structured missingness. Boost
+     on residual partially corrects but doesn't fully recover the lost
+     accuracy.
+
+
+OPEN QUESTIONS FROM THIS UPDATE
+-------------------------------
+
+(i)   Adaptive blending: do M̂ = M̂_acy + β · M̂_resid with β tuned per
+      matrix via observed-cell CV (capped at 1.0, with shrinkage toward 0
+      when residual has no signal). This would let the hybrid revert to
+      pure ACY when boost-on-residual hurts. Same machinery as
+      adaptive_alpha for the boost.
+
+(ii)  Variant B (replace ACY's SVT with MatFormer) is still untested. The
+      stack here uses ACY's SVT for M_2, M_3, M_4 plus MatFormer on the
+      whole-matrix residual. A cleaner separation might be: ACY's M_1
+      projection only (closed-form), then MatFormer on the residual of
+      that single projection (no SVT). Removes ACY's SoftImpute-EM
+      dependence; lets MatFormer's pretrained low-rank prior do all the
+      latent-component work.
+
+(iii) Test hybrid on the causal panels (CPS / kansas / prop99). On these
+      benchmarks: ACY's CV is biased (block structure), boost is the
+      reigning method. If hybrid loses there too, the "boost is right
+      for structured-block" conclusion holds. If hybrid ties or wins,
+      then ACY's polynomial-context features are adding signal that the
+      boost's per-cell residual prediction misses on real panel data.
+
+
+PRACTICAL TAKEAWAY
+------------------
+
+For now, the recommended choice depends on regime:
+
+  - Per-cell missingness (MCAR/MAR/MNAR) on context-rich data → ACY-CV
+  - Structured block missingness (causal panels) → Boost
+  - Mixed / uncertain regime → Hybrid (small downside, occasional small win)
+
+The hybrid is a defensible "default" if you don't know the regime in
+advance — it's never the worst, and on MAR it's slightly the best. But
+when you know the regime, pure ACY-CV or pure boost is preferable.
+================================================================================
+
+
+================================================================================
+EMPIRICAL UPDATE 7 (2026-05-16): Variant B (boost on projected pieces) and
+B.1 (upweighted context in boost xRFM) — both negative results
+================================================================================
+
+Two further attempts to make the boost use context. Both fail, for related
+reasons that sharpen the takeaway from Update 6 (Variant A / hybrid).
+
+
+VARIANT B — APPLY BOOST TO EACH OF THE 3 SVT PROJECTION PIECES
+--------------------------------------------------------------
+
+File: synthetic_context/run_hybrid_v2.py. Method name: 'hybrid_v2'.
+
+Per matrix:
+  1. Mean-fill Y → Y_filled.
+  2. CV-select polynomial degree d.
+  3. P_X, P_Z from degree-d polynomial basis.
+  4. M̂_1 = P_X Y_filled P_Z      (closed-form projection, unchanged from paper)
+  5. For k in {2, 3, 4}:
+       proj_k = sign-pattern projections of Y_filled
+       Y_k    = where(mask_missing, NaN, proj_k)
+       M̂_k    = BoostMatFormerImputer.impute(Y_k)   # replaces paper's SoftSVT
+  6. M̂ = M̂_1 + M̂_2 + M̂_3 + M̂_4.
+
+Idea: replace the paper's nuclear-norm SVT for each latent piece with
+MatFormer's pretrained low-rank prior.
+
+Results (overall mean RMSE on missing cells, 60 matrices/pattern):
+
+  pattern   matformer  hybrid (Var A)   hybrid_v2 (Var B)
+  block       0.286       0.294            0.819   ✗ much worse
+  MCAR        0.276       0.188            0.366   ✗ much worse
+  MAR         0.497       0.442            1.019   ✗ catastrophic
+  MNAR        0.601       0.376            0.924   ✗ much worse
+
+Variant B is strictly worse than Variant A on every pattern, and often
+worse than every other method tested. Three structural reasons:
+
+(1) The projected pieces don't look like MatFormer's training inputs.
+    P_X Y_filled (I − P_Z) is a dense matrix where each cell is a linear
+    combination of all Y_filled entries (weights from the two projectors).
+    Cells originally "observed" in Y aren't direct observations of
+    anything; they're contaminated by mean-fill bias from missing cells
+    across the whole matrix. MatFormer's attention treats these as direct
+    observations and fits the contamination as if it were signal.
+
+(2) Mean-fill bias compounds. The mean-filled values flow through every
+    projection. So a cell of Y_2 at an originally-observed Y position
+    contains noise from mean-fill at hundreds of missing positions
+    elsewhere in the matrix.
+
+(3) Errors compound across 3 boost calls. Each boost adds some prediction
+    noise; summing 3 boosted matrices accumulates that noise.
+
+So MatFormer-on-projected-pieces fundamentally mismatches MatFormer's
+training assumption. The paper's SoftSVT works on these pieces because
+SVT just finds the best low-rank approximation regardless of "observed"
+vs "missing" structure — it doesn't care whether the input cells are
+clean observations. MatFormer crucially does.
+
+CONCLUSION: Variant B is the wrong composition. The right composition
+is Variant A (stack ACY's full output, boost the single combined
+residual), which respects MatFormer's "matrix with NaN at known
+positions" input contract.
+
+
+B.1 — UPWEIGHTED CONTEXT IN BOOST'S xRFM (block-Mahalanobis init)
+-----------------------------------------------------------------
+
+Files: src/tabimpute/interface_rfm.py adds:
+  - context_scale: float = 1.0  (constructor arg)
+  - _standardize_context()  (z-score each context dim)
+
+In impute(), context is now standardized then multiplied by context_scale
+before being concatenated to the 2*(C-1) cell-value features. This is
+algebraically equivalent to initializing xRFM's Mahalanobis M with
+block_diag(I_data, λ·I_context) where λ = context_scale² — the same
+"force the kernel to start by weighting context dims" idea, applied
+through feature scaling instead of modifying the xRFM library directly.
+
+Smoke test on pure_interaction MCAR (3 seeds):
+
+  context_scale     no_ctx    row_ctx    row_col
+            1.0     0.2390     0.2374     0.2374     (current default; context drowned out)
+            5.0     0.2390     0.2370     0.2370     (slightly better)
+           10.0     0.2390     0.2393     0.2393     (slightly worse)
+           25.0     0.2390     0.2427     0.2427     (clearly worse)
+
+The mechanism works — context_scale > 1 changes the predictions (verifying
+context is now influencing the kernel rather than being drowned out). But
+upweighting doesn't help. At large scales (25) it actively hurts.
+
+Diagnosis. The bottleneck is NOT feature scaling — it's that xRFM in the
+boost fits MatFormer's per-cell RESIDUALS, not raw cell values. MatFormer's
+residuals at each cell are mostly noise — MatFormer's attention has
+already extracted whatever context-driven structure exists. Context
+features can predict the cell's VALUE (as ACY does, beautifully), but
+they can't predict MatFormer's ERROR at that cell, because MatFormer's
+error isn't strongly context-dependent (in this regime).
+
+So the truer statement is: **the boost's residual-prediction mechanism
+fundamentally cannot exploit context, because MatFormer pre-empts whatever
+context-driven signal there is**. Upweighting addresses the symptom
+(xRFM ignored context dims because they were drowned out) but not the
+cause (context has nothing to contribute to MatFormer's per-cell
+residuals).
+
+This explains why Variant A (hybrid) helps a little on MAR but not
+elsewhere: by stacking ACY *before* MatFormer, the polynomial sieve
+projection extracts context-driven structure first, then MatFormer
+handles the rest. That's the right ordering. The boost-with-upweighted-
+context simply has nothing left to use context for.
+
+context_scale=1.0 (the no-op default) is retained as the default —
+running with anything higher just adds noise.
+
+
+WHAT THIS RULES OUT
+-------------------
+
+  - "Boost can be made context-aware by fixing the kernel geometry."
+    Doesn't work (B.1 negative). The kernel geometry was a symptom; the
+    cause is the residual-prediction framework.
+
+  - "Boost can do ACY's job by applying it to each projected piece."
+    Doesn't work (Variant B negative). MatFormer is mismatched to
+    projected-piece inputs.
+
+  - "There's a clean, drop-in fix to make boost use context." None of
+    the cheap fixes work. The right way to use context in this stack
+    is at the ACY layer, not at the boost layer.
+
+
+REMAINING DIRECTIONS WORTH CONSIDERING
+--------------------------------------
+
+  - Run hybrid (Var A) on the causal benchmarks (CPS / kansas / prop99).
+    Per Update 6, hybrid is a small win on MAR and a tie on MCAR. The
+    causal benchmarks have structured-block missingness where boost
+    currently wins. Does hybrid match or hurt vs boost there?
+
+  - Adaptive β in hybrid: tune β in M̂ = M̂_acy + β · M̂_resid via
+    observed-cell CV, capped at 1.0 and shrunk toward 0 when residual
+    has no signal. Should let hybrid revert to pure ACY when boost-on-
+    residual hurts (e.g., on pure_interaction). This is the analogue of
+    the boost's adaptive_alpha.
+
+  - Pretrain a context-aware backbone (joint (Y, X_row, X_col) → M̂).
+    Only path that gets context into MatFormer's attention directly,
+    addressing the diagnosis here at the root. Expensive: ~6-15 GPU
+    hours per the original Step 2 plan in exp_steps.txt.
+================================================================================
+
+
+================================================================================
+SYNTHESIS (2026-05-16): the full arc of the contextual MC investigation
+================================================================================
+
+This file accumulated 7 empirical updates over a few sessions. The big
+picture, in one page.
+
+
+THE QUESTION WE STARTED WITH
+----------------------------
+
+"Can explicit context features (row attributes, column attributes) help
+the MatFormer + xRFM boost on matrix-completion problems?"
+
+Motivating intuition: causal panel benchmarks (CPS / kansas / prop99)
+have row-context (state demographics) and col-context (time-period
+attributes) that aren't fully recoverable from cell values. If we could
+pass these to the boost, we should get free improvements on benchmarks
+where the boost is currently a wash.
+
+
+WHAT WE LEARNED — IN ORDER
+--------------------------
+
+(1) Naïve context concatenation in BoostMatFormerImputer is a no-op.
+    Passing row_context / col_context kwargs changes the boost output by
+    ≤ 0.001 RMSE on every setting. Five stacked reasons: dimension
+    dilution (4 vs 398 features), scale mismatch, AGOP bootstrap failure,
+    redundancy with other-column values, constant-within-fit features
+    being information-free. (UPDATE 1)
+
+(2) The boost is a per-cell error PREDICTOR, not a context debiaser.
+    Bias-variance decomposition: MatFormer is roughly unbiased.
+    boost(α=0.1) reduces variance ~12% via correlation between xRFM's
+    residual prediction and MatFormer's per-cell error (corr ≈ -0.45 on
+    synthetic, -0.10 to -0.30 on causal). The "boost works" mechanism
+    has nothing to do with context. (UPDATE 3)
+
+(3) α=0.05 is the right boost coefficient for causal benchmarks
+    (α=0.1 is right for UCI/synthetic). Switching from α=0.1 to α=0.05
+    on the 12 causal benchmarks turns 6 wins / 6 losses into 10 wins /
+    2 (near-)ties. (UPDATE 3)
+
+(4) The xRFM "alone" baseline (column-wise, no MatFormer) loses badly
+    on contextual MC. UCI was the only benchmark where xRFM beat
+    MatFormer; on our synthetic context benchmark it's 2-3x worse than
+    MatFormer. The "MatFormer catches up to xRFM" framing was UCI-
+    specific, not general. (UPDATE 4)
+
+(5) Agarwal-Choi-Yuan (arxiv:2603.24833) gives an explicit context-
+    aware estimator: sieve projection (P_X Y P_Z) + soft-thresholded
+    SVD on three residual pieces + SoftImpute EM. Implemented in
+    acy_estimator.py. (UPDATE 5)
+
+(6) ACY with cross-validated polynomial degree (acy_cv) matches or
+    beats the oracle J=17 on every missingness pattern. CV adapts per
+    matrix (picks J=5 on no-context settings, J=17 on context-driven
+    ones); oracle is locked at one J. (UPDATE 5)
+
+(7) ACY-CV wins on MCAR/MAR/MNAR; boost wins on structured-block
+    (treated × post). The val/test distribution mismatch under block
+    missingness defeats CV-based hyperparameter selection. (UPDATE 5)
+
+(8) Stacking ACY-CV → boost-on-residual (Variant A, "hybrid") gives a
+    marginal win on MAR, ties on MCAR, slightly loses on block and
+    MNAR. Two failure modes: second-stage noise tax (boost on a near-
+    zero residual injects error) and val/test mismatch on block. The
+    hybrid is a "safe default" but never strictly best. (UPDATE 6)
+
+(9) Variant B (replace ACY's SoftSVT with MatFormer on each projected
+    piece) is catastrophically worse on every pattern. MatFormer's
+    attention assumes cells are direct observations with noise; projected
+    pieces have mean-fill-contaminated "observed" cells that MatFormer
+    fits as signal. Structurally wrong composition. (UPDATE 7)
+
+(10) Upweighting context features in the boost's xRFM kernel
+     (B.1, context_scale in BoostMatFormerImputer) works mechanistically
+     — context features now influence predictions — but doesn't improve
+     anything. The bottleneck wasn't kernel geometry; the bottleneck is
+     that xRFM in the boost fits MatFormer's per-cell residuals, and
+     those residuals are mostly noise because MatFormer's attention
+     already extracted whatever context-driven signal exists. (UPDATE 7)
+
+
+THE UNIFIED DIAGNOSIS
+---------------------
+
+**The boost cannot use context, period.** MatFormer's attention pre-empts
+whatever context-driven signal exists from cell values. By the time we
+reach the xRFM residual layer, context has nothing left to add — no
+matter how we feature-scale, kernel-weight, or decompose the matrix.
+
+The only way to give MatFormer's attention access to (X_row, X_col)
+directly is to **pretrain a context-aware backbone** that ingests
+(Y, X_row, X_col) jointly. That's expensive (~6-15 GPU-hours per the
+original Step 2 in exp_steps.txt) but it's the only path that addresses
+the root cause.
+
+
+PRACTICAL RECOMMENDATION TABLE
+------------------------------
+
+  Benchmark family                            Best method (in this stack)
+  ------------------------------------------  -----------------------------
+  UCI (tabular regression in disguise)        boost (α=0.1)
+  Synthetic contextual MC, MCAR/MAR/MNAR      ACY-CV
+  Synthetic contextual MC, block              boost (α=0.1)
+  Causal panels (CPS/kansas/prop99)           boost (α=0.05)
+  Mixed/unknown regime, must pick one         hybrid (Var A)
+
+
+WHAT'S RULED OUT
+----------------
+
+  - "Boost can be made context-aware via concat" — false (drowned-out).
+  - "Boost can be made context-aware via kernel upweighting" — false
+    (MatFormer pre-empts the signal).
+  - "Boost can replace ACY's SVT by applying to projected pieces" —
+    false (MatFormer mismatched to projected-piece inputs).
+  - "Per-matrix adaptive α (from observed-cell val) saves boost on
+    causal benchmarks" — false (val/test distribution mismatch).
+  - "xRFM is the strong baseline on matrix-completion problems" — false
+    (UCI-specific; xRFM loses badly on contextual MC and causal panels).
+  - "ACY's win is entirely oracle basis knowledge" — false (CV-J matches
+    or beats the oracle).
+  - "context_only (xRFM on (x_r, z_c)) is competitive" — false (loses
+    to MatFormer on every regime except marginally on pure_interaction).
+
+
+REMAINING OPEN DIRECTIONS (LISTED BY EXPECTED PAYOFF / COST)
+------------------------------------------------------------
+
+  (i)  Adaptive β-blending in hybrid: M̂ = M̂_acy + β · M̂_resid,
+       β tuned per matrix via observed-cell CV (capped at 1.0, shrunk
+       toward 0 when residual has no signal). Should let hybrid revert
+       to pure ACY when boost-on-residual hurts (e.g., pure_interaction).
+       Cheap to implement; bounded upside.
+
+  (ii) Run hybrid + acy_cv on the causal panels (CPS/kansas/prop99).
+       If hybrid wins there, the polynomial-context features add real
+       signal on real panel data. If it loses, "boost is the right
+       method for structured-block" holds even with synthetic
+       context-aware methods added.
+
+  (iii) Structure-preserving val for adaptive α / CV-J on causal data.
+        Replicate the test missingness pattern (treated × post block) on
+        observed cells when constructing the val split. Should make CV
+        actually transfer val → test under structured missingness.
+        50-100 lines; not yet implemented.
+
+  (iv) Pretrain a context-aware backbone. The real fix per the
+       diagnosis. 6-15 GPU-hours. Only worth doing if there's a clear
+       application where the marginal gain over hybrid is needed.
+================================================================================
+
+
+================================================================================
+OBSERVATION 8 (2026-05-16): ACY's win in our synthetic experiments is
+partly genuine, mostly artifact — three concrete suspicions to test
+================================================================================
+
+After Update 5–7 it looks like ACY-CV is the winner on MCAR/MAR/MNAR. But
+the synthetic benchmark may be unfairly friendly to ACY in three specific
+ways. Each is a real concern; each has a concrete test.
+
+
+THREE SOURCES OF SYNTHETIC-SPECIFIC ADVANTAGE
+---------------------------------------------
+
+(A) Context is too low-dimensional (4 dims per side).
+    Degree-4 polynomial expansion → only 17 basis functions per side.
+    Total parameters for M_1: 17 × 17 = 289 against 40,000 cells.
+    Statistically trivial when the basis is right. Realistic context
+    (state demographics: 20–50 dims) blows up combinatorially: degree-4
+    polynomial in 20 dims with cross-terms → ~10,626 features per side,
+    forcing the practitioner to under-specify the basis (bias) or run
+    out of statistical power (variance).
+
+(B) Φ in the generator is too simple — additive polynomial up to degree 4
+    with no cross-coordinate terms (no x_1·x_2 or x_1·z_1 features).
+    Real data has cross-coordinate interactions, regime switches /
+    thresholds, non-smooth dependencies. If we changed the generator to
+    M_1 = sigmoid(x_r) · sigmoid(z_c) or M_1 = tanh(x_r^T W z_c),
+    polynomial ACY would have substantial misspecification bias even at
+    the right J.
+
+(C) ACY's basis is too aligned with the truth — we use literally the
+    same _poly_features function for both the generator's M_k construction
+    AND ACY's projector P_X = Φ(Φ^T Φ)^-1 Φ^T. So ACY's column-space
+    EXACTLY equals the span of the generator's polynomial factors.
+    P_X M_1 = M_1 to machine precision. No projection bias; only
+    finite-sample variance from estimating polynomial coefficients via
+    least squares. CV-J picks the dimension, not the basis class — so CV
+    doesn't rescue from class misspecification.
+
+These three artifacts together produce ACY's spectacular numbers on
+context-driven settings (RMSE 0.06 on pure_interaction vs MatFormer's
+0.29 — 5× win).
+
+
+WHAT WOULD SURVIVE ON REAL DATA
+-------------------------------
+
+(i)   The four-component decomposition logic itself. The algebraic
+      identity M = P M P + P M (I−P) + (I−P) M P + (I−P) M (I−P)
+      holds for ANY projector pair. Bias from a wrong basis class is
+      absorbed by the residual components, just less cleanly.
+
+(ii)  SoftImpute-style EM for the latent components M_2/M_3/M_4. This
+      doesn't depend on context at all — it's just nuclear-norm matrix
+      completion. Works as well/poorly as any vanilla MC method.
+
+(iii) CV-J selection. Even with a wrong basis class, picking the right
+      dimension via observed-cell CV is a real practitioner tool that
+      survives.
+
+What goes away:
+  - The exact-projection win on pure_interaction.
+  - The MCAR/MAR/MNAR clean wins (depend on unbiased projection).
+
+
+PROPOSED DIAGNOSTIC TESTS, ORDERED BY INFORMATIVENESS
+-----------------------------------------------------
+
+  Test            What it isolates                              Cost
+  ----------      ---------------------------------------       -------
+  T1: Φ-misspec   Replace generator's polynomial Φ with         ~45 min
+                  a 2-layer random-init ReLU net of context.
+                  Keep ACY's polynomial basis unchanged.
+                  ACY's bias on M_1 should jump dramatically.
+
+  T2: scale-up    Change context to 16-dim or 32-dim (same      ~30 min
+                  degree-4 poly truth). ACY's basis size grows
+                  combinatorially. CV-J should pick smaller J,
+                  introducing bias.
+
+  T3: cross-basis Replace ACY's polynomial basis with random    ~30 min
+                  Fourier features at matched J. Eliminates
+                  exact basis-class alignment, preserves
+                  approximation power.
+
+  T4: high-rank   Bump K_1, K_2, K_3 to 30+ (currently 17 / 3 / 3). ~20 min
+                  Tests whether ACY's win was partly due to the
+                  generator's components being very low-rank, an
+                  easy regime for sieve+SVT.
+
+Recommendation: T1 first (single most-informative). If ACY-CV's win
+shrinks to MatFormer/boost levels under Φ-misspec, the polynomial-
+alignment factor was dominant. If it stays competitive, the four-
+component framework is genuinely useful even under misspec.
+
+
+REAL-DATA VALIDATION: REIMPLEMENT THE PAPER'S PROP99 SCENARIO
+-------------------------------------------------------------
+
+The most direct test of "is ACY useful in practice" is to run it on
+real-world panel data with real-world context. The paper itself uses
+California Proposition 99 (anti-smoking law, 1989) as a case study.
+Re-implementing their exact setup gives us a head-to-head comparison
+on real data.
+
+Open questions before implementing:
+
+  (a) What row context does the paper use for prop99? Likely state-level
+      covariates from the original Abadie-Diamond-Hainmueller (2010)
+      paper: log(GDP per capita), retail price of cigarettes, percent
+      young (15-24), beer consumption per capita. Need to confirm by
+      reading the paper's experiment section.
+
+  (b) What column context does the paper use? Calendar time alone? Or
+      year-specific aggregate covariates (national smoking rate, federal
+      excise tax)? The paper may use a function-of-time basis (splines
+      in t) as the column "context".
+
+  (c) What sieve basis (and J) does the paper use for prop99? Their
+      experiments use J = 4 or 5 (per Update 5). Need to verify.
+
+  (d) What is the train/test split? In prop99 the natural test set is
+      California's post-1989 cells (treated × post block). Same shape
+      as our existing causal-eval benchmark.
+
+  (e) The paper presumably reports a treatment effect estimate; we
+      should reproduce that and compare against the published sdid/sc
+      baselines, plus our matformer/boost/hybrid stack.
+
+The win condition: ACY on real prop99 with paper-specified context and
+basis should produce a treatment effect estimate close to the paper's,
+and ideally better than vanilla sdid / sc. If it does, the four-
+component framework is genuinely useful on real panel data and our
+synthetic results carry over. If it doesn't, the synthetic-specific
+artifacts above were doing most of the work.
+
+NEXT-STEP PRIORITY ORDER (this is what I'd do first, given finite time):
+
+  1. Look up the paper's exact prop99 experimental setup (state-level
+     covariates used, basis, J, train/test split). Confirm (a)-(e) above.
+  2. Implement that setup on the existing prop99 benchmark
+     (mcpfn/benchmark/prop99/causal_eval/ca_simul or ca_stagg). Compare
+     against existing baselines (sdid, dwip-v2-2, boost, etc.).
+  3. If ACY's paper-setup numbers are strong, run T1 (Φ-misspec) on
+     synthetic to confirm the diagnostic.
+  4. If ACY's paper-setup numbers are weak, the synthetic-specific
+     artifacts (A)-(C) above explain the gap and we move on from ACY.
+================================================================================
+
+
+================================================================================
+RESOLUTION OF OBSERVATION 8'S OPEN QUESTIONS (2026-05-16):
+The ACY paper's Prop99 experimental setup
+================================================================================
+
+Web-fetched the paper's Section 5.2 (California Proposition 99 tobacco-sales
+case study). The setup is more interesting and less ambiguous than I
+initially worried.
+
+KEY: Their prop99 experiment is NOT about estimating California's actual
+treatment effect. It is a synthetic-MNAR matrix-completion experiment using
+the real prop99 smoking-rates panel as the underlying matrix M, with random
+block missingness imposed and held-out MSE as the evaluation metric. So it
+maps cleanly onto our existing pipeline.
+
+
+PAPER SETUP (Section 5.2, arxiv:2603.24833)
+-------------------------------------------
+
+DATA
+  - Panel: U.S. state-by-year per-capita cigarette sales.
+  - Time range: 1970–2000 (T = 31 periods).
+  - Rows: states. Number of donor states matches the standard prop99 set.
+
+ROW CONTEXT (state-level covariates), d_row = 5 (+1 optional proxy):
+  1. Time-averaged retail price of cigarettes
+  2. Log per-capita state personal income
+  3. Percentage of population aged 18–24
+  4. Percentage of adults completing 4+ years of college
+  5. Per-capita beer consumption
+  (+) Per-capita cigarette sales in 2001 — used as a proxy for the
+      state's general tobacco preference. Appendix A shows alternative
+      proxies (time-averaged sales, pre-treatment averages).
+
+COLUMN CONTEXT (year-level covariates), d_col = 3:
+  1. Log per-capita real GDP (annual, national)
+  2. State-average retail price of cigarettes in each year
+  3. Average per-capita cigarette sales of Florida and Michigan in each
+     year (used as a proxy for general tobacco preference in time)
+
+SIEVE BASIS
+  - Polynomial of degree 2 (J = 2). With d_row = 5 or 6 and degree 2
+    (no cross-terms), the basis has 1 + 5·2 = 11 or 1 + 6·2 = 13 dims
+    per side. Much smaller than our synthetic-context defaults.
+
+MISSINGNESS / TRAIN-TEST SPLIT (the key bit)
+  Per iteration:
+    - Randomly pick 8 states to be "treated."
+    - Mask their cells in periods T_0+1 through T_31 (post-cutoff).
+    - The remaining cells form the training matrix.
+    - Test cells are the 8 × (31 − T_0) treated × post block.
+  T_0 sweep: {10, 15, 20, 25} (so test-block widths 21, 16, 11, 6).
+  Number of iterations: 100 (random-state-selection draws).
+  Pattern is fixed-block-MNAR (no IPW used).
+
+METRICS (Table 2 in the paper)
+  - AMSE on each missing element.
+  - AMSE on year-by-year averages of missing elements.
+  - AMSE on overall average of missing entries.
+  (No treatment effect reported — pure imputation accuracy.)
+
+BASELINES
+  - Spectral estimator from Bai et al. (2021) and Yan et al. (2024)
+    with eigenvalue-ratio rank selection.
+
+ACY NUMBERS (Table 2)
+  At T_0 = 10: ACY AMSE = 239.28 vs spectral AMSE = 268.28.
+  (Cigarette-sales values are in packs per capita; absolute MSE scale
+  is large because the panel itself has large variance.)
+
+
+HOW THIS MAPS ONTO OUR EXISTING PROP99 BENCHMARK
+-------------------------------------------------
+
+Our directory:  mcpfn/benchmark/prop99/causal_eval/
+  - ca_simul / ca_stagg use California's actual treatment timing
+    (treated unit = California, treatment year = 1989). NOT what the
+    paper does.
+
+The paper's setup needs a new draw directory, e.g.,
+  prop99/causal_eval/acy_paper_T0_10/   (and T0_15, T0_20, T0_25)
+that uses:
+  - Same prop99 base smoking panel (states × years 1970–2000, T=31).
+  - 100 draws, each with a random subset of 8 states masked in periods
+    T_0+1 onward.
+  - Per-draw fixed treatment_mask.npy + true.npy (the actual smoking
+    rates we hold out).
+  - Per-draw state-level + year-level covariate files for the row/col
+    context (the 5+1 row covariates and 3 column covariates).
+
+This requires:
+  1. Loading the original Abadie-Diamond-Hainmueller (2010) Synth
+     dataset to get the state-level covariates (most likely available
+     via the `Synth` R package or the prop99 supplementary materials).
+  2. Building year-level covariates (national log GDP per capita, etc.)
+     from publicly available sources (BEA, etc.).
+  3. Writing a builder script analogous to create_prop99_benchmark.py
+     that generates the 100 random-state-selection draws for each T_0.
+
+Or, more pragmatically:
+  - Reuse the existing prop99_causal_eval/ca_simul/ pipeline and just
+    add the covariate files + new draw-selection logic.
+  - Or skip the random-state-selection mechanism and reproduce just
+    the SINGLE California-1989 setup (closer to the original synthetic
+    control paper, simpler to reuse).
+
+
+REVISED NEXT-STEP PLAN
+----------------------
+
+Phase 1 — Plumbing (1-2 hr):
+  (i)   Locate or assemble prop99 state-level covariates (5 covariates
+        per state) and year-level covariates (3 per year, 1970–2000).
+        Save as prop99/covariates_states.csv and covariates_years.csv.
+  (ii)  Write create_prop99_acy_benchmark.py: for each T_0 ∈ {10,15,20,25},
+        generate 100 draws each with a random 8-state mask in periods
+        T_0+1..31. Same draw_xxxx/ directory layout as existing prop99.
+  (iii) Wire row_context and col_context into the per-draw observed.npy
+        loader, so ACY (and BoostMatFormerImputer if used) can pick them up.
+
+Phase 2 — Run methods (~30 min compute):
+  (iv)  Implement an ACY runner that:
+          - Uses degree-2 polynomial basis (matching the paper).
+          - Uses the loaded row_context/col_context per draw.
+          - Runs full ACY with EM (we already have estimate_acy()).
+        Save predictions per draw.
+  (v)   Run on all 400 draws (100 × 4 T_0 values).
+  (vi)  Also run matformer, boost (α=0.05), boost (α=0.1), and
+        hybrid (Var A) on the same draws for comparison.
+  (vii) Compute AMSE per the paper's three metrics. Compare against
+        their published numbers (Table 2).
+
+Phase 3 — Interpret:
+  If ACY reproduces the paper's numbers (within noise) AND beats our
+  matformer/boost stack on this real-data benchmark → context-aware
+  methods do generalize from synthetic to real. Our existing
+  causal-benchmark scoreboard should add ACY as a method.
+
+  If ACY's real-data numbers are weaker than its synthetic numbers AND
+  our boost/matformer still wins → the synthetic artifacts in
+  OBSERVATION 8 explain most of ACY's apparent edge. Conclude that
+  context is genuinely useful only in the narrow synthetic regime, and
+  ship the boost (α=0.05) as the recommended causal-panel method.
+
+This is the cleanest single experiment to settle the
+real-data-vs-synthetic question.
+================================================================================

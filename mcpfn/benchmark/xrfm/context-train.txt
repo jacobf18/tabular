@@ -1,0 +1,314 @@
+================================================================================
+Context-aware backbone pretraining — design discussion
+Sibling of: context.txt (closes the "remaining open direction (iv)" in its
+            Synthesis section)
+Status: Proposal. None of this is implemented yet.
+================================================================================
+
+
+PRECONDITION: WHY THIS DOC EXISTS
+=================================
+
+context.txt's Synthesis concluded that "the boost cannot use context, period"
+— MatFormer's attention pre-empts whatever context-driven signal exists in
+cell values, so by the time xRFM sees MatFormer's residuals there is nothing
+left for context features to predict. The only path that addresses the root
+cause is to pretrain a backbone that ingests (Y, X_row, X_col) jointly.
+
+This file works out concrete steps to do that.
+
+
+ENTRY POINT: "CAN WE JUST SHRINK THE BOOST'S BASE FEATURE?"
+===========================================================
+
+Natural follow-up question: in BoostMatFormerImputer the per-column xRFM
+feature is 2*(C-1) (mean-fill of other columns + missingness mask). On
+synthetic context (C=200) that's ~400 dims, and any appended context dims
+get diluted to ~1% of kernel distance. Would a smaller base feature (e.g.,
+top-k nearest columns, top-k PCA components, k-NN row features) let the
+context dims carry more weight?
+
+Mechanically yes, but it doesn't fix the underlying problem:
+
+  - Update 7's B.1 already tested the equivalent via context_scale (z-score
+    context features, multiply by a scalar before concat). Algebraically
+    identical to starting xRFM at M = block_diag(I_data, λ I_context); just
+    achieved through feature scaling instead of editing the xRFM library.
+  - At context_scale ∈ {1, 5, 10, 25}, predictions changed (mechanism
+    works) but accuracy did not improve, and got worse at scale=25.
+  - Diagnosis from Update 7: the bottleneck isn't kernel geometry. It's
+    that the BOOST'S TARGET (MatFormer per-cell residuals) doesn't depend
+    on context, because MatFormer's attention has already absorbed
+    whatever context-driven signal exists in observed cell values.
+
+Shrinking the base feature would address the dilution symptom without
+addressing the cause. The B.1 result is fairly strong evidence that this
+class of fix is a dead end FOR USING CONTEXT.
+
+(Side note: shrinking the base feature could still be worth trying for
+orthogonal reasons — e.g., neighbor-column features might improve the
+boost on wide synthetic context matrices on its own merit, since 398-dim
+inputs are hard for AGOP-Laplace to find signal in. But that's an
+improvement to boost xRFM, not a path to context-awareness.)
+
+
+WHERE CONTEXT-AWARENESS SHOULD LIVE
+===================================
+
+Per context.txt Synthesis, the three places to inject context are:
+
+  1. At the boost (xRFM residual stage) — DEAD END per the B.1 diagnosis.
+  2. In parallel via ACY (Variant A hybrid) — partially works on MAR / ties
+     on MCAR / loses block + MNAR; "safe default" but never strictly best.
+  3. Upstream of MatFormer (pretrain a context-aware backbone) — UNTESTED.
+     The only path that addresses the root cause directly. Expensive
+     (~6-15 GPU-hours per exp_steps.txt Step 2 budget).
+
+This doc is about path 3.
+
+
+PROPOSED STEPS (ORDER: CHEAP → EXPENSIVE)
+=========================================
+
+Step 1 — Pick a context-injection mechanism.
+--------------------------------------------
+
+Three reasonable architectures, in increasing power:
+
+  (a) Additive cell-embedding bias. Learn W_row : R^{d_row} → R^D and
+      W_col : R^{d_col} → R^D. For every cell (r, c), add
+        W_row(X_row[r]) + W_col(X_col[c])
+      to its input embedding before the transformer. Zero-init both
+      projections so the day-0 model exactly reproduces MatFormer.
+
+  (b) Context tokens. Prepend a row-context token to every row's sequence
+      (visible to row-attention) and a col-context token to every column's
+      sequence (visible to col-attention). Requires sequence-length
+      surgery and per-axis attention mask updates, but lets attention
+      actively look up context.
+
+  (c) FiLM modulation. Every transformer block applies a per-cell affine
+      (gamma, beta) = f(X_row[r], X_col[c]) to its activations. Most
+      expressive, most parameters, most invasive change.
+
+Recommendation: start with (a). It is strictly more powerful than ACY's
+P_X Y P_Z if it works (W_row can encode any sieve basis), much cheaper
+than (b)/(c), and zero-init guarantees the warm-started model can't be
+worse than MatFormer at step 0.
+
+
+Step 2 — Build a context-aware synthetic prior.
+-----------------------------------------------
+
+Reuse synthetic_context/generate.py — it already produces
+  M = α₁ M₁ + α₂ M₂ + α₃ M₃ + α₄ M₄
+from per-row/per-col context, with the four components corresponding to
+context-driven, row-context × random-col, random-row × col-context, and
+fully-random low-rank pieces (exactly mirroring the ACY decomposition).
+Lift this into the training pipeline alongside the existing latent-factor
+prior.
+
+CRITICAL: vary the context-to-cell dependence Φ across batches. The
+existing generator uses degree-2/4 polynomials; that alone causes the
+overfitting OBSERVATION 8 warns about. Mix at least:
+  - Polynomials of varying degree (1–4)
+  - Sigmoid / tanh of linear projections
+  - Small random-init MLP (1–2 hidden layers, ReLU)
+  - Identity / "no Φ" — equivalent to no-context training data
+
+If you train only on polynomial Φ, the backbone learns "context enters
+polynomially" and will not transfer to real panel covariates.
+
+
+Step 3 — Mix missingness patterns during training.
+--------------------------------------------------
+
+MCAR / MAR / MNAR / block, weights roughly uniform. Without block-
+missingness exposure, the new backbone won't transfer to causal panels
+(CPS / kansas / prop99) — the lesson the boost docs keep relearning. The
+MARPattern / MNARPattern machinery in
+src/tabimpute/prior/training_set_generation.py is already there;
+synthetic_context/generate.py uses it under --missingness.
+
+
+Step 4 — Modify the model code.
+-------------------------------
+
+In the dwip_v2 backbone class (TabImputeModelStable per
+algorithm_explanation.txt):
+
+  __init__ additions:
+    - d_row, d_col arguments.
+    - W_row: 1–2 linear layers, R^{d_row} → R^D (D = 768).
+    - W_col: 1–2 linear layers, R^{d_col} → R^D.
+    - Init W_row.weight = 0 and W_col.weight = 0 (so day-0 the backbone
+      is exactly MatFormer). Biases can be zero or omitted.
+
+  forward(X, X_row, X_col, ...):
+    - Project: row_emb = W_row(X_row)  → (R, D)
+              col_emb = W_col(X_col)   → (T, D)
+    - Broadcast: row_emb[:, None, :] + col_emb[None, :, :]  → (R, T, D)
+    - Add to the existing per-cell input embedding before the
+      row/col-attention transformer stack.
+    - Decoder unchanged.
+
+This makes the model strictly a superset of the original — zero-init means
+the warm-start ckpt + zero context = MatFormer.
+
+
+Step 5 — Warm-start + post-train.
+---------------------------------
+
+Mirror the budget in exp_steps.txt Step 2:
+
+  Backbone init       : dwip_v2-trial_002/checkpoint_17000.pth
+  Context-proj init   : W_row.weight = 0, W_col.weight = 0
+  Optimizer           : AdamW, two param groups
+    backbone_lr       = 3e-5            (preserves pretraining)
+    context_lr        = 1e-3            (higher; zero-init params need to
+                                          move, but not so high that they
+                                          destabilize the rest)
+    backbone_wd       = 0.02
+    context_wd        = 0.0
+  Warmup steps        : 500
+  Schedule            : cosine, min_lr_ratio = 0.05
+  Grad clip           : 0.5
+  Batch size          : 16
+  Total steps         : 15k–25k          (~6–15 GPU-hours on H200)
+  Validation          : every 250 steps on a fixed held-out batch
+                        (different seed, mix of all missingness patterns
+                        and Φ classes). Save checkpoint_best.pth.
+
+Objective: keep the existing bar-distribution NLL (5000 classes) — it's
+already strong and post-training doesn't need to swap the head.
+
+
+Step 6 — Stop criteria / gating.
+--------------------------------
+
+Three gates, each with a measurable bar:
+
+  Gate A — Hidden regime moves.
+    synthetic_context's hidden-context regime (make_hidden_context_draw)
+    has observed cells with zero context signal — only X_row, X_col can
+    predict the missing block. MatFormer is at 1.835 RMSE; boost is at
+    2.148 (worse). A context-aware backbone must cut this substantially,
+    otherwise the context plumbing isn't doing anything. KILL the run
+    if hidden-regime RMSE doesn't drop below ~1.0 by step 10k.
+
+  Gate B — No regression on the easy regimes.
+    With zero-init context projections, the model = MatFormer at step 0.
+    By the end of training it should not be worse than dwip_v2 on:
+      UCI mean RMSE                ≤ 1.06 (currently 1.053)
+      Synthetic context, visible   ≤ 0.30 (currently 0.286)
+    If it regresses on these, training is overfitting the context prior
+    at the expense of the original capability.
+
+  Gate C — Real-data win on causal panels.
+    Run the trained backbone (with row/col covariates loaded — the Prop99
+    paper setup in context.txt's final section names the exact 5+1 row
+    and 3 col covariates) on CPS / kansas / prop99. Bar to beat:
+      prop99 ca_simul : boost α=0.05 at 11.19
+      prop99 ca_stagg : boost α=0.05 at 14.51
+      kansas factor_r3_200 : boost α=0.05 at 0.028
+    If the context-aware backbone beats these on most causal benchmarks,
+    the direction has shipped a real win.
+
+
+Step 7 — If Step 1's (a) wins, sweep the rest.
+----------------------------------------------
+
+  - Try (b) context tokens and (c) FiLM. Each is a separate run.
+  - Try W_row / W_col as small MLPs (2 hidden, ReLU) vs linear.
+  - Try concatenating context to the input dim instead of additive.
+  - Compose with the existing boost (BoostMatFormerImputer) on top of the
+    new backbone — boost may now have a different relationship with
+    context-aware residuals.
+
+
+RISKS / FAILURE MODES TO TRACK
+==============================
+
+(R1) Synthetic-Φ overfit. If you train only on polynomial Φ, the model
+     overfits the synthetic prior's smoothness assumption and fails on
+     real-world covariates that interact non-smoothly with cell values.
+     Mitigation: diverse Φ mix (Step 2). Monitor: separate val splits
+     per Φ class.
+
+(R2) Hidden-regime fundamental ceiling. Even an oracle context-aware
+     model has a floor: if observed cells contain zero context signal AND
+     the missing-block structure isn't recoverable from context alone,
+     no method beats the noise. Sanity-check by including training
+     batches where context strictly informs the missing block, and
+     confirm the model recovers signal in that controlled case.
+
+(R3) Catastrophic forgetting of the original prior. With backbone_lr
+     non-zero, the warm-started weights drift. Monitor val MSE on a
+     fixed dwip_v2-style batch (no context, MCAR p=0.4); if it climbs
+     while context-regime val drops, either:
+       - Lower backbone_lr.
+       - Mix more no-context batches into the training data.
+       - Freeze backbone for the first N steps to let W_row/W_col warm up
+         alone before joint training.
+
+(R4) Hidden-regime data leakage. The synthetic context generator constructs
+     M_treat that depends on X_row, X_col but is zero on observed cells by
+     construction. The training data has to match this — otherwise the
+     model just learns "context predicts cell value in general," not "context
+     predicts the missing block conditional on the observed support."
+
+(R5) Real-data covariate availability. The Prop99 5+1 row covariates and
+     3 col covariates are documented (context.txt final section), but
+     CPS / kansas may need separate covariate assembly. If you can't load
+     covariates per draw, Gate C can't be tested.
+
+
+OPEN DESIGN QUESTIONS
+=====================
+
+  (Q1) Should context be visible to the encoder, the decoder, or both?
+       Step 1 (a) puts it at the encoder input. An alternative is to
+       additionally feed (X_row[r], X_col[c]) to the per-cell MLP
+       decoder, so the decoder can condition on context too. Probably
+       redundant if (a) already gives the transformer enough information,
+       but worth a small ablation later.
+
+  (Q2) Should the model also produce row/col context as outputs?
+       Multi-task — predict both Y and (X_row, X_col) from partial
+       observations. Could regularize the context embedding. Untested
+       elsewhere; speculative.
+
+  (Q3) Variable d_row, d_col across datasets at inference time.
+       Real panels have varying covariate counts. Either:
+         - Train with a fixed max d_row / d_col, pad smaller cases.
+         - Train with variable d_row / d_col, similar to how the model
+           already handles variable R, T. The latter is the right answer
+           long-term but requires a tokenized context representation
+           rather than a fixed linear projection. Polynomial / Fourier
+           feature expansion of context to a fixed-dim vector is a
+           reasonable middle ground.
+
+  (Q4) What's the right way to handle missing context features?
+       Real panels have NaNs in covariates too. Probably the same
+       mean-fill + mask treatment as the cell values, applied to
+       X_row / X_col before W_row / W_col. Untested.
+
+
+SUMMARY (ONE PAGE)
+==================
+
+  - Boost-side context fixes are ruled out (Update 7 / B.1 / Synthesis).
+  - The only path that addresses the root cause is a context-aware
+    backbone: pretrain dwip_v2's transformer with (Y, X_row, X_col)
+    jointly so the attention layer itself can condition on context.
+  - Recommended starting architecture: additive cell-embedding bias
+    (Step 1 (a)). Strictly a superset of MatFormer with zero-init.
+  - Train on a diverse-Φ, diverse-missingness synthetic prior to avoid
+    the OBSERVATION 8 polynomial-alignment artifact and to transfer
+    across causal-panel missingness shapes.
+  - Warm-start the backbone, two-group AdamW, ~20k steps, ~6-15 GPU-hours.
+  - Three gates: hidden-regime synthetic MUST move; no regression on
+    UCI / visible synth; real-data win on causal panels.
+  - Single biggest decision is Φ diversity in the training data. The rest
+    is plumbing.
+================================================================================

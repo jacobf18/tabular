@@ -35,6 +35,12 @@ from plot_cps import (  # noqa: E402
     is_other_tabimpute_variant,
 )
 
+# MatFormer + xRFM residual variants: omitted from the summary figures.
+XRFM_RESIDUAL_METHODS = {
+    "boost_matformer_dwip_v2_t002_a0p1",
+    "boost_matformer_dwip_v2_t002_a0p05",
+}
+
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
@@ -62,6 +68,7 @@ def load_scenarios(root: Path) -> dict[str, pd.DataFrame]:
             continue
         s = aggregate(pd.read_csv(csv))
         s = s[~s["method"].isin(EXCLUDE_METHODS)]
+        s = s[~s["method"].isin(XRFM_RESIDUAL_METHODS)]
         s = s[~s["method"].apply(is_other_tabimpute_variant)]
         s = s[s["method"].isin(CAUSAL_INTERSECTION_METHODS)].reset_index(drop=True)
         out[d.name] = s
@@ -109,7 +116,7 @@ def build_summary(scenarios: dict[str, pd.DataFrame], value_col: str) -> pd.Data
 
 
 def plot_summary(out_path: Path, summary: pd.DataFrame) -> None:
-    df = summary.sort_values("mean_norm_rmse", ascending=False).reset_index(drop=True)
+    df = summary.sort_values("mean_norm_rmse", ascending=True).reset_index(drop=True)
     fig, ax = plt.subplots(figsize=FIGURE_SIZES["standard"])
     bar_with_errors(ax, df, "mean_norm_rmse", "norm_rmse_se",
                     ylabel="Normalized RMSE (95% CI)")

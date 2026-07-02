@@ -66,7 +66,9 @@ ADDITIONAL_TABIMPUTE_METHODS = [
     # "tabimpute-new-stable_v2-rank_1_30-50x50",
     # "tabimpute-new-stable_v2-rank_10_10-50x50",
     # "tabimpute-new-stable_v2-spectrum-decay-topk_p_0.2-50x50",
-    "dwip_v2-trial_002"
+    "dwip_v2-trial_002",
+    "tabimpute_curriculum_100x100_rank10_best_chunked_100x100",
+    "tabimpute_memory_efficient_200x200_rank10_step60000_chunked_200x200",
 ]
 
 methods = [
@@ -80,7 +82,10 @@ methods = [
     "gain",
     "miwae",
     "masters_mcar",
-    # "xrfm",
+    "xrfm",
+    "rfm_agop_dwip_v2_t002",
+    "boost_matformer_dwip_v2_t002_a0p1",
+    "boost_matformer_dwip_v2_t002_a0p05",
     # "tabimpute_mcar_p0.4_num_cls_8_rank_1_11",
     # "tabimpsute_mcar_p0.4_num_cls_12_rank_1_11",
     # "tabimpute_rope_v1",
@@ -169,6 +174,9 @@ method_names.update(
     {
         "dwip_v2-trial_001": "TabImpute (DWIP v2 Trial 001)",
         "dwip_v2-trial_002": "MatFormer",
+        "rfm_agop_dwip_v2_t002": "MatFormer + AGOP head",
+        "boost_matformer_dwip_v2_t002_a0p1":  "MatFormer + xRFM residual (α=0.1)",
+        "boost_matformer_dwip_v2_t002_a0p05": "MatFormer + xRFM residual (α=0.05)",
         "dwip_v2-trial_003": "TabImpute (DWIP v2 Trial 003)",
         "dwip_v2-trial_004": "TabImpute (DWIP v2 Trial 004)",
         "dwip_v2-trial_005": "TabImpute (DWIP v2 Trial 005)",
@@ -188,6 +196,8 @@ method_names.update(
         "tabimpute-new-stable_v2-rank_1_30-50x50": "TabImpute (1-30)",
         "tabimpute-new-stable_v2-rank_10_10-50x50": "TabImpute (10-10)",
         "tabimpute-new-stable_v2-spectrum-decay-topk_p_0.2-50x50": "TabImpute (Spectrum Top-k p=0.2)",
+        "tabimpute_curriculum_100x100_rank10_best_chunked_100x100": "TabImpute (100x100 rank 10)",
+        "tabimpute_memory_efficient_200x200_rank10_step60000_chunked_200x200": "TabImpute (200x200 rank 10, mem-eff)",
     }
 )
 method_names.update(MANIFEST_METHOD_NAMES)
@@ -334,7 +344,7 @@ if plot_pattern:
         plt.figure(figsize=FIGURE_SIZES['standard'])
 
         # sort methods by mean performance (best first)
-        sorted_methods = df_norm.mean(axis=0).sort_values(ascending=False).index
+        sorted_methods = df_norm.mean(axis=0).sort_values(ascending=True).index
         sorted_methods = [method for method in sorted_methods if method not in dont_plot_methods]
 
         # Melt into long format
@@ -367,7 +377,7 @@ if plot_pattern:
                 label.set_color(method_colors[method_name])
                 label.set_fontsize(label.get_fontsize() * 1.1)
 
-        plt.ylabel("Normalized RMSE", fontsize=15)
+        plt.ylabel("RMSE", fontsize=15)
         # plt.title(f"Comparison of Imputation Algorithms | {pattern_name}")
         # plt.ylim(0, 1.0)
         plt.tight_layout()
@@ -377,7 +387,7 @@ if plot_pattern:
     # Average across datasets and patterns
     fig = plt.figure(figsize=FIGURE_SIZES['standard'])
     # sort df_norm_all by the mean of the rows (best first)
-    sorted_methods_all = df_norm_all.mean(axis=0).sort_values(ascending=False).index
+    sorted_methods_all = df_norm_all.mean(axis=0).sort_values(ascending=True).index
     sorted_methods_all = [method for method in sorted_methods_all if method not in dont_plot_methods]
 
     # Melt into long format
@@ -410,7 +420,7 @@ if plot_pattern:
             label.set_color(method_colors[method_name])
             label.set_fontsize(label.get_fontsize() * 1.1)
 
-    plt.ylabel("Normalized RMSE", fontsize=12)
+    plt.ylabel("RMSE", fontsize=12)
     # plt.title("Comparison of Imputation Algorithms | All Patterns")
     # plt.ylim(0, 1.0)
     plt.tight_layout()

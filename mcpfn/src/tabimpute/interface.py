@@ -39,6 +39,20 @@ from tabimpute.model.model_compressed_cross import (
     RowCompressionModel,
     build_compressor_config_from_predictor,
 )
+from tabimpute.model.model_compressed_cross_rabel import (
+    ColumnCompressionModelRaBEL,
+    CompressedCrossTabImputeModelRaBEL,
+    RowCompressionModelRaBEL,
+    TabImputeModelRaBEL,
+)
+from tabimpute.model.model_compressed_cross_pure_rabel import (
+    ColumnCompressionModelPureRaBEL,
+    CompressedCrossTabImputeModelPureRaBEL,
+    RowCompressionModelPureRaBEL,
+)
+from tabimpute.model.model_new_stable_rabel import (
+    TabImputeModelPureRaBEL,
+)
 
 import matplotlib.pyplot as plt
 
@@ -313,8 +327,74 @@ class ImputePFN:
                 "residual_scale_init": config.get("residual_scale_init", 1.0),
                 "rms_norm_eps": config.get("rms_norm_eps", 1e-6),
                 "embedding_dropout": config.get("embedding_dropout", 0.0),
+                "attention_batch_chunk_size": config.get(
+                    "attention_batch_chunk_size", None
+                ),
             }
             return TabImputeModelStable(**stable_kwargs)
+
+        if model_family in {
+            "rabel",
+            "new_stable_rabel",
+            "stable_rabel",
+        }:
+            rabel_kwargs = {
+                **common_kwargs,
+                "attention_dropout": config.get("attention_dropout", 0.0),
+                "ffn_dropout": config.get("ffn_dropout", 0.0),
+                "drop_path_rate": config.get("drop_path_rate", 0.0),
+                "residual_scale_init": config.get("residual_scale_init", 1.0),
+                "rms_norm_eps": config.get("rms_norm_eps", 1e-6),
+                "embedding_dropout": config.get("embedding_dropout", 0.0),
+                "attention_batch_chunk_size": config.get(
+                    "attention_batch_chunk_size", None
+                ),
+                "rabel_num_kernels": config.get("rabel_num_kernels", 64),
+                "rabel_sigma": config.get("rabel_sigma", 1.0),
+                "rabel_exponent_digits": config.get(
+                    "rabel_exponent_digits", 1
+                ),
+                "rabel_exponent_embedding_size": config.get(
+                    "rabel_exponent_embedding_size", 32
+                ),
+                "rabel_initial_scale": config.get(
+                    "rabel_initial_scale", 0.05
+                ),
+            }
+            return TabImputeModelRaBEL(**rabel_kwargs)
+
+        if model_family in {
+            "pure_rabel",
+            "pure_rabel_memory_efficient",
+            "new_stable_pure_rabel",
+        }:
+            rabel_kwargs = {
+                **common_kwargs,
+                "attention_dropout": config.get("attention_dropout", 0.0),
+                "ffn_dropout": config.get("ffn_dropout", 0.0),
+                "drop_path_rate": config.get("drop_path_rate", 0.0),
+                "residual_scale_init": config.get("residual_scale_init", 1.0),
+                "rms_norm_eps": config.get("rms_norm_eps", 1e-6),
+                "embedding_dropout": config.get("embedding_dropout", 0.0),
+                "attention_batch_chunk_size": config.get(
+                    "attention_batch_chunk_size", None
+                ),
+                "use_activation_checkpointing": config.get(
+                    "use_activation_checkpointing", True
+                ),
+                "checkpoint_use_reentrant": config.get(
+                    "checkpoint_use_reentrant", False
+                ),
+                "rabel_num_kernels": config.get("rabel_num_kernels", 64),
+                "rabel_sigma": config.get("rabel_sigma", 1.0),
+                "rabel_exponent_digits": config.get(
+                    "rabel_exponent_digits", 1
+                ),
+                "rabel_exponent_embedding_size": config.get(
+                    "rabel_exponent_embedding_size", 32
+                ),
+            }
+            return TabImputeModelPureRaBEL(**rabel_kwargs)
 
         if model_family in {
             "new_stable_memory_efficient",
@@ -330,6 +410,9 @@ class ImputePFN:
                 "residual_scale_init": config.get("residual_scale_init", 1.0),
                 "rms_norm_eps": config.get("rms_norm_eps", 1e-6),
                 "embedding_dropout": config.get("embedding_dropout", 0.0),
+                "attention_batch_chunk_size": config.get(
+                    "attention_batch_chunk_size", None
+                ),
                 "use_activation_checkpointing": config.get(
                     "use_activation_checkpointing", True
                 ),
@@ -345,13 +428,17 @@ class ImputePFN:
                 "residual_scale_init": config.get("residual_scale_init", 1.0),
                 "rms_norm_eps": config.get("rms_norm_eps", 1e-6),
                 "embedding_dropout": config.get("embedding_dropout", 0.0),
+                "attention_batch_chunk_size": config.get(
+                    "attention_batch_chunk_size", None
+                ),
             }
             return build_best_transfer_model(**stable_overrides)
 
         raise ValueError(
             f"Unsupported model_family '{self.model_family}'. "
             "Expected one of: 'new', 'new_stable', "
-            "'new_stable_memory_efficient', 'best_transfer'."
+            "'new_stable_memory_efficient', 'rabel', 'pure_rabel', "
+            "'best_transfer'."
         )
 
 
@@ -826,25 +913,55 @@ class CompressedCrossImputePFN:
 
     def __init__(
         self,
-        predictor_checkpoint_path: str,
+        predictor_checkpoint_path: str | None = None,
         row_compressor_checkpoint_path: str | None = None,
         column_compressor_checkpoint_path: str | None = None,
+        compressed_checkpoint_path: str | None = None,
         predictor_config: dict | None = None,
         compressor_config: dict | None = None,
-        chunk_rows: int = 50,
-        chunk_cols: int = 50,
+        chunk_rows: int | None = None,
+        chunk_cols: int | None = None,
         k_row: int = 4,
         k_col: int = 4,
         device: str = "cpu",
         model_family: str = "new_stable_memory_efficient",
     ):
         self.device = device
-        self.chunk_rows = chunk_rows
-        self.chunk_cols = chunk_cols
+        self.chunk_rows = 50 if chunk_rows is None else int(chunk_rows)
+        self.chunk_cols = 50 if chunk_cols is None else int(chunk_cols)
         self.k_row = k_row
         self.k_col = k_col
 
+        compressed_config = None
+        if compressed_checkpoint_path is not None:
+            compressed_config = self._load_compressed_run_config(
+                compressed_checkpoint_path
+            )
+            model_config = dict(compressed_config.get("model", {}))
+            training_config = dict(compressed_config.get("training", {}))
+            predictor_config = predictor_config or model_config.get("predictor")
+            compressor_config = compressor_config or model_config.get("compressor")
+            k_row = int(model_config.get("k_row", training_config.get("k_row", k_row)))
+            k_col = int(model_config.get("k_col", training_config.get("k_col", k_col)))
+            self.k_row = k_row
+            self.k_col = k_col
+            if chunk_rows is None:
+                self.chunk_rows = int(training_config.get("chunk_rows", 50))
+            if chunk_cols is None:
+                self.chunk_cols = int(training_config.get("chunk_cols", 50))
+            model_family = str(
+                model_config.get(
+                    "model_family",
+                    training_config.get("model_family", model_family),
+                )
+            )
+
         if predictor_config is None:
+            if predictor_checkpoint_path is None:
+                raise ValueError(
+                    "Either compressed_checkpoint_path with a config.json or "
+                    "predictor_checkpoint_path/predictor_config must be provided."
+                )
             predictor_config = _load_json_config_from_checkpoint(
                 predictor_checkpoint_path
             )
@@ -852,14 +969,20 @@ class CompressedCrossImputePFN:
             predictor_config = dict(predictor_config["model"])
         self.predictor_config = dict(predictor_config)
 
-        predictor_builder = ImputePFN(
-            device=device,
-            checkpoint_path=predictor_checkpoint_path,
-            entry_wise_features=False,
-            json_config={"config": self.predictor_config},
-            model_family=model_family,
-        )
-        predictor = predictor_builder.model
+        if predictor_checkpoint_path is None:
+            predictor = self._build_predictor_from_config(
+                self.predictor_config,
+                model_family=model_family,
+            ).to(device=device, dtype=torch.bfloat16)
+        else:
+            predictor_builder = ImputePFN(
+                device=device,
+                checkpoint_path=predictor_checkpoint_path,
+                entry_wise_features=False,
+                json_config={"config": self.predictor_config},
+                model_family=model_family,
+            )
+            predictor = predictor_builder.model
 
         if compressor_config is None:
             compressor_config = build_compressor_config_from_predictor(
@@ -869,12 +992,44 @@ class CompressedCrossImputePFN:
             )
         self.compressor_config = dict(compressor_config)
 
-        row_compressor = RowCompressionModel(
+        use_rabel = model_family.lower() in {
+            "rabel",
+            "new_stable_rabel",
+            "stable_rabel",
+        }
+        use_pure_rabel = model_family.lower() in {
+            "pure_rabel",
+            "pure_rabel_memory_efficient",
+            "new_stable_pure_rabel",
+        }
+        if use_rabel:
+            row_compressor_class = RowCompressionModelRaBEL
+            column_compressor_class = ColumnCompressionModelRaBEL
+            compressed_model_class = CompressedCrossTabImputeModelRaBEL
+        elif use_pure_rabel:
+            row_compressor_class = RowCompressionModelPureRaBEL
+            column_compressor_class = ColumnCompressionModelPureRaBEL
+            compressed_model_class = CompressedCrossTabImputeModelPureRaBEL
+        else:
+            row_compressor_class = RowCompressionModel
+            column_compressor_class = ColumnCompressionModel
+            compressed_model_class = CompressedCrossTabImputeModel
+        rabel_compressor_kwargs = (
+            {"rabel_config": self.compressor_config}
+            if use_rabel or use_pure_rabel
+            else {}
+        )
+
+        row_compressor = row_compressor_class(
             embedding_size=self.compressor_config["embedding_size"],
             num_attention_heads=self.compressor_config["num_attention_heads"],
             mlp_hidden_size=self.compressor_config["mlp_hidden_size"],
             num_layers=self.compressor_config["num_layers"],
             k_row=k_row,
+            num_cls=self.compressor_config.get(
+                "num_cls",
+                self.predictor_config.get("num_cls", 12),
+            ),
             attention_dropout=self.compressor_config.get("attention_dropout", 0.0),
             ffn_dropout=self.compressor_config.get("ffn_dropout", 0.0),
             drop_path_rate=self.compressor_config.get("drop_path_rate", 0.0),
@@ -887,13 +1042,18 @@ class CompressedCrossImputePFN:
                 "use_activation_checkpointing",
                 True,
             ),
+            **rabel_compressor_kwargs,
         )
-        column_compressor = ColumnCompressionModel(
+        column_compressor = column_compressor_class(
             embedding_size=self.compressor_config["embedding_size"],
             num_attention_heads=self.compressor_config["num_attention_heads"],
             mlp_hidden_size=self.compressor_config["mlp_hidden_size"],
             num_layers=self.compressor_config["num_layers"],
             k_col=k_col,
+            num_cls=self.compressor_config.get(
+                "num_cls",
+                self.predictor_config.get("num_cls", 12),
+            ),
             attention_dropout=self.compressor_config.get("attention_dropout", 0.0),
             ffn_dropout=self.compressor_config.get("ffn_dropout", 0.0),
             drop_path_rate=self.compressor_config.get("drop_path_rate", 0.0),
@@ -906,15 +1066,17 @@ class CompressedCrossImputePFN:
                 "use_activation_checkpointing",
                 True,
             ),
+            **rabel_compressor_kwargs,
         )
 
-        self.model = CompressedCrossTabImputeModel(
+        self.model = compressed_model_class(
             predictor=predictor,
             row_compressor=row_compressor,
             column_compressor=column_compressor,
             k_row=k_row,
             k_col=k_col,
         ).to(device=device, dtype=torch.bfloat16)
+        self.model.initialize_compressor_embedders_from_predictor()
 
         self._load_compressor_checkpoint(
             row_compressor_checkpoint_path,
@@ -924,6 +1086,8 @@ class CompressedCrossImputePFN:
             column_compressor_checkpoint_path,
             module_name="column_compressor",
         )
+        if compressed_checkpoint_path is not None:
+            self._load_full_compressed_checkpoint(compressed_checkpoint_path)
         self.model.eval()
 
         with resources.files("tabimpute.data").joinpath("borders.pt").open("rb") as f:
@@ -931,6 +1095,25 @@ class CompressedCrossImputePFN:
         self.bar_distribution = FullSupportBarDistribution(
             borders=self.borders.to(self.device)
         )
+
+    @staticmethod
+    def _load_compressed_run_config(checkpoint_path: str) -> dict:
+        from pathlib import Path
+        import json
+
+        cfg_path = Path(checkpoint_path).parent / "config.json"
+        if not cfg_path.is_file():
+            raise FileNotFoundError(
+                f"Compressed checkpoint config not found: {cfg_path}"
+            )
+        with cfg_path.open("r", encoding="utf-8") as f:
+            return json.load(f)
+
+    @staticmethod
+    def _build_predictor_from_config(config: dict, model_family: str):
+        builder = ImputePFN.__new__(ImputePFN)
+        builder.model_family = model_family
+        return builder._build_direct_model(json_config={"config": config})
 
     def _load_compressor_checkpoint(
         self,
@@ -957,6 +1140,15 @@ class CompressedCrossImputePFN:
         else:
             state_dict = checkpoint
         module.load_state_dict(state_dict, strict=True)
+
+    def _load_full_compressed_checkpoint(self, checkpoint_path: str) -> None:
+        checkpoint = torch.load(
+            checkpoint_path,
+            map_location=self.device,
+            weights_only=True,
+        )
+        state_dict = checkpoint["model"] if "model" in checkpoint else checkpoint
+        self.model.load_state_dict(state_dict, strict=True)
 
     def impute(
         self,

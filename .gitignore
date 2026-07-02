@@ -29,3 +29,6 @@ __pycache__/
 **/workdir/
 **/.workdir/
 **/.wandb/
+
+# Synthetic benchmark scatter artifacts
+mcpfn/benchmark/synthetic_context/scatter_data/*.npz

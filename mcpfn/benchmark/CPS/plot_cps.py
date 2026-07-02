@@ -71,7 +71,9 @@ def aggregate(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-TABIMPUTE_KEEP = {"dwip-v2-2", "dwip-v2-2-T", "dwip-v2-2-avg", "masters_mcar"}
+TABIMPUTE_KEEP = {"dwip-v2-2", "dwip-v2-2-T", "dwip-v2-2-avg", "masters_mcar",
+                  "boost_matformer_dwip_v2_t002_a0p1",
+                  "boost_matformer_dwip_v2_t002_a0p05"}
 MATFORMER_LABEL = "MatFormer"
 
 # Causal-method labels not covered by plot_options.METHOD_NAMES.
@@ -83,6 +85,8 @@ EXTRA_LABELS = {
     "dwip-v2-2": MATFORMER_LABEL,
     "dwip-v2-2-T": f"{MATFORMER_LABEL} (transpose)",
     "dwip-v2-2-avg": f"{MATFORMER_LABEL} (avg)",
+    "boost_matformer_dwip_v2_t002_a0p1":  f"{MATFORMER_LABEL} + xRFM residual (α=0.1)",
+    "boost_matformer_dwip_v2_t002_a0p05": f"{MATFORMER_LABEL} + xRFM residual (α=0.05)",
 }
 
 

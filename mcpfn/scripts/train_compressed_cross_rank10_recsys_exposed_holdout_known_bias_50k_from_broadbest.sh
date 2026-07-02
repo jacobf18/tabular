@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export MODE="known_bias"
+
+exec "${SCRIPT_DIR}/train_compressed_cross_rank10_recsys_exposed_holdout_50k_from_broadbest_common.sh"

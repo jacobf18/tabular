@@ -236,21 +236,21 @@ class SpectrumMissingnessPrior(IterableDataset):
         batch_target_list = []
         train_sizes = torch.zeros(batch_size, dtype=torch.long)
         pattern_weights = []
+        n_rows = int(
+            np.random.randint(
+                int(self.config["num_rows_low"]),
+                int(self.config["num_rows_high"]) + 1,
+            )
+        )
+        n_cols = int(
+            np.random.randint(
+                int(self.config["num_cols_low"]),
+                int(self.config["num_cols_high"]) + 1,
+            )
+        )
 
         for step in range(batch_size):
             sample_config = copy.deepcopy(self.config)
-            n_rows = int(
-                np.random.randint(
-                    int(self.config["num_rows_low"]),
-                    int(self.config["num_rows_high"]) + 1,
-                )
-            )
-            n_cols = int(
-                np.random.randint(
-                    int(self.config["num_cols_low"]),
-                    int(self.config["num_cols_high"]) + 1,
-                )
-            )
             sample_config["num_rows_low"] = n_rows
             sample_config["num_rows_high"] = n_rows
             sample_config["num_cols_low"] = n_cols
