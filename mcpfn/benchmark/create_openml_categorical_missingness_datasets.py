@@ -8,8 +8,8 @@ import os
 import shutil
 import pandas as pd
 
-# --- Fetch datasets ---
-# datasets = fetch_clean_openml_datasets(num_datasets=100, verbose=False)
+# --- Datasets ---
+# Run download_openml_categorical.py first to save the datasets to datasets/openml_categorical
 
 # --- Define missingness patterns ---
 p_mcar = 0.4

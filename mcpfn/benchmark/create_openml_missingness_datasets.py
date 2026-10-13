@@ -20,13 +20,12 @@ from tabimpute.prior.training_set_generation import (
     MNARTwoPhaseSubsetPattern,
     MNARSkipLogicPattern
 )
-from download_openml import fetch_clean_openml_datasets
 from tabimpute.model.encoders import normalize_data
 import os
 import shutil
 
-# --- Fetch datasets ---
-# datasets = fetch_clean_openml_datasets(num_datasets=100, verbose=False)
+# --- Datasets ---
+# Run download_openml.py first to save the datasets to datasets/openml
 
 # --- Define missingness patterns ---
 p_mcar = 0.4

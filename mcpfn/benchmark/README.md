@@ -2,6 +2,8 @@ This folder contains the code for the benchmark of the imputers on the OpenML da
 
 The code is organized as follows:
 
+- `download_openml.py`: Downloads the hard-coded list of numeric OpenML datasets used in the benchmark to `datasets/openml`.
+- `download_openml_categorical.py`: Downloads the hard-coded list of categorical OpenML datasets used in the benchmark to `datasets/openml_categorical`.
 - `create_openml_missingness_datasets.py`: This script is used to create the missingness datasets from the OpenML datasets.
 - `get_openml_errors.py`: This script is used to get the errors of the imputers on the OpenML datasets.
 - `plot_error_violinplots.py`: This script is used to plot the violin plots of the errors of the imputers on the OpenML datasets.
