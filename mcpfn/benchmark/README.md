@@ -131,7 +131,7 @@ python run_benchmark.py runtime
 
 ## How it works
 
-- `missbench/datasets.py`: the hard-coded OpenML dataset IDs (paper Table 9, plus `divorce_prediction`, which the paper benchmarked but left out of the table) and the UCI datasets.
+- `missbench/datasets.py`: the hard-coded OpenML dataset IDs (paper Table 9) and the UCI datasets.
 - `missbench/patterns.py`: the 11 missingness patterns and their parameters (paper Table 8). Masks are seeded per dataset, pattern, level and repeat, so re-running gives the same masks. `--seed` changes them. As in the paper, each column of the complete data is standardized before the mask is drawn.
 - `missbench/methods.py`: every imputation method with the settings used in the paper. To add a method, add a `Method` entry to `METHODS`.
 - `missbench/experiment.py`: missingness, imputation and scoring.

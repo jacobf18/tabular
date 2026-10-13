@@ -2,9 +2,8 @@
 Benchmark datasets.
 
 OpenML (MissBench): a fixed, hard-coded list of OpenML dataset IDs so that anyone
-can re-run the exact same benchmark. These are the 42 datasets of the TabImpute paper:
-the 41 listed in its OpenML datasets table (Table 9) plus divorce_prediction, which was
-benchmarked but left out of that table. They were originally selected from
+can re-run the exact same benchmark. These are the 42 datasets listed in the OpenML
+datasets table (Table 9) of the TabImpute paper. They were originally selected from
 OpenML with these criteria: no missing values, 50-250 rows, 5-60 features,
 all-numeric features, and excluding the synthetic "fri_*" datasets.
 
@@ -32,7 +31,7 @@ class OpenMLDataset:
     description: str
 
 
-# name -> OpenML dataset, in the order of paper Table 9 (divorce_prediction last)
+# name -> OpenML dataset, as listed in paper Table 9
 OPENML_DATASETS: dict[str, OpenMLDataset] = {
     "EgyptianSkulls": OpenMLDataset(1099, 150, 5, "Anthropology", "Cranial measurements over time in Egypt"),
     "humans_numeric": OpenMLDataset(1058, 75, 15, "Biology", "Human body measurements"),
