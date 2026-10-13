@@ -159,17 +159,17 @@ def pattern_seed(dataset: str, pattern: Pattern, p: float, repeat: int, base_see
 
 
 def induce_missingness(X: np.ndarray, pattern: Pattern, p: float, seed: int) -> tuple[np.ndarray, np.ndarray]:
-    """Induce missing values (NaN) in X with `pattern` and standardize the result.
+    """Standardize X, then induce missing values (NaN) in it with `pattern`.
 
-    Each column is standardized with the mean and standard deviation of its observed
-    entries (as in the paper). Returns (X_missing, X_true), both standardized.
+    As in the paper, each column of the complete data is standardized before the mask
+    is drawn; methods may re-standardize the observed entries themselves.
+    Returns (X_missing, X_true).
     """
     import torch
     from tabimpute.model.encoders import normalize_data
 
     np.random.seed(seed)
     torch.manual_seed(seed)
-    X_tensor = torch.from_numpy(np.asarray(X, dtype=np.float32)).clone()
-    X_missing = pattern.make(p)._induce_missingness(X_tensor.clone())
-    X_missing, (mean, std) = normalize_data(X_missing, return_scaling=True)
-    return X_missing.numpy(), ((X_tensor - mean) / std).numpy()
+    X_true = normalize_data(torch.from_numpy(np.asarray(X, dtype=np.float32)), clip=False)
+    X_missing = pattern.make(p)._induce_missingness(X_true.clone())
+    return X_missing.numpy(), X_true.numpy()

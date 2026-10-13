@@ -92,6 +92,9 @@ def create_missingness(data_dir: Path, todo: list[Cell], seed: int = 0, overwrit
             X, cell.pattern, cell.p, pattern_seed(cell.dataset, cell.pattern, cell.p, cell.repeat, seed)
         )
         out.mkdir(parents=True, exist_ok=True)
+        # Imputations of a previous mask are no longer valid
+        for old in [*out.glob("*.npy"), *out.glob("*.json")]:
+            old.unlink()
         np.save(out / "missing.npy", X_missing)
         np.save(out / "true.npy", X_true)
 

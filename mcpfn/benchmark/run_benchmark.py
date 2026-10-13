@@ -186,7 +186,7 @@ def main() -> None:
     p = sub.add_parser("missingness", help="sample the missingness masks")
     add_selection(p)
     p.add_argument("--seed", type=int, default=0, help="base seed for the masks (default: 0)")
-    p.add_argument("--overwrite", action="store_true")
+    p.add_argument("--overwrite", action="store_true", help="redraw masks (deletes their imputations)")
     p.set_defaults(func=cmd_missingness)
 
     p = sub.add_parser("impute", help="run imputation methods")
