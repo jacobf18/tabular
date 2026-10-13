@@ -55,18 +55,29 @@ training = [
     "wandb",
     "tqdm>=4.64.0",
 ]
+# Everything needed by benchmark/run_benchmark.py and benchmark/make_figures.py
+# for the "quick" method group
 benchmark = [
     "matplotlib",
+    "seaborn",
     "pandas",
-    "scikit-learn==1.4.2",
     "scipy",
-    "joblib",
-    "xgboost",
-    "transformers",
-    "psutil",
-    "wandb",
     "tqdm>=4.64.0",
-    "tabpfn",
+    "openml",
+    "ucimlrepo",
+    "hyperimpute",
+    "miceforest",
+    "scikit-posthocs",
+]
+# Additional baselines in the paper (ReMasker, CACTI and DiffPuter also need
+# `git submodule update --init` for mcpfn/benchmark/{remasker,CACTI,DiffPuter})
+benchmark-all = [
+    "tabimpute[benchmark]",
+    "tabpfn_extensions",
+    "ForestDiffusion",
+    "notmiwae-pytorch",
+    "tensorboard",  # imported by notmiwae-pytorch
+    "timm",
 ]
 
 [build-system]

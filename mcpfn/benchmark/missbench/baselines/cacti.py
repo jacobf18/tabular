@@ -11,7 +11,9 @@ import torch
 import warnings
 
 # Add CACTI to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'CACTI'))
+# Git submodules (remasker/, CACTI/, DiffPuter/) live in mcpfn/benchmark/
+BENCHMARK_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(BENCHMARK_DIR, 'CACTI'))
 
 from train import load_model, setup_environment
 from src.utils.training_helpers import _getscales, _get_ctxembed_size
@@ -242,18 +244,3 @@ def impute_cacti(X_missing: np.ndarray, **kwargs) -> np.ndarray:
     """
     imputer = CACTIImputer(**kwargs)
     return imputer.fit_transform(X_missing)
-
-
-if __name__ == "__main__":
-    # Test with random data
-    base_dir = '/home/jacobf18/tabular/mcpfn/benchmark/datasets/openml/SolarPower/MNARSoftPolarizationPattern_0.4'
-    X_missing = np.load(f"{base_dir}/missing.npy")
-    X_true = np.load(f"{base_dir}/true.npy")
-    
-    mask = np.isnan(X_missing)
-    
-    imputer = CACTIImputer(device="cuda", model="CMAE", mask_ratio=0.9, epochs=100)
-    X_imputed = imputer.fit_transform(np.copy(X_missing))
-    
-    print(X_missing)
-    print(X_imputed)

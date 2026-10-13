@@ -13,7 +13,9 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 import warnings
 
 # Add DiffPuter to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'DiffPuter'))
+# Git submodules (remasker/, CACTI/, DiffPuter/) live in mcpfn/benchmark/
+BENCHMARK_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(BENCHMARK_DIR, 'DiffPuter'))
 
 from model import MLPDiffusion, Model
 from diffusion_utils import impute_mask
@@ -204,7 +206,6 @@ class DiffPuterImputer:
         
         # Average over trials
         X_imputed = torch.stack(rec_Xs, dim=-1).mean(dim=-1)
-        print(X_imputed)
         
         # Clean up
         del model, denoise_fn, optimizer, scheduler
@@ -230,11 +231,3 @@ def impute_diffputer(X_missing: np.ndarray, **kwargs) -> np.ndarray:
     """
     imputer = DiffPuterImputer(**kwargs)
     return imputer.fit_transform(X_missing)
-
-if __name__ == "__main__":
-    X = np.random.rand(5, 5)
-    X[np.random.rand(5) < 0.5] = np.nan
-    print(X)
-    imputer = DiffPuterImputer()
-    X_imputed = imputer.fit_transform(X)
-    print(X_imputed)

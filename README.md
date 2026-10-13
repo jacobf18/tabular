@@ -57,6 +57,10 @@ out1 = imputer.impute(X.copy())
 print(out1)
 ```
 
+## Reproducing the paper
+
+The benchmark (MissBench) and every figure and table in the paper can be reproduced from the command line. See [mcpfn/benchmark/README.md](mcpfn/benchmark/README.md).
+
 ## Citation
 
 If you use TabImpute, please consider citing our paper:
