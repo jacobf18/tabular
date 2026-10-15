@@ -588,7 +588,8 @@ class NanHandlingEncoderStep(SeqEncStep):
         nan_mask = torch.logical_or(torch.isnan(x), torch.isinf(x))
         # replace nans with the mean of the corresponding feature
         x = x.clone()  # clone to avoid inplace operations
-        x[nan_mask] = self.feature_means_.unsqueeze(0).expand_as(x)[nan_mask]
+        repl = self.feature_means_.unsqueeze(0).expand_as(x).to(dtype=x.dtype)
+        x[nan_mask] = repl[nan_mask]
         return x, nans_indicator
 
 

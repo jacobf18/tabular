@@ -1,3 +1,4 @@
+import os
 from abc import ABC, abstractmethod
 from datetime import datetime
 
@@ -60,7 +61,15 @@ class TensorboardLoggerCallback(BaseLoggerCallback):
 class WandbLoggerCallback(BaseLoggerCallback):
     """ Logger callback that logs epoch information to Weights & Biases. """
 
-    def __init__(self, project: str, name: str = None, config: dict = None, log_dir: str = None, id=None):
+    def __init__(
+        self,
+        project: str,
+        name: str = None,
+        config: dict = None,
+        log_dir: str = None,
+        id=None,
+        api_key: str = None,
+    ):
         """
         Initializes a WandbLoggerCallback.
 
@@ -69,10 +78,14 @@ class WandbLoggerCallback(BaseLoggerCallback):
             name (str, optional): The name of the run. Defaults to None.
             config (dict, optional): Configuration dictionary for the run. Defaults to None.
             log_dir (str, optional): Directory to save wandb logs. Defaults to None.
+            api_key (str, optional): W&B API key. Defaults to WANDB_KEY env var when present.
         """
         try:
             import wandb
             self.wandb = wandb  # store wandb module to avoid import if not used
+            api_key = api_key or os.environ.get("WANDB_KEY")
+            if api_key:
+                wandb.login(key=api_key)
             wandb.init(
                 project=project,
                 name=name,
@@ -86,7 +99,7 @@ class WandbLoggerCallback(BaseLoggerCallback):
 
     def on_epoch_end(self, epoch: int, epoch_time: float, loss: float, model, **kwargs):
         log_dict = {'loss': loss, 'epoch_time': epoch_time, **kwargs['log_dict']}
-        self.wandb.log(log_dict)
+        self.wandb.log(log_dict, step=epoch)
 
     def close(self):
         self.wandb.finish()

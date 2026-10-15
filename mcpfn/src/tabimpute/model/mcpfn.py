@@ -1,16 +1,82 @@
 from __future__ import annotations
 
-from typing import Optional, Literal
+from typing import Any, Optional, Literal
 from torch import nn, Tensor
 import torch
 
 from .config import ModelConfig
 from .transformer import PerFeatureTransformer
+from . import encoders as local_encoders
 from .encoders import torch_nanmean
 
 import einops
 import numpy as np
 import importlib.resources as resources
+
+
+def _register_legacy_tabpfn_encoder_aliases() -> None:
+    """Expose local encoder symbols under the legacy TabPFN module path.
+
+    The bundled ``encoder.pth`` was serialized against an older
+    ``tabpfn.model.encoders`` module layout. Newer TabPFN versions re-export a
+    different set of symbols there, so we register the local implementations
+    before unpickling to keep checkpoint loading working.
+    """
+
+    import tabpfn.model.encoders as legacy_tabpfn_encoders
+
+    for name, value in vars(local_encoders).items():
+        if name.startswith("_") or hasattr(legacy_tabpfn_encoders, name):
+            continue
+        setattr(legacy_tabpfn_encoders, name, value)
+
+
+def _patch_tabpfn_package_nan_handling_for_input_dtype() -> None:
+    """Unpickled `encoder.pth` uses tabpfn's `NanHandlingEncoderStep`, not local encoders.
+
+    `feature_means_` is float32 while activations can be bfloat16; align dtypes on assign.
+    """
+    try:
+        from tabpfn.architectures.encoders.steps.nan_handling_encoder_step import (
+            NanHandlingEncoderStep as TpfnNan,
+        )
+    except ImportError:
+        return
+    if getattr(TpfnNan, "_mcpfn_input_dtype_patch_applied", False):
+        return
+
+    def _transform(  # noqa: PLR0913 — mirrors upstream signature
+        self: Any,
+        state: dict[str, torch.Tensor],
+        **kwargs: Any,
+    ) -> dict[str, torch.Tensor]:
+        del kwargs
+        x = state[self.in_keys[0]]
+        nans_indicator: torch.Tensor | None = None
+        if self.keep_nans:
+            nans_indicator = (
+                torch.isnan(x) * TpfnNan.nan_indicator
+                + torch.logical_and(torch.isinf(x), torch.sign(x) == 1)
+                * TpfnNan.inf_indicator
+                + torch.logical_and(torch.isinf(x), torch.sign(x) == -1)
+                * TpfnNan.neg_inf_indicator
+            ).to(x.dtype)
+
+        nan_mask = torch.logical_or(torch.isnan(x), torch.isinf(x))
+        x = x.clone()
+        repl = self.feature_means_.unsqueeze(0).expand_as(x).to(dtype=x.dtype)
+        x[nan_mask] = repl[nan_mask]
+
+        outputs: dict[str, torch.Tensor] = {self.out_keys[0]: x}
+        if nans_indicator is not None:
+            outputs[self.out_keys[1]] = nans_indicator
+        return outputs
+
+    TpfnNan._transform = _transform
+    TpfnNan._mcpfn_input_dtype_patch_applied = True
+
+
+_patch_tabpfn_package_nan_handling_for_input_dtype()
 
 
 class MCPFN(nn.Module):
@@ -44,6 +110,7 @@ class MCPFN(nn.Module):
             max_num_features=max_num_features,
         )
 
+        _register_legacy_tabpfn_encoder_aliases()
         with resources.files("tabimpute.data").joinpath("encoder.pth").open("rb") as f:
             self.encoder = torch.load(f, weights_only=False)
 

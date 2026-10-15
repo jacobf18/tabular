@@ -6,20 +6,104 @@ from tabimpute.prior.splits import create_train_test_sets
 
 import numpy as np
 from tabimpute.model.mcpfn import MCPFN
+import argparse
 from tabimpute.model.bar_distribution import FullSupportBarDistribution
 
+# from tabpfn import TabPFNRegressor
+from typing import TYPE_CHECKING
 import importlib.resources as resources
 from huggingface_hub import hf_hub_download
 from tabimpute.model.encoders import normalize_data
-from typing import TYPE_CHECKING, Any
+from tabimpute.model.model_new import TabImputeModel as TabImputeModelNew
+from tabimpute.model.model_new_stable import (
+    TabImputeModel as TabImputeModelStable,
+    build_best_transfer_model,
+)
+from tabimpute.model.model_new_stable_memory_efficient import (
+    TabImputeModel as TabImputeModelMemoryEfficient,
+)
+from tabimpute.model.model_compressed_cross import (
+    ColumnCompressionModel,
+    CompressedCrossTabImputeModel,
+    RowCompressionModel,
+    build_compressor_config_from_predictor,
+)
+from tabimpute.model.model_compressed_cross_rabel import (
+    ColumnCompressionModelRaBEL,
+    CompressedCrossTabImputeModelRaBEL,
+    RowCompressionModelRaBEL,
+    TabImputeModelRaBEL,
+)
+from tabimpute.model.model_compressed_cross_pure_rabel import (
+    ColumnCompressionModelPureRaBEL,
+    CompressedCrossTabImputeModelPureRaBEL,
+    RowCompressionModelPureRaBEL,
+)
+from tabimpute.model.model_new_stable_rabel import (
+    TabImputeModelPureRaBEL,
+)
+from tabimpute.model.model_new_stable_rabel_context_decoder import (
+    TabImputeModelPureRaBELContextDecoder,
+)
+from tabimpute.model.model_rowcol_latent import (
+    TabImputeModelRowColumnLatent,
+)
+from tabimpute.model.model_rowcol_latent_attention import (
+    TabImputeModelRowColumnLatentAttention,
+)
+from tabimpute.model.model_rowcol_als_hybrid import (
+    TabImputeModelRowColumnALSHybrid,
+)
+from tabimpute.model.model_rowcol_svt_hybrid import (
+    TabImputeModelRowColumnSVTHybrid,
+)
 
 if TYPE_CHECKING:
     from tabimpute.prepreocess import Preprocess
+
+
+def _load_json_config_from_checkpoint(checkpoint_path: str) -> dict:
+    from pathlib import Path
+    import json
+
+    cfg_path = Path(checkpoint_path).parent / "config.json"
+    with cfg_path.open("r", encoding="utf-8") as f:
+        cfg = json.load(f)
+    if "model" in cfg:
+        return dict(cfg["model"])
+    if "config" in cfg:
+        return dict(cfg["config"])
+    return dict(cfg)
 
 def get_model_from_huggingface() -> str:
     repo_id = "Tabimpute/TabImpute"
     filename = "tabimpute_001.ckpt"
     return hf_hub_download(repo_id=repo_id, filename=filename)
+
+
+def calibrate_predictions(
+    y_val, y_pred_val, pred_sigma_val, y_pred_test, pred_sigma_test
+):
+    """
+    Calibrate mean and std of predictive distribution.
+    Returns calibrated test means and stds.
+    """
+    from sklearn.linear_model import LinearRegression
+
+    # ---- Variance calibration ----
+    resid = y_val - y_pred_val
+    std_resid = np.std(resid)
+    mean_sigma = np.mean(pred_sigma_val)
+    alpha = std_resid / (mean_sigma + 1e-12)
+
+    sigma_cal_test = pred_sigma_test * alpha
+
+    # ---- Linear correction for means ----
+    reg = LinearRegression().fit(y_pred_val.reshape(-1, 1), y_val)
+    a, b = reg.coef_[0], reg.intercept_
+    mu_cal_test = a * y_pred_test + b
+
+    return mu_cal_test, sigma_cal_test, (a, b, alpha)
 
 
 class ImputePFN:
@@ -35,32 +119,69 @@ class ImputePFN:
         self,
         device: str = "cpu",
         nhead: int = 2,
-        preprocessors: list[Any] = None,
+        preprocessors: list[Preprocess] = None,
         checkpoint_path: str = None,
         max_num_rows: int = None,
+        max_num_cols: int = None,
         max_num_chunks: int = None,
         verbose: bool = False,
+        entry_wise_features: bool = True,
+        json_config: dict = None,
+        model_family: str = "new_stable",
+        use_ema: bool = False,
+        prediction_stat: str = "median",
+        direct_prior_index: int | None = None,
+        precision_mode: str = "full_bfloat16",
     ):
         self.device = device
+        self.model_family = model_family
+        self.direct_prior_index = direct_prior_index
+        if precision_mode not in {"full_bfloat16", "amp_bfloat16", "amp_float16", "float32"}:
+            raise ValueError(f"Unknown precision_mode: {precision_mode}")
+        if entry_wise_features and precision_mode != "full_bfloat16":
+            raise ValueError("precision_mode currently applies to direct models only")
+        self.precision_mode = precision_mode
+        self.direct_dtype = torch.bfloat16 if precision_mode == "full_bfloat16" else torch.float32
+        if prediction_stat not in {"median", "mean"}:
+            raise ValueError(
+                f"prediction_stat must be 'median' or 'mean', got {prediction_stat!r}"
+            )
+        self.prediction_stat = prediction_stat
 
-        self.model = MCPFN(nhead=nhead).to(self.device).to(torch.bfloat16)
-        self.model.eval()
+        # Build model
+        if entry_wise_features:
+            self.model = MCPFN(nhead=nhead).to(self.device).to(torch.bfloat16)
+        else:
+            self.model = self._build_direct_model(json_config=json_config).to(
+                self.device, dtype=self.direct_dtype
+            )
+            self.model.eval()
         # torch.compile(self.model)
 
         # Load borders tensor for outputting continuous values
         with resources.files("tabimpute.data").joinpath("borders.pt").open("rb") as f:
             self.borders = torch.load(f, map_location=self.device)
 
-        if checkpoint_path is None:
-            checkpoint_path = get_model_from_huggingface()
+        if entry_wise_features:
+            if checkpoint_path is None:
+                checkpoint_path = get_model_from_huggingface()
 
-        checkpoint = torch.load(
-            checkpoint_path, map_location=self.device, weights_only=True
-        )
-        self.model.load_state_dict(checkpoint["state_dict"])
+            # Load model state dict
+            checkpoint = torch.load(
+                checkpoint_path, map_location=self.device, weights_only=True
+            )
+
+            state_dict = self._select_state_dict(
+                checkpoint, use_ema=use_ema, checkpoint_path=checkpoint_path
+            )
+            self.model.load_state_dict(state_dict)
+        else:
+            checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=True)
+            self.model.load_state_dict(checkpoint['model'], strict=True)
 
         self.preprocessors = preprocessors
         self.max_num_rows = max_num_rows
+        self.max_num_cols = max_num_cols
         if max_num_chunks is None:
             max_num_chunks = float('inf')
         self.max_num_chunks = max_num_chunks
@@ -68,8 +189,834 @@ class ImputePFN:
         borders = self.borders.to(self.device)
         self.bar_distribution = FullSupportBarDistribution(borders=borders)
         self.verbose = verbose
-        
-    def impute(self, X: np.ndarray, return_full: bool = False, num_repeats: int = 1) -> np.ndarray:
+        self.entry_wise_features = entry_wise_features
+
+    def _point_predictions(self, logits: torch.Tensor) -> torch.Tensor:
+        from tabimpute.model.prediction_distribution import prediction_distribution
+        distribution = prediction_distribution(self.model, self.bar_distribution)
+        logits = logits.float()
+        if self.prediction_stat == "mean":
+            return distribution.mean(logits=logits)
+        return distribution.median(logits=logits)
+
+    def _call_direct_model(self, x: torch.Tensor) -> torch.Tensor:
+        with torch.autocast(
+            device_type=torch.device(self.device).type,
+            dtype=torch.float16 if self.precision_mode == "amp_float16" else torch.bfloat16,
+            enabled=self.precision_mode.startswith("amp_"),
+        ):
+            if self.direct_prior_index is None:
+                return self.model(x.to(self.direct_dtype))
+            return self.model(x.to(self.direct_dtype), prior_index=self.direct_prior_index)
+
+    def set_attention_capture(
+        self, enabled: bool = True, store_weights: bool = True
+    ) -> None:
+        if not hasattr(self.model, "set_attention_capture"):
+            raise NotImplementedError(
+                "Attention capture is implemented for direct TabImpute models "
+                "(entry_wise_features=False)."
+            )
+        self.model.set_attention_capture(enabled, store_weights=store_weights)
+
+    def get_attention_diagnostics(self) -> list[dict[str, object]]:
+        if not hasattr(self.model, "get_attention_diagnostics"):
+            raise NotImplementedError(
+                "Attention diagnostics are implemented for direct TabImpute models "
+                "(entry_wise_features=False)."
+            )
+        return self.model.get_attention_diagnostics()
+
+    def diagnose_attention(
+        self,
+        X: np.ndarray,
+        store_weights: bool = False,
+        means: np.ndarray | None = None,
+        stds: np.ndarray | None = None,
+    ) -> list[dict[str, object]]:
+        """Run one direct-model pass and return per-layer attention weights/stats."""
+        if self.entry_wise_features:
+            raise NotImplementedError(
+                "diagnose_attention is intended for the direct mat-to-mat model. "
+                "Construct ImputePFN with entry_wise_features=False."
+            )
+        if X.ndim != 2:
+            raise ValueError("Input matrix must be 2-dimensional")
+
+        if means is None:
+            means = np.nanmean(X, axis=0)
+        else:
+            means = np.asarray(means, dtype=np.float64)
+            if means.shape != (X.shape[1],):
+                raise ValueError(
+                    f"means must have shape ({X.shape[1]},), got {means.shape}"
+                )
+
+        if stds is None:
+            stds = np.nanstd(X, axis=0)
+        else:
+            stds = np.asarray(stds, dtype=np.float64)
+            if stds.shape != (X.shape[1],):
+                raise ValueError(
+                    f"stds must have shape ({X.shape[1]},), got {stds.shape}"
+                )
+
+        stds = np.where(np.isnan(stds), 1, stds)
+        means = np.where(np.isnan(means), 0, means)
+        X_normalized = (X - means) / (stds + 1e-16)
+        X_tensor = (
+            torch.from_numpy(X_normalized)
+            .unsqueeze(0)
+            .to(self.device)
+            .to(self.direct_dtype)
+        )
+
+        self.set_attention_capture(True, store_weights=store_weights)
+        with torch.no_grad():
+            self._call_direct_model(X_tensor)
+        diagnostics = self.get_attention_diagnostics()
+        self.set_attention_capture(False)
+        return diagnostics
+
+    @staticmethod
+    def _select_state_dict(
+        checkpoint: dict, use_ema: bool, checkpoint_path: str
+    ) -> dict:
+        """Pick the parameter dict to load, preferring EMA weights when requested.
+
+        Handles three checkpoint shapes:
+          - best.ckpt with `ema_applied=True` and `state_dict` already = EMA weights.
+          - step-*.ckpt with `state_dict` = live weights and
+            `ema_state["shadow"]` = the EMA shadow keyed by parameter name.
+          - any checkpoint with no EMA info (falls back to `state_dict`).
+
+        For (2), the EMA shadow is overlaid onto the live state_dict so that
+        non-parameter buffers are preserved.
+        """
+        if "state_dict" not in checkpoint:
+            raise ValueError(
+                f"Checkpoint at {checkpoint_path} has no 'state_dict' key."
+            )
+        live_state_dict = checkpoint["state_dict"]
+
+        if not use_ema:
+            return live_state_dict
+
+        if checkpoint.get("ema_applied"):
+            # state_dict already contains EMA weights (best.ckpt path).
+            return live_state_dict
+
+        ema_state = checkpoint.get("ema_state")
+        if ema_state is None or "shadow" not in ema_state:
+            raise ValueError(
+                f"use_ema=True but checkpoint at {checkpoint_path} has no EMA "
+                "shadow (no 'ema_state' or 'ema_applied' marker). Train with "
+                "--ema_enabled true or pass use_ema=False."
+            )
+
+        shadow = ema_state["shadow"]
+        merged = {**live_state_dict}
+        for name, tensor in shadow.items():
+            if name in merged:
+                merged[name] = tensor.to(dtype=merged[name].dtype)
+            else:
+                merged[name] = tensor
+        return merged
+
+    def _get_direct_model_config(self, json_config: dict | None) -> dict:
+        if json_config is None:
+            raise ValueError(
+                "json_config must be provided when entry_wise_features=False"
+            )
+
+        if "config" in json_config:
+            return dict(json_config["config"])
+        return dict(json_config)
+
+    def _build_direct_model(self, json_config: dict | None):
+        config = self._get_direct_model_config(json_config)
+        model_family = self.model_family.lower()
+
+        common_kwargs = {
+            "embedding_size": config["embedding_size"],
+            "num_attention_heads": config["num_attention_heads"],
+            "mlp_hidden_size": config["mlp_hidden_size"],
+            "num_layers": config["num_layers"],
+            "num_outputs": config.get("num_outputs", 5000),
+            "num_cls": config["num_cls"],
+            "use_rope": config.get("use_rope", True),
+            "rope_base": config.get("rope_base", 10000.0),
+            "rope_fraction": config.get("rope_fraction", 1.0),
+            "use_absolute_positional_embeddings": config.get(
+                "use_absolute_positional_embeddings", False
+            ),
+            "positional_damping_factor": config.get(
+                "positional_damping_factor", 0.1
+            ),
+        }
+
+        if model_family in {"new", "train_new", "legacy"}:
+            return TabImputeModelNew(**common_kwargs)
+
+        if model_family in {"new_stable", "stable", "train_new_stable"}:
+            stable_kwargs = {
+                **common_kwargs,
+                "attention_dropout": config.get("attention_dropout", 0.0),
+                "ffn_dropout": config.get("ffn_dropout", 0.0),
+                "drop_path_rate": config.get("drop_path_rate", 0.0),
+                "residual_scale_init": config.get("residual_scale_init", 1.0),
+                "rms_norm_eps": config.get("rms_norm_eps", 1e-6),
+                "embedding_dropout": config.get("embedding_dropout", 0.0),
+                "attention_batch_chunk_size": config.get(
+                    "attention_batch_chunk_size", None
+                ),
+            }
+            return TabImputeModelStable(**stable_kwargs)
+
+        if model_family in {
+            "rabel",
+            "new_stable_rabel",
+            "stable_rabel",
+        }:
+            rabel_kwargs = {
+                **common_kwargs,
+                "attention_dropout": config.get("attention_dropout", 0.0),
+                "ffn_dropout": config.get("ffn_dropout", 0.0),
+                "drop_path_rate": config.get("drop_path_rate", 0.0),
+                "residual_scale_init": config.get("residual_scale_init", 1.0),
+                "rms_norm_eps": config.get("rms_norm_eps", 1e-6),
+                "embedding_dropout": config.get("embedding_dropout", 0.0),
+                "attention_batch_chunk_size": config.get(
+                    "attention_batch_chunk_size", None
+                ),
+                "rabel_num_kernels": config.get("rabel_num_kernels", 64),
+                "rabel_sigma": config.get("rabel_sigma", 1.0),
+                "rabel_exponent_digits": config.get(
+                    "rabel_exponent_digits", 1
+                ),
+                "rabel_exponent_embedding_size": config.get(
+                    "rabel_exponent_embedding_size", 32
+                ),
+                "rabel_initial_scale": config.get(
+                    "rabel_initial_scale", 0.05
+                ),
+            }
+            return TabImputeModelRaBEL(**rabel_kwargs)
+
+        if model_family in {
+            "pure_rabel",
+            "pure_rabel_memory_efficient",
+            "new_stable_pure_rabel",
+        }:
+            rabel_kwargs = {
+                **common_kwargs,
+                "attention_dropout": config.get("attention_dropout", 0.0),
+                "ffn_dropout": config.get("ffn_dropout", 0.0),
+                "drop_path_rate": config.get("drop_path_rate", 0.0),
+                "residual_scale_init": config.get("residual_scale_init", 1.0),
+                "rms_norm_eps": config.get("rms_norm_eps", 1e-6),
+                "embedding_dropout": config.get("embedding_dropout", 0.0),
+                "attention_batch_chunk_size": config.get(
+                    "attention_batch_chunk_size", None
+                ),
+                "use_activation_checkpointing": config.get(
+                    "use_activation_checkpointing", True
+                ),
+                "checkpoint_use_reentrant": config.get(
+                    "checkpoint_use_reentrant", False
+                ),
+                "rabel_num_kernels": config.get("rabel_num_kernels", 64),
+                "rabel_sigma": config.get("rabel_sigma", 1.0),
+                "rabel_exponent_digits": config.get(
+                    "rabel_exponent_digits", 1
+                ),
+                "rabel_exponent_embedding_size": config.get(
+                    "rabel_exponent_embedding_size", 32
+                ),
+            }
+            return TabImputeModelPureRaBEL(**rabel_kwargs)
+
+        if model_family in {
+            "pure_rabel_context_decoder",
+            "pure_rabel_rowcol_decoder",
+            "new_stable_pure_rabel_context_decoder",
+        }:
+            rabel_kwargs = {
+                **common_kwargs,
+                "attention_dropout": config.get("attention_dropout", 0.0),
+                "ffn_dropout": config.get("ffn_dropout", 0.0),
+                "drop_path_rate": config.get("drop_path_rate", 0.0),
+                "residual_scale_init": config.get("residual_scale_init", 1.0),
+                "rms_norm_eps": config.get("rms_norm_eps", 1e-6),
+                "embedding_dropout": config.get("embedding_dropout", 0.0),
+                "attention_batch_chunk_size": config.get(
+                    "attention_batch_chunk_size", None
+                ),
+                "use_activation_checkpointing": config.get(
+                    "use_activation_checkpointing", True
+                ),
+                "checkpoint_use_reentrant": config.get(
+                    "checkpoint_use_reentrant", False
+                ),
+                "rabel_num_kernels": config.get("rabel_num_kernels", 64),
+                "rabel_sigma": config.get("rabel_sigma", 1.0),
+                "rabel_exponent_digits": config.get(
+                    "rabel_exponent_digits", 1
+                ),
+                "rabel_exponent_embedding_size": config.get(
+                    "rabel_exponent_embedding_size", 32
+                ),
+                "context_scale_init": config.get("context_scale_init", 0.05),
+                "context_include_interaction": config.get(
+                    "context_include_interaction", True
+                ),
+            }
+            return TabImputeModelPureRaBELContextDecoder(**rabel_kwargs)
+
+        if model_family in {
+            "rowcol_latent",
+            "row_column_latent",
+            "bipartite_latent",
+        }:
+            rowcol_kwargs = {
+                **common_kwargs,
+                "attention_dropout": config.get("attention_dropout", 0.0),
+                "ffn_dropout": config.get("ffn_dropout", 0.0),
+                "drop_path_rate": config.get("drop_path_rate", 0.0),
+                "residual_scale_init": config.get("residual_scale_init", 0.1),
+                "rms_norm_eps": config.get("rms_norm_eps", 1e-6),
+                "embedding_dropout": config.get("embedding_dropout", 0.0),
+                "attention_batch_chunk_size": config.get(
+                    "attention_batch_chunk_size", None
+                ),
+                "use_activation_checkpointing": config.get(
+                    "use_activation_checkpointing", True
+                ),
+                "checkpoint_use_reentrant": config.get(
+                    "checkpoint_use_reentrant", False
+                ),
+                "rabel_num_kernels": config.get("rabel_num_kernels", 64),
+                "rabel_sigma": config.get("rabel_sigma", 1.0),
+                "rabel_exponent_digits": config.get(
+                    "rabel_exponent_digits", 1
+                ),
+                "rabel_exponent_embedding_size": config.get(
+                    "rabel_exponent_embedding_size", 32
+                ),
+                "count_hidden_size": config.get("count_hidden_size", None),
+                "decoder_interaction_scale_init": config.get(
+                    "decoder_interaction_scale_init", 0.1
+                ),
+                "decoder_feature_size": config.get("decoder_feature_size", None),
+                "decoder_hidden_size": config.get("decoder_hidden_size", None),
+                "extra_decoder_hidden_size": config.get(
+                    "extra_decoder_hidden_size", None
+                ),
+                "extra_decoder_scale_init": config.get(
+                    "extra_decoder_scale_init", 0.0
+                ),
+                "use_axis_identity_features": config.get(
+                    "use_axis_identity_features", False
+                ),
+                "axis_identity_hidden_size": config.get(
+                    "axis_identity_hidden_size", None
+                ),
+                "axis_identity_scale_init": config.get(
+                    "axis_identity_scale_init", 0.05
+                ),
+                "positional_encoding_kind": config.get(
+                    "positional_encoding_kind", None
+                ),
+                "positional_num_frequencies": config.get(
+                    "positional_num_frequencies", 32
+                ),
+                "positional_max_size": config.get("positional_max_size", 1024),
+                "use_value_weighted_messages": config.get(
+                    "use_value_weighted_messages", False
+                ),
+                "value_weighted_message_scale_init": config.get(
+                    "value_weighted_message_scale_init", 0.01
+                ),
+            }
+            return TabImputeModelRowColumnLatent(**rowcol_kwargs)
+
+        if model_family in {
+            "rowcol_latent_attention",
+            "row_column_latent_attention",
+            "bipartite_latent_attention",
+        }:
+            rowcol_kwargs = {
+                **common_kwargs,
+                "attention_dropout": config.get("attention_dropout", 0.0),
+                "latent_attention_dropout": config.get(
+                    "latent_attention_dropout", config.get("attention_dropout", 0.0)
+                ),
+                "ffn_dropout": config.get("ffn_dropout", 0.0),
+                "drop_path_rate": config.get("drop_path_rate", 0.0),
+                "residual_scale_init": config.get("residual_scale_init", 0.1),
+                "rms_norm_eps": config.get("rms_norm_eps", 1e-6),
+                "embedding_dropout": config.get("embedding_dropout", 0.0),
+                "attention_batch_chunk_size": config.get(
+                    "attention_batch_chunk_size", None
+                ),
+                "use_activation_checkpointing": config.get(
+                    "use_activation_checkpointing", True
+                ),
+                "checkpoint_use_reentrant": config.get(
+                    "checkpoint_use_reentrant", False
+                ),
+                "rabel_num_kernels": config.get("rabel_num_kernels", 64),
+                "rabel_sigma": config.get("rabel_sigma", 1.0),
+                "rabel_exponent_digits": config.get(
+                    "rabel_exponent_digits", 1
+                ),
+                "rabel_exponent_embedding_size": config.get(
+                    "rabel_exponent_embedding_size", 32
+                ),
+                "count_hidden_size": config.get("count_hidden_size", None),
+                "decoder_interaction_scale_init": config.get(
+                    "decoder_interaction_scale_init", 0.1
+                ),
+                "decoder_feature_size": config.get("decoder_feature_size", None),
+                "decoder_hidden_size": config.get("decoder_hidden_size", None),
+                "extra_decoder_hidden_size": config.get(
+                    "extra_decoder_hidden_size", None
+                ),
+                "extra_decoder_scale_init": config.get(
+                    "extra_decoder_scale_init", 0.0
+                ),
+                "use_axis_identity_features": config.get(
+                    "use_axis_identity_features", False
+                ),
+                "axis_identity_hidden_size": config.get(
+                    "axis_identity_hidden_size", None
+                ),
+                "axis_identity_scale_init": config.get(
+                    "axis_identity_scale_init", 0.05
+                ),
+                "positional_encoding_kind": config.get(
+                    "positional_encoding_kind", None
+                ),
+                "positional_num_frequencies": config.get(
+                    "positional_num_frequencies", 32
+                ),
+                "positional_max_size": config.get("positional_max_size", 1024),
+                "use_value_weighted_messages": config.get(
+                    "use_value_weighted_messages", False
+                ),
+                "value_weighted_message_scale_init": config.get(
+                    "value_weighted_message_scale_init", 0.01
+                ),
+                "latent_memory_residual_start_layer": config.get(
+                    "latent_memory_residual_start_layer", None
+                ),
+                "latent_memory_residual_scale_init": config.get(
+                    "latent_memory_residual_scale_init", 0.0
+                ),
+                "latent_memory_residual_normalize": config.get(
+                    "latent_memory_residual_normalize", True
+                ),
+            }
+            return TabImputeModelRowColumnLatentAttention(**rowcol_kwargs)
+
+        if model_family in {
+            "rowcol_als_hybrid",
+            "rowcol_latent_als_hybrid",
+            "row_column_als_hybrid",
+        }:
+            rowcol_kwargs = {
+                **common_kwargs,
+                "attention_dropout": config.get("attention_dropout", 0.0),
+                "latent_attention_dropout": config.get(
+                    "latent_attention_dropout", config.get("attention_dropout", 0.0)
+                ),
+                "ffn_dropout": config.get("ffn_dropout", 0.0),
+                "drop_path_rate": config.get("drop_path_rate", 0.0),
+                "residual_scale_init": config.get("residual_scale_init", 0.1),
+                "rms_norm_eps": config.get("rms_norm_eps", 1e-6),
+                "embedding_dropout": config.get("embedding_dropout", 0.0),
+                "attention_batch_chunk_size": config.get(
+                    "attention_batch_chunk_size", None
+                ),
+                "use_activation_checkpointing": config.get(
+                    "use_activation_checkpointing", True
+                ),
+                "checkpoint_use_reentrant": config.get(
+                    "checkpoint_use_reentrant", False
+                ),
+                "rabel_num_kernels": config.get("rabel_num_kernels", 64),
+                "rabel_sigma": config.get("rabel_sigma", 1.0),
+                "rabel_exponent_digits": config.get(
+                    "rabel_exponent_digits", 1
+                ),
+                "rabel_exponent_embedding_size": config.get(
+                    "rabel_exponent_embedding_size", 32
+                ),
+                "count_hidden_size": config.get("count_hidden_size", None),
+                "decoder_interaction_scale_init": config.get(
+                    "decoder_interaction_scale_init", 0.1
+                ),
+                "decoder_feature_size": config.get("decoder_feature_size", None),
+                "decoder_hidden_size": config.get("decoder_hidden_size", None),
+                "extra_decoder_hidden_size": config.get(
+                    "extra_decoder_hidden_size", None
+                ),
+                "extra_decoder_scale_init": config.get(
+                    "extra_decoder_scale_init", 0.0
+                ),
+                "use_axis_identity_features": config.get(
+                    "use_axis_identity_features", False
+                ),
+                "axis_identity_hidden_size": config.get(
+                    "axis_identity_hidden_size", None
+                ),
+                "axis_identity_scale_init": config.get(
+                    "axis_identity_scale_init", 0.05
+                ),
+                "positional_encoding_kind": config.get(
+                    "positional_encoding_kind", None
+                ),
+                "positional_num_frequencies": config.get(
+                    "positional_num_frequencies", 32
+                ),
+                "positional_max_size": config.get("positional_max_size", 1024),
+                "use_value_weighted_messages": config.get(
+                    "use_value_weighted_messages", False
+                ),
+                "value_weighted_message_scale_init": config.get(
+                    "value_weighted_message_scale_init", 0.01
+                ),
+                "latent_memory_residual_start_layer": config.get(
+                    "latent_memory_residual_start_layer", None
+                ),
+                "latent_memory_residual_scale_init": config.get(
+                    "latent_memory_residual_scale_init", 0.0
+                ),
+                "latent_memory_residual_normalize": config.get(
+                    "latent_memory_residual_normalize", True
+                ),
+                "als_rank": config.get("als_rank", 10),
+                "als_steps": config.get("als_steps", 4),
+                "als_ridge": config.get("als_ridge", 1e-3),
+                "als_update_damping": config.get("als_update_damping", 0.85),
+                "als_ridge_scale_by_obs": config.get(
+                    "als_ridge_scale_by_obs", False
+                ),
+                "als_solve_method": config.get("als_solve_method", "cholesky"),
+                "als_jitter": config.get("als_jitter", 1e-6),
+                "als_factor_norm_clip": config.get(
+                    "als_factor_norm_clip", None
+                ),
+                "als_init_scale": config.get("als_init_scale", 0.05),
+                "logit_sigma_init": config.get("logit_sigma_init", 0.025),
+                "logit_sigma_min": config.get("logit_sigma_min", 0.003),
+                "use_neural_residual": config.get("use_neural_residual", False),
+                "neural_residual_scale_init": config.get(
+                    "neural_residual_scale_init", 0.0
+                ),
+            }
+            return TabImputeModelRowColumnALSHybrid(**rowcol_kwargs)
+
+        if model_family in {
+            "rowcol_svt_hybrid",
+            "rowcol_latent_svt_hybrid",
+            "row_column_svt_hybrid",
+        }:
+            rowcol_kwargs = {
+                **common_kwargs,
+                "attention_dropout": config.get("attention_dropout", 0.0),
+                "latent_attention_dropout": config.get(
+                    "latent_attention_dropout", config.get("attention_dropout", 0.0)
+                ),
+                "ffn_dropout": config.get("ffn_dropout", 0.0),
+                "drop_path_rate": config.get("drop_path_rate", 0.0),
+                "residual_scale_init": config.get("residual_scale_init", 0.1),
+                "rms_norm_eps": config.get("rms_norm_eps", 1e-6),
+                "embedding_dropout": config.get("embedding_dropout", 0.0),
+                "attention_batch_chunk_size": config.get(
+                    "attention_batch_chunk_size", None
+                ),
+                "use_activation_checkpointing": config.get(
+                    "use_activation_checkpointing", True
+                ),
+                "checkpoint_use_reentrant": config.get(
+                    "checkpoint_use_reentrant", False
+                ),
+                "rabel_num_kernels": config.get("rabel_num_kernels", 64),
+                "rabel_sigma": config.get("rabel_sigma", 1.0),
+                "rabel_exponent_digits": config.get(
+                    "rabel_exponent_digits", 1
+                ),
+                "rabel_exponent_embedding_size": config.get(
+                    "rabel_exponent_embedding_size", 32
+                ),
+                "count_hidden_size": config.get("count_hidden_size", None),
+                "decoder_interaction_scale_init": config.get(
+                    "decoder_interaction_scale_init", 0.1
+                ),
+                "decoder_feature_size": config.get("decoder_feature_size", None),
+                "decoder_hidden_size": config.get("decoder_hidden_size", None),
+                "extra_decoder_hidden_size": config.get(
+                    "extra_decoder_hidden_size", None
+                ),
+                "extra_decoder_scale_init": config.get(
+                    "extra_decoder_scale_init", 0.0
+                ),
+                "use_axis_identity_features": config.get(
+                    "use_axis_identity_features", False
+                ),
+                "axis_identity_hidden_size": config.get(
+                    "axis_identity_hidden_size", None
+                ),
+                "axis_identity_scale_init": config.get(
+                    "axis_identity_scale_init", 0.05
+                ),
+                "positional_encoding_kind": config.get(
+                    "positional_encoding_kind", None
+                ),
+                "positional_num_frequencies": config.get(
+                    "positional_num_frequencies", 32
+                ),
+                "positional_max_size": config.get("positional_max_size", 1024),
+                "use_value_weighted_messages": config.get(
+                    "use_value_weighted_messages", False
+                ),
+                "value_weighted_message_scale_init": config.get(
+                    "value_weighted_message_scale_init", 0.01
+                ),
+                "latent_memory_residual_start_layer": config.get(
+                    "latent_memory_residual_start_layer", None
+                ),
+                "latent_memory_residual_scale_init": config.get(
+                    "latent_memory_residual_scale_init", 0.0
+                ),
+                "latent_memory_residual_normalize": config.get(
+                    "latent_memory_residual_normalize", True
+                ),
+                "svt_init_rank": config.get("svt_init_rank", 10),
+                "svt_steps": config.get("svt_steps", 4),
+                "svt_max_rank": config.get("svt_max_rank", 20),
+                "svt_threshold_fraction_init": config.get(
+                    "svt_threshold_fraction_init", 0.02
+                ),
+                "svt_threshold_fraction_min": config.get(
+                    "svt_threshold_fraction_min", 1e-4
+                ),
+                "svt_threshold_fraction_max": config.get(
+                    "svt_threshold_fraction_max", None
+                ),
+                "svt_threshold_mode": config.get(
+                    "svt_threshold_mode", "constant"
+                ),
+                "svt_threshold_size_scale_init": config.get(
+                    "svt_threshold_size_scale_init", 1.2
+                ),
+                "svt_update_damping": config.get("svt_update_damping", 1.0),
+                "svt_init_scale": config.get("svt_init_scale", 0.035),
+                "logit_sigma_init": config.get("logit_sigma_init", 0.08),
+                "logit_sigma_min": config.get("logit_sigma_min", 0.008),
+                "use_neural_residual": config.get("use_neural_residual", False),
+                "neural_residual_rank": config.get("neural_residual_rank", None),
+                "neural_residual_scale_init": config.get(
+                    "neural_residual_scale_init", 0.0
+                ),
+                "use_svt_feature_decoder": config.get(
+                    "use_svt_feature_decoder", False
+                ),
+                "use_svt_magnitude_channel": config.get("use_svt_magnitude_channel", False),
+                "use_svt_output_correction": config.get("use_svt_output_correction", False),
+                "use_cell_query_decoder": config.get("use_cell_query_decoder", False),
+                "cell_query_width": config.get("cell_query_width", 128),
+                "cell_query_heads": config.get("cell_query_heads", 4),
+                "cell_query_layers": config.get("cell_query_layers", 2),
+                "cell_query_chunk_size": config.get("cell_query_chunk_size", 128),
+                "cell_query_checkpoint_chunks": config.get("cell_query_checkpoint_chunks", True),
+                "cell_query_axis_balanced": config.get("cell_query_axis_balanced", False),
+                "svt_feature_decoder_scale_init": config.get(
+                    "svt_feature_decoder_scale_init", 0.1
+                ),
+                "svt_feature_decoder_hidden_size": config.get(
+                    "svt_feature_decoder_hidden_size", None
+                ),
+                "use_observed_neighbor_features": config.get(
+                    "use_observed_neighbor_features", False
+                ),
+                "observed_neighbor_temperature": config.get(
+                    "observed_neighbor_temperature", 0.20
+                ),
+                "observed_neighbor_topk": config.get("observed_neighbor_topk", 64),
+                "use_observed_attention_decoder": config.get(
+                    "use_observed_attention_decoder", False
+                ),
+                "observed_attention_topk": config.get(
+                    "observed_attention_topk", 64
+                ),
+                "observed_attention_dim": config.get(
+                    "observed_attention_dim", 128
+                ),
+                "observed_attention_temperature_init": config.get(
+                    "observed_attention_temperature_init", 1.0
+                ),
+                "observed_attention_scale_init": config.get(
+                    "observed_attention_scale_init", 0.05
+                ),
+                "observed_attention_hidden_size": config.get(
+                    "observed_attention_hidden_size", None
+                ),
+                "use_empirical_bayes_decoder": config.get(
+                    "use_empirical_bayes_decoder", False
+                ),
+                "empirical_bayes_ridge_init": config.get(
+                    "empirical_bayes_ridge_init", 0.02
+                ),
+                "empirical_bayes_ridge_min": config.get(
+                    "empirical_bayes_ridge_min", 1e-5
+                ),
+                "empirical_bayes_shrinkage_init": config.get(
+                    "empirical_bayes_shrinkage_init", 0.05
+                ),
+                "empirical_bayes_feature_scale_init": config.get(
+                    "empirical_bayes_feature_scale_init", 0.10
+                ),
+                "empirical_bayes_hidden_size": config.get(
+                    "empirical_bayes_hidden_size", None
+                ),
+                "empirical_bayes_solve_steps": config.get(
+                    "empirical_bayes_solve_steps", 12
+                ),
+                "num_prior_adapters": config.get("num_prior_adapters", 0),
+                "default_prior_index": config.get("default_prior_index", None),
+                "prior_adapter_scale_init": config.get(
+                    "prior_adapter_scale_init", 0.05
+                ),
+                "prior_adapter_calibration_scale_init": config.get(
+                    "prior_adapter_calibration_scale_init", 0.02
+                ),
+                "prior_svt_steps": config.get("prior_svt_steps", None),
+                "svt_mixture_steps": config.get("svt_mixture_steps", None),
+                "svt_mixture_hidden_size": config.get(
+                    "svt_mixture_hidden_size", 512
+                ),
+                "svt_mixture_temperature": config.get(
+                    "svt_mixture_temperature", 1.0
+                ),
+                "svt_mixture_initial_logit": config.get(
+                    "svt_mixture_initial_logit", 4.0
+                ),
+                "svt_mixture_other_logit": config.get(
+                    "svt_mixture_other_logit", -2.0
+                ),
+                "svt_mixture_detach_refinement": config.get(
+                    "svt_mixture_detach_refinement", True
+                ),
+                "svt_mixture_spectral_feature_count": config.get(
+                    "svt_mixture_spectral_feature_count", 0
+                ),
+                "svt_mixture_missingness_feature_count": config.get(
+                    "svt_mixture_missingness_feature_count", 0
+                ),
+                "svt_mixture_spectrum_encoder_size": config.get(
+                    "svt_mixture_spectrum_encoder_size", 0
+                ),
+                "svt_mixture_spectrum_encoder_layers": config.get(
+                    "svt_mixture_spectrum_encoder_layers", 1
+                ),
+                "svt_mixture_spectrum_encoder_heads": config.get(
+                    "svt_mixture_spectrum_encoder_heads", 4
+                ),
+                "svt_mixture_spectrum_encoder_dropout": config.get(
+                    "svt_mixture_spectrum_encoder_dropout", 0.0
+                ),
+                "svt_adaptive_threshold": config.get(
+                    "svt_adaptive_threshold", False
+                ),
+                "svt_adaptive_threshold_hidden_size": config.get(
+                    "svt_adaptive_threshold_hidden_size", None
+                ),
+                "svt_adaptive_threshold_min_scale": config.get(
+                    "svt_adaptive_threshold_min_scale", 0.25
+                ),
+                "svt_adaptive_threshold_max_scale": config.get(
+                    "svt_adaptive_threshold_max_scale", 4.0
+                ),
+                "svt_adaptive_threshold_init_scale": config.get(
+                    "svt_adaptive_threshold_init_scale", 1.0
+                ),
+                "svt_mixture_policy": config.get(
+                    "svt_mixture_policy", "controller"
+                ),
+                "svt_mixture_cv_fraction": config.get(
+                    "svt_mixture_cv_fraction", 0.0
+                ),
+                "svt_mixture_cv_temperature": config.get(
+                    "svt_mixture_cv_temperature", 0.01
+                ),
+                "svt_mixture_cv_seed": config.get("svt_mixture_cv_seed", 17),
+                "svt_solver_precision": config.get("svt_solver_precision", "inherit"),
+                "svt_mixture_cv_reencode": config.get("svt_mixture_cv_reencode", False),
+                "svt_mixture_cv_min_count": config.get(
+                    "svt_mixture_cv_min_count", 32
+                ),
+                "svt_mixture_include_cv_features": config.get(
+                    "svt_mixture_include_cv_features", False
+                ),
+            }
+            return TabImputeModelRowColumnSVTHybrid(**rowcol_kwargs)
+
+        if model_family in {
+            "new_stable_memory_efficient",
+            "stable_memory_efficient",
+            "memory_efficient",
+            "train_new_stable_memory_efficient",
+        }:
+            stable_kwargs = {
+                **common_kwargs,
+                "attention_dropout": config.get("attention_dropout", 0.0),
+                "ffn_dropout": config.get("ffn_dropout", 0.0),
+                "drop_path_rate": config.get("drop_path_rate", 0.0),
+                "residual_scale_init": config.get("residual_scale_init", 1.0),
+                "rms_norm_eps": config.get("rms_norm_eps", 1e-6),
+                "embedding_dropout": config.get("embedding_dropout", 0.0),
+                "attention_batch_chunk_size": config.get(
+                    "attention_batch_chunk_size", None
+                ),
+                "use_activation_checkpointing": config.get(
+                    "use_activation_checkpointing", True
+                ),
+            }
+            return TabImputeModelMemoryEfficient(**stable_kwargs)
+
+        if model_family in {"best_transfer", "best_transfer_stable"}:
+            stable_overrides = {
+                **common_kwargs,
+                "attention_dropout": config.get("attention_dropout", 0.0),
+                "ffn_dropout": config.get("ffn_dropout", 0.0),
+                "drop_path_rate": config.get("drop_path_rate", 0.0),
+                "residual_scale_init": config.get("residual_scale_init", 1.0),
+                "rms_norm_eps": config.get("rms_norm_eps", 1e-6),
+                "embedding_dropout": config.get("embedding_dropout", 0.0),
+                "attention_batch_chunk_size": config.get(
+                    "attention_batch_chunk_size", None
+                ),
+            }
+            return build_best_transfer_model(**stable_overrides)
+
+        raise ValueError(
+            f"Unsupported model_family '{self.model_family}'. "
+            "Expected one of: 'new', 'new_stable', "
+            "'new_stable_memory_efficient', 'rabel', 'pure_rabel', "
+            "'best_transfer'."
+        )
+
+
+    def impute(
+        self,
+        X: np.ndarray,
+        return_full: bool = False,
+        num_repeats: int = 1,
+        means: np.ndarray | None = None,
+        stds: np.ndarray | None = None,
+    ) -> np.ndarray:
         """Impute missing values in the input matrix.
         Imputes the missing values in place.
 
@@ -85,13 +1032,28 @@ class ImputePFN:
         if X.ndim != 2:
             raise ValueError("Input matrix must be 2-dimensional")
 
-        # Get means and stds per column
-        means = np.nanmean(X, axis=0)
-        stds = np.nanstd(X, axis=0)
-        
+        # Get means and stds per column unless they are supplied manually.
+        if means is None:
+            means = np.nanmean(X, axis=0)
+        else:
+            means = np.asarray(means, dtype=np.float64)
+            if means.shape != (X.shape[1],):
+                raise ValueError(
+                    f"means must have shape ({X.shape[1]},), got {means.shape}"
+                )
+
+        if stds is None:
+            stds = np.nanstd(X, axis=0)
+        else:
+            stds = np.asarray(stds, dtype=np.float64)
+            if stds.shape != (X.shape[1],):
+                raise ValueError(
+                    f"stds must have shape ({X.shape[1]},), got {stds.shape}"
+                )
+
         # set stds to 1 if they are nan
         stds = np.where(np.isnan(stds), 1, stds)
-        
+
         # set means to 0 if they are nan
         means = np.where(np.isnan(means), 0, means)
 
@@ -153,8 +1115,9 @@ class ImputePFN:
         
     def get_imputation(self, X_normalized: np.ndarray, num_repeats: int = 1) -> np.ndarray:
         """Get the imputation for the input matrix.
-        If max_num_rows is not None, the input matrix is split into chunks of max_num_rows rows, 
-        and the imputation is performed on each chunk.
+        If ``max_num_rows`` and/or ``max_num_cols`` is set, the input matrix is
+        split into row/column chunks and the imputation is performed on each
+        submatrix.
 
         Args:
             X_normalized (np.ndarray): Input matrix of shape (T, H) where:
@@ -162,33 +1125,57 @@ class ImputePFN:
              - H is the number of features (columns)
             num_repeats (int, optional): Number of times to repeat the imputation. Defaults to 1.
             max_num_rows (int, optional): Maximum number of rows to impute at once. Defaults to None.
+            max_num_cols (int, optional): Maximum number of columns to impute at once. Defaults to None.
 
         Returns:
             np.ndarray: Imputed matrix of shape (T, H)
         """
-        if self.max_num_rows is None:
+        if self.max_num_rows is None and self.max_num_cols is None:
             return self._get_imputation_single(X_normalized, num_repeats=num_repeats)
-        
-        else:
-            X_full = X_normalized.copy()
-            start_index = 0
-            
-            if self.verbose:
-                from tqdm import tqdm
-                pbar = tqdm(total=X_normalized.shape[0], desc="Processed rows")
-                
-            while start_index < X_normalized.shape[0]:
-                end_index = min(start_index + (self.max_num_rows * self.max_num_chunks), X_normalized.shape[0])
+
+        row_chunk_size = self._get_row_window_size(X_normalized.shape[0])
+        row_spans = self._get_chunk_spans(X_normalized.shape[0], row_chunk_size)
+        col_spans = self._get_chunk_spans(X_normalized.shape[1], self.max_num_cols)
+        X_imputed_sum = np.zeros_like(X_normalized, dtype=np.float64)
+        X_full_sum = np.zeros_like(X_normalized, dtype=np.float64)
+        prediction_counts = np.zeros_like(X_normalized, dtype=np.float64)
+
+        if self.verbose:
+            from tqdm import tqdm
+
+            total_chunks = len(row_spans) * len(col_spans)
+            pbar = tqdm(total=total_chunks, desc="Processed chunks")
+
+        for row_start, row_end in row_spans:
+            for col_start, col_end in col_spans:
+                row_slice = slice(row_start, row_end)
+                col_slice = slice(col_start, col_end)
+                X_chunk = X_normalized[row_slice, col_slice].copy()
+                X_chunk_imputed, X_chunk_full = self._get_imputation_chunk(
+                    X_chunk, num_repeats=num_repeats
+                )
+                X_imputed_sum[row_slice, col_slice] += X_chunk_imputed
+                X_full_sum[row_slice, col_slice] += X_chunk_full
+                prediction_counts[row_slice, col_slice] += 1.0
                 if self.verbose:
-                    pbar.update(end_index - start_index)
-                X_normalized_chunk = X_normalized[start_index:end_index, :]
-                X_normalized_chunk, X_full_chunk = self._get_imputation_chunk(X_normalized_chunk, num_repeats=num_repeats)
-                X_normalized[start_index:end_index, :] = X_normalized_chunk
-                X_full[start_index:end_index, :] = X_full_chunk
-                start_index = end_index
-            return X_normalized, X_full
-            
-        
+                    pbar.update(1)
+
+        if self.verbose:
+            pbar.close()
+
+        has_predictions = prediction_counts > 0
+        X_imputed = X_normalized.copy()
+        X_full = X_normalized.copy()
+        X_imputed[has_predictions] = (
+            X_imputed_sum[has_predictions] / prediction_counts[has_predictions]
+        )
+        X_full[has_predictions] = (
+            X_full_sum[has_predictions] / prediction_counts[has_predictions]
+        )
+
+        return X_imputed, X_full
+
+
     def _get_input_tensors(self, X_normalized: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Get the input tensors for the input matrix.
         Args:
@@ -225,30 +1212,126 @@ class ImputePFN:
         
         return X_input, input_y, missing_indices, non_missing_indices, train_size
     
-    def split_into_chunks(self, arr: np.ndarray, chunk_size: int) -> list[np.ndarray]:
+    def _get_row_window_size(self, num_rows: int) -> int | None:
+        if self.max_num_rows is None:
+            return None
+        if self.max_num_chunks == float("inf"):
+            return num_rows
+        return max(1, int(self.max_num_rows * self.max_num_chunks))
+
+    def _get_chunk_spans(
+        self, size: int, chunk_size: int | None
+    ) -> list[tuple[int, int]]:
+        if chunk_size is None or chunk_size >= size:
+            return [(0, size)]
+        spans = []
+        start_index = 0
+        while start_index + chunk_size < size:
+            spans.append((start_index, start_index + chunk_size))
+            start_index += chunk_size
+        if start_index < size:
+            final_span = (max(0, size - chunk_size), size)
+            if not spans or spans[-1] != final_span:
+                spans.append(final_span)
+        return spans
+
+    def split_into_chunks(self, arr: np.ndarray, chunk_size: int | None) -> list[np.ndarray]:
         """
         Split a 2D array into row chunks of size `chunk_size`.
-        The final chunk may have fewer rows.
+        The final chunk overlaps the previous chunk when needed so it can keep
+        a full-size context window.
         """
-        start_indices = []
-        end_indices = []
-        chunks = []
-        for i in range(0, arr.shape[0], chunk_size):
-            start_indices.append(i)
-            end_indices.append(min(i + chunk_size, arr.shape[0]))
-            chunks.append(arr[start_indices[-1]:end_indices[-1]])
+        if chunk_size is None or chunk_size >= arr.shape[0]:
+            return [arr], [0], [arr.shape[0]]
+
+        spans = self._get_chunk_spans(arr.shape[0], chunk_size)
+        start_indices = [start_index for start_index, _ in spans]
+        end_indices = [end_index for _, end_index in spans]
+        chunks = [arr[start_index:end_index] for start_index, end_index in spans]
         return chunks, start_indices, end_indices
     
-    def _get_imputation_chunk(self, X_normalized: np.ndarray, num_repeats: int = 1) -> np.ndarray:
+    def _get_imputation_chunk(self, X_normalized: np.ndarray, num_repeats: int = 1) -> tuple[np.ndarray, np.ndarray]:
         """Get the imputation for a chunk of the input matrix.
+        Dispatches to entry-wise or direct implementation based on entry_wise_features.
         Args:
             X_normalized (np.ndarray): Input matrix of shape (T, H) where:
              - T is the number of samples (rows)
              - H is the number of features (columns)
             num_repeats (int, optional): Number of times to repeat the imputation. Defaults to 1.
         Returns:
-            np.ndarray: Imputed matrix of shape (T, H)
+            tuple[np.ndarray, np.ndarray]: (X_imputed, X_full)
         """
+        if self.entry_wise_features:
+            return self._get_imputation_chunk_entry_wise(X_normalized, num_repeats=num_repeats)
+        else:
+            return self._get_imputation_chunk_direct(X_normalized, num_repeats=num_repeats)
+
+    def _get_imputation_chunk_direct(self, X_normalized: np.ndarray, num_repeats: int = 1) -> tuple[np.ndarray, np.ndarray]:
+        """Get imputation for a chunk when entry_wise_features=False.
+        Passes data directly to model (no train/test split), similar to _get_imputation_single.
+        """
+        row_chunks, start_indices, end_indices = self.split_into_chunks(X_normalized, self.max_num_rows)
+        chunk_tensors = [
+            torch.from_numpy(chunk).to(self.device).to(self.direct_dtype)
+            for chunk in row_chunks
+        ]
+        X_batch_chunks, X_last_chunk = self._stack_chunks_for_batch(chunk_tensors)
+        medians_chunks, medians_last_chunk = self._run_model_direct(X_batch_chunks, X_last_chunk)
+
+        X_full = X_normalized.copy()
+        for i, (start_idx, end_idx) in enumerate(zip(start_indices, end_indices)):
+            medians = (
+                medians_last_chunk[0].cpu().numpy()
+                if i == len(start_indices) - 1 and medians_last_chunk is not None
+                else medians_chunks[i].cpu().numpy()
+            )
+            chunk_slice = X_normalized[start_idx:end_idx, :]
+            missing_mask = np.isnan(chunk_slice)
+            chunk_slice[missing_mask] = medians[missing_mask]
+            X_full[start_idx:end_idx, :] = medians
+
+        return X_normalized, X_full
+
+    def _stack_chunks_for_batch(
+        self, chunk_tensors: list[torch.Tensor]
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+        """Stack chunk tensors for batched inference, handling variable-sized last chunk."""
+        if len(chunk_tensors) == 1:
+            return torch.stack(chunk_tensors, dim=0), None
+        if chunk_tensors[-1].shape[0] != chunk_tensors[-2].shape[0]:
+            return torch.stack(chunk_tensors[:-1], dim=0), chunk_tensors[-1].unsqueeze(0)
+        return torch.stack(chunk_tensors, dim=0), None
+
+    def _stack_input_and_y_for_batch(
+        self, X_list: list[torch.Tensor], y_list: list[torch.Tensor]
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
+        """Stack (X, y) chunk pairs for batched inference, handling variable-sized last chunk."""
+        if len(X_list) > 1 and X_list[-1].shape[0] != X_list[-2].shape[0]:
+            X_batch = torch.stack(X_list[:-1], dim=0)
+            y_batch = torch.stack(y_list[:-1], dim=0)
+            return X_batch, y_batch, X_list[-1], y_list[-1]
+        return (
+            torch.stack(X_list, dim=0),
+            torch.stack(y_list, dim=0),
+            None,
+            None,
+        )
+
+    def _run_model_direct(
+        self, X_batch: torch.Tensor, X_last: torch.Tensor | None
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+        """Run model (entry_wise_features=False) on batched chunks."""
+        with torch.no_grad():
+            preds = self._call_direct_model(X_batch)
+            medians_chunks = self._point_predictions(preds)
+            medians_last = None
+            if X_last is not None:
+                preds_last = self._call_direct_model(X_last)
+                medians_last = self._point_predictions(preds_last)
+        return medians_chunks, medians_last
+
+    def _get_imputation_chunk_entry_wise(self, X_normalized: np.ndarray, num_repeats: int = 1) -> tuple[np.ndarray, np.ndarray]:
+        """Get imputation for a chunk when entry_wise_features=True (MCPFN with train/test split)."""
         row_chunks, start_indices, end_indices = self.split_into_chunks(X_normalized, self.max_num_rows)
         row_chunks_normalized = []
         means = []
@@ -275,26 +1358,10 @@ class ImputePFN:
             non_missing_indices_list.append(non_missing_indices)
             train_size_list.append(train_size)
             
-        # All of the row chunks should be the same size except for maybe the last one if the number of rows is not a multiple of the chunk size
-        X_batch_chunks = None
-        input_y_batch_chunks = None
-        X_last_chunk = None
-        input_y_last_chunk = None
-        
-        # parallelize the imputation with batching
-        if len(X_input_list) > 1:
-            if X_input_list[-1].shape[0] != X_input_list[-2].shape[0]:
-                # Run this one separately
-                X_last_chunk = X_input_list[-1]
-                input_y_last_chunk = input_y_list[-1]
-                X_batch_chunks = torch.stack(X_input_list[:-1], dim=0) # shape: (num_chunks, T, H)
-                input_y_batch_chunks = torch.stack(input_y_list[:-1], dim=0)
-            else:
-                X_batch_chunks = torch.stack(X_input_list, dim=0) # shape: (num_chunks, T, H)
-                input_y_batch_chunks = torch.stack(input_y_list, dim=0)
-        else:
-            X_batch_chunks = torch.stack(X_input_list, dim=0) # shape: (num_chunks, T, H)
-            input_y_batch_chunks = torch.stack(input_y_list, dim=0)
+        # Stack chunks for batched inference (handle variable-sized last chunk)
+        X_batch_chunks, input_y_batch_chunks, X_last_chunk, input_y_last_chunk = (
+            self._stack_input_and_y_for_batch(X_input_list, input_y_list)
+        )
             
         medians_chunks = None
         medians_last_chunk = None
@@ -302,11 +1369,13 @@ class ImputePFN:
         with torch.no_grad():
             preds = self.model(X_batch_chunks, input_y_batch_chunks) # shape: (num_chunks, T, H)
             # Get the median predictions
-            medians_chunks = self.bar_distribution.median(logits=preds)
+            medians_chunks = self._point_predictions(preds)
             
             if X_last_chunk is not None:
-                preds_last = self.model(X_last_chunk.unsqueeze(0), input_y_list[-1].unsqueeze(0)) # shape: (1, T, H)
-                medians_last_chunk = self.bar_distribution.median(logits=preds_last)
+                preds_last = self.model(
+                    X_last_chunk.unsqueeze(0), input_y_last_chunk.unsqueeze(0)
+                )
+                medians_last_chunk = self._point_predictions(preds_last)
                 
         X_full = X_normalized.copy()
         
@@ -342,78 +1411,626 @@ class ImputePFN:
 
     def _get_imputation_single(self, X_normalized: np.ndarray, num_repeats: int = 1) -> np.ndarray:
         X_normalized_tensor = torch.from_numpy(X_normalized).to(self.device)
+        
+        if self.entry_wise_features:
+            X_input, input_y, missing_indices, non_missing_indices, train_size = self._get_input_tensors(X_normalized_tensor)
+            
+            X_input = X_input.unsqueeze(0) # batch size 1
+            input_y = input_y.unsqueeze(0) # batch size 1
 
-        X_input, input_y, missing_indices, non_missing_indices, train_size = self._get_input_tensors(X_normalized_tensor)
+            with torch.no_grad():
+                preds = self.model(X_input, input_y)
 
-        X_input = X_input.unsqueeze(0) # batch size 1
-        input_y = input_y.unsqueeze(0) # batch size 1
+                medians = self._point_predictions(preds).flatten()
+                
+                if num_repeats > 1:
+                    out_full = []
+                    out_normalized = []
+                    
+                    for _ in range(num_repeats):
+                        sample = self.bar_distribution.sample(logits=preds.squeeze(0))
+                        X_full = X_normalized.copy()
+                        X_imputed = X_normalized.copy()
+                        
+                        sampls_train = sample[:train_size]
+                        sampls_test = sample[train_size:]
+                        X_full[missing_indices] = sampls_test.cpu().detach().numpy()
+                        X_full[non_missing_indices] = sampls_train.cpu().detach().numpy()
+                        X_imputed[missing_indices] = sampls_test.cpu().detach().numpy()
+                        out_full.append(X_full)
+                        out_normalized.append(X_imputed)
+                    
+                    return out_normalized, out_full
+
+            # Denormalize the predictions with train y mean and std
+            # medians = medians * (train_y.std() + 1e-8) + train_y.mean()
+
+            X_full = X_normalized.copy()
+
+            medians_train = medians[: train_size]
+            medians_test = medians[train_size :]
+
+            # Impute the missing values with the median predictions
+            X_normalized[missing_indices] = medians_test.cpu().detach().numpy()
+
+            X_full[missing_indices] = medians_test.cpu().detach().numpy()
+            X_full[non_missing_indices] = medians_train.cpu().detach().numpy()
+
+            return X_normalized, X_full
+        else:
+            with torch.no_grad():
+                X_normalized_tensor = X_normalized_tensor.unsqueeze(0).to(self.direct_dtype)
+                preds = self._call_direct_model(X_normalized_tensor)
+                medians = self._point_predictions(preds).squeeze(0)
+                # print(medians)
+                # preds_0 = preds[0,0,0,:]
+                # # print the softmax of the predictions
+                # softmax = torch.softmax(preds_0, dim=-1)
+                # plt.bar(range(softmax.shape[0]), softmax.cpu().detach().to(torch.float32).numpy())
+                # plt.savefig('softmax.png')
+            X_imputed = medians.cpu().detach().numpy()
+            missing_mask = np.isnan(X_normalized)
+            X_normalized[missing_mask] = X_imputed[missing_mask]
+            return X_normalized, X_imputed
+	            
+
+
+class CompressedCrossImputePFN:
+    """Chunked cross-compression interface for direct TabImpute checkpoints."""
+
+    def __init__(
+        self,
+        predictor_checkpoint_path: str | None = None,
+        row_compressor_checkpoint_path: str | None = None,
+        column_compressor_checkpoint_path: str | None = None,
+        compressed_checkpoint_path: str | None = None,
+        predictor_config: dict | None = None,
+        compressor_config: dict | None = None,
+        chunk_rows: int | None = None,
+        chunk_cols: int | None = None,
+        k_row: int = 4,
+        k_col: int = 4,
+        device: str = "cpu",
+        model_family: str = "new_stable_memory_efficient",
+    ):
+        self.device = device
+        self.chunk_rows = 50 if chunk_rows is None else int(chunk_rows)
+        self.chunk_cols = 50 if chunk_cols is None else int(chunk_cols)
+        self.k_row = k_row
+        self.k_col = k_col
+
+        compressed_config = None
+        if compressed_checkpoint_path is not None:
+            compressed_config = self._load_compressed_run_config(
+                compressed_checkpoint_path
+            )
+            model_config = dict(compressed_config.get("model", {}))
+            training_config = dict(compressed_config.get("training", {}))
+            predictor_config = predictor_config or model_config.get("predictor")
+            compressor_config = compressor_config or model_config.get("compressor")
+            k_row = int(model_config.get("k_row", training_config.get("k_row", k_row)))
+            k_col = int(model_config.get("k_col", training_config.get("k_col", k_col)))
+            self.k_row = k_row
+            self.k_col = k_col
+            if chunk_rows is None:
+                self.chunk_rows = int(training_config.get("chunk_rows", 50))
+            if chunk_cols is None:
+                self.chunk_cols = int(training_config.get("chunk_cols", 50))
+            model_family = str(
+                model_config.get(
+                    "model_family",
+                    training_config.get("model_family", model_family),
+                )
+            )
+
+        if predictor_config is None:
+            if predictor_checkpoint_path is None:
+                raise ValueError(
+                    "Either compressed_checkpoint_path with a config.json or "
+                    "predictor_checkpoint_path/predictor_config must be provided."
+                )
+            predictor_config = _load_json_config_from_checkpoint(
+                predictor_checkpoint_path
+            )
+        if "model" in predictor_config:
+            predictor_config = dict(predictor_config["model"])
+        self.predictor_config = dict(predictor_config)
+
+        if predictor_checkpoint_path is None:
+            predictor = self._build_predictor_from_config(
+                self.predictor_config,
+                model_family=model_family,
+            ).to(device=device, dtype=torch.bfloat16)
+        else:
+            predictor_builder = ImputePFN(
+                device=device,
+                checkpoint_path=predictor_checkpoint_path,
+                entry_wise_features=False,
+                json_config={"config": self.predictor_config},
+                model_family=model_family,
+            )
+            predictor = predictor_builder.model
+
+        if compressor_config is None:
+            compressor_config = build_compressor_config_from_predictor(
+                self.predictor_config,
+                k_row=k_row,
+                k_col=k_col,
+            )
+        self.compressor_config = dict(compressor_config)
+
+        use_rabel = model_family.lower() in {
+            "rabel",
+            "new_stable_rabel",
+            "stable_rabel",
+        }
+        use_pure_rabel = model_family.lower() in {
+            "pure_rabel",
+            "pure_rabel_memory_efficient",
+            "new_stable_pure_rabel",
+        }
+        if use_rabel:
+            row_compressor_class = RowCompressionModelRaBEL
+            column_compressor_class = ColumnCompressionModelRaBEL
+            compressed_model_class = CompressedCrossTabImputeModelRaBEL
+        elif use_pure_rabel:
+            row_compressor_class = RowCompressionModelPureRaBEL
+            column_compressor_class = ColumnCompressionModelPureRaBEL
+            compressed_model_class = CompressedCrossTabImputeModelPureRaBEL
+        else:
+            row_compressor_class = RowCompressionModel
+            column_compressor_class = ColumnCompressionModel
+            compressed_model_class = CompressedCrossTabImputeModel
+        rabel_compressor_kwargs = (
+            {"rabel_config": self.compressor_config}
+            if use_rabel or use_pure_rabel
+            else {}
+        )
+
+        row_compressor = row_compressor_class(
+            embedding_size=self.compressor_config["embedding_size"],
+            num_attention_heads=self.compressor_config["num_attention_heads"],
+            mlp_hidden_size=self.compressor_config["mlp_hidden_size"],
+            num_layers=self.compressor_config["num_layers"],
+            k_row=k_row,
+            num_cls=self.compressor_config.get(
+                "num_cls",
+                self.predictor_config.get("num_cls", 12),
+            ),
+            attention_dropout=self.compressor_config.get("attention_dropout", 0.0),
+            ffn_dropout=self.compressor_config.get("ffn_dropout", 0.0),
+            drop_path_rate=self.compressor_config.get("drop_path_rate", 0.0),
+            residual_scale_init=self.compressor_config.get("residual_scale_init", 1.0),
+            rms_norm_eps=self.compressor_config.get("rms_norm_eps", 1e-6),
+            use_rope=self.compressor_config.get("use_rope", True),
+            rope_base=self.compressor_config.get("rope_base", 10000.0),
+            rope_fraction=self.compressor_config.get("rope_fraction", 1.0),
+            use_activation_checkpointing=self.compressor_config.get(
+                "use_activation_checkpointing",
+                True,
+            ),
+            **rabel_compressor_kwargs,
+        )
+        column_compressor = column_compressor_class(
+            embedding_size=self.compressor_config["embedding_size"],
+            num_attention_heads=self.compressor_config["num_attention_heads"],
+            mlp_hidden_size=self.compressor_config["mlp_hidden_size"],
+            num_layers=self.compressor_config["num_layers"],
+            k_col=k_col,
+            num_cls=self.compressor_config.get(
+                "num_cls",
+                self.predictor_config.get("num_cls", 12),
+            ),
+            attention_dropout=self.compressor_config.get("attention_dropout", 0.0),
+            ffn_dropout=self.compressor_config.get("ffn_dropout", 0.0),
+            drop_path_rate=self.compressor_config.get("drop_path_rate", 0.0),
+            residual_scale_init=self.compressor_config.get("residual_scale_init", 1.0),
+            rms_norm_eps=self.compressor_config.get("rms_norm_eps", 1e-6),
+            use_rope=self.compressor_config.get("use_rope", True),
+            rope_base=self.compressor_config.get("rope_base", 10000.0),
+            rope_fraction=self.compressor_config.get("rope_fraction", 1.0),
+            use_activation_checkpointing=self.compressor_config.get(
+                "use_activation_checkpointing",
+                True,
+            ),
+            **rabel_compressor_kwargs,
+        )
+
+        self.model = compressed_model_class(
+            predictor=predictor,
+            row_compressor=row_compressor,
+            column_compressor=column_compressor,
+            k_row=k_row,
+            k_col=k_col,
+        ).to(device=device, dtype=torch.bfloat16)
+        self.model.initialize_compressor_embedders_from_predictor()
+
+        self._load_compressor_checkpoint(
+            row_compressor_checkpoint_path,
+            module_name="row_compressor",
+        )
+        self._load_compressor_checkpoint(
+            column_compressor_checkpoint_path,
+            module_name="column_compressor",
+        )
+        if compressed_checkpoint_path is not None:
+            self._load_full_compressed_checkpoint(compressed_checkpoint_path)
+        self.model.eval()
+
+        with resources.files("tabimpute.data").joinpath("borders.pt").open("rb") as f:
+            self.borders = torch.load(f, map_location=self.device)
+        self.bar_distribution = FullSupportBarDistribution(
+            borders=self.borders.to(self.device)
+        )
+
+    @staticmethod
+    def _load_compressed_run_config(checkpoint_path: str) -> dict:
+        from pathlib import Path
+        import json
+
+        cfg_path = Path(checkpoint_path).parent / "config.json"
+        if not cfg_path.is_file():
+            raise FileNotFoundError(
+                f"Compressed checkpoint config not found: {cfg_path}"
+            )
+        with cfg_path.open("r", encoding="utf-8") as f:
+            return json.load(f)
+
+    @staticmethod
+    def _build_predictor_from_config(config: dict, model_family: str):
+        builder = ImputePFN.__new__(ImputePFN)
+        builder.model_family = model_family
+        return builder._build_direct_model(json_config={"config": config})
+
+    def _load_compressor_checkpoint(
+        self,
+        checkpoint_path: str | None,
+        module_name: str,
+    ) -> None:
+        if checkpoint_path is None:
+            return
+        checkpoint = torch.load(
+            checkpoint_path,
+            map_location=self.device,
+            weights_only=True,
+        )
+        module = getattr(self.model, module_name)
+        if module_name in checkpoint:
+            state_dict = checkpoint[module_name]
+        elif "model" in checkpoint:
+            prefix = f"{module_name}."
+            state_dict = {
+                key.removeprefix(prefix): value
+                for key, value in checkpoint["model"].items()
+                if key.startswith(prefix)
+            }
+        else:
+            state_dict = checkpoint
+        module.load_state_dict(state_dict, strict=True)
+
+    def _load_full_compressed_checkpoint(self, checkpoint_path: str) -> None:
+        checkpoint = torch.load(
+            checkpoint_path,
+            map_location=self.device,
+            weights_only=True,
+        )
+        state_dict = checkpoint["model"] if "model" in checkpoint else checkpoint
+        self.model.load_state_dict(state_dict, strict=True)
+
+    def impute(
+        self,
+        X: np.ndarray,
+        return_full: bool = False,
+        means: np.ndarray | None = None,
+        stds: np.ndarray | None = None,
+    ) -> np.ndarray:
+        if X.ndim != 2:
+            raise ValueError("Input matrix must be 2-dimensional")
+
+        if means is None:
+            means = np.nanmean(X, axis=0)
+        else:
+            means = np.asarray(means, dtype=np.float64)
+            if means.shape != (X.shape[1],):
+                raise ValueError(
+                    f"means must have shape ({X.shape[1]},), got {means.shape}"
+                )
+
+        if stds is None:
+            stds = np.nanstd(X, axis=0)
+        else:
+            stds = np.asarray(stds, dtype=np.float64)
+            if stds.shape != (X.shape[1],):
+                raise ValueError(
+                    f"stds must have shape ({X.shape[1]},), got {stds.shape}"
+                )
+
+        stds = np.where(np.isnan(stds), 1, stds)
+        means = np.where(np.isnan(means), 0, means)
+        X_normalized = (X - means) / (stds + 1e-16)
+        X_tensor = (
+            torch.from_numpy(X_normalized)
+            .unsqueeze(0)
+            .to(self.device)
+            .to(torch.bfloat16)
+        )
 
         with torch.no_grad():
-            preds = self.model(X_input, input_y)
+            imputed = self.model.impute_normalized(
+                X_tensor,
+                chunk_rows=self.chunk_rows,
+                chunk_cols=self.chunk_cols,
+                bar_distribution=self.bar_distribution,
+            )[0]
 
-            medians = self.bar_distribution.median(logits=preds).flatten()
+        X_full = imputed.float().cpu().numpy() * stds + means
+        X_imputed = X.copy()
+        missing_mask = np.isnan(X_imputed)
+        X_imputed[missing_mask] = X_full[missing_mask]
+        if return_full:
+            return X_imputed, X_full
+        return X_imputed
+
+
+class TabPFNImputer:
+    def __init__(self, device: str = "cpu"):
+        from tabpfn_extensions import TabPFNRegressor
+
+        self.device = device
+        self.reg = TabPFNRegressor(device=device, n_estimators=8)
+
+    def impute(self, X: np.ndarray, return_full: bool = False, num_repeats: int = 1) -> np.ndarray:
+        """Impute missing values in the input matrix.
+        Imputes the missing values in place.
+        """
+        X_tensor = torch.from_numpy(X).to(self.device)
+
+        # Impute the missing values
+        train_X, train_y, test_X, _ = create_train_test_sets(X_tensor, X_tensor)
+
+        train_X_npy = train_X.cpu().numpy()
+        train_y_npy = train_y.cpu().numpy()
+        test_X_npy = test_X.cpu().numpy()
+        
+        missing_indices = np.where(np.isnan(X))
+        non_missing_indices = np.where(~np.isnan(X))
+
+        self.reg.fit(train_X_npy, train_y_npy)
+
+        # self.reg.model_ = mcpfn.model # override the model with the mcpfn model
+        
+        if num_repeats > 1:
+            out_full = self.reg.predict(test_X_npy, output_type='full')
+            bar_dist = out_full['criterion']
+            logits = out_full['logits']
             
-            if num_repeats > 1:
-                out_full = []
-                out_normalized = []
+            out_normalized = []
+            # out_full = []
+            
+            for _ in range(num_repeats):
+                sample = bar_dist.sample(logits=logits)
+                X_imputed = X.copy()
                 
-                for _ in range(num_repeats):
-                    sample = self.bar_distribution.sample(logits=preds.squeeze(0))
-                    X_full = X_normalized.copy()
-                    X_imputed = X_normalized.copy()
-                    
-                    sampls_train = sample[:train_size]
-                    sampls_test = sample[train_size:]
-                    X_full[missing_indices] = sampls_test.cpu().detach().numpy()
-                    X_full[non_missing_indices] = sampls_train.cpu().detach().numpy()
-                    X_imputed[missing_indices] = sampls_test.cpu().detach().numpy()
-                    out_full.append(X_full)
-                    out_normalized.append(X_imputed)
-                
-                return out_normalized, out_full
+                # sampls_train = sample[:train_y.shape[0]]
+                # sampls_test = sample[train_y.shape[0]:]
+                X_imputed[missing_indices] = sample.cpu().detach().numpy()
+                # out_full.append(X_full)
+                out_normalized.append(X_imputed)
+            
+            return out_normalized
 
-        X_full = X_normalized.copy()
+        preds = self.reg.predict(test_X_npy)
+        preds_train = self.reg.predict(train_X_npy)
 
-        medians_train = medians[: train_size]
-        medians_test = medians[train_size :]
+        X_full = X.copy()
+        mask = np.isnan(X)
+        X[mask] = preds
+        X_full[mask] = preds
+        X_full[~mask] = preds_train
 
-        X_normalized[missing_indices] = medians_test.cpu().detach().numpy()
-        X_full[missing_indices] = medians_test.cpu().detach().numpy()
-        X_full[non_missing_indices] = medians_train.cpu().detach().numpy()
+        # Clean up memory
+        del train_X, train_y, test_X, X_tensor
+        torch.cuda.empty_cache()
 
-        return X_normalized, X_full
+        if return_full:
+            return X, X_full
+        else:
+            return X
 
-_TABPFN_EXTENSIONS_IMPORT_ERROR = None
-try:
-    from tabimpute.tabpfn_extensions_interface import (
-        TabPFNImputer,
-        TabPFNUnsupervisedModel,
-    )
-except ModuleNotFoundError as exc:
-    if exc.name != "tabpfn_extensions":
-        raise
-    _TABPFN_EXTENSIONS_IMPORT_ERROR = exc
 
-    def _raise_tabpfn_extensions_missing() -> None:
-        raise ModuleNotFoundError(
-            "tabpfn_extensions is not installed. Install it with "
-            "`pip install tabpfn_extensions` or `pip install 'tabimpute[tabpfn_extensions]'` "
-            "to use TabPFN extension imputers."
-        ) from _TABPFN_EXTENSIONS_IMPORT_ERROR
+class TabPFNUnsupervisedModel:
+    def __init__(self, device: str = "cuda"):
+        from tabpfn_extensions import TabPFNClassifier, TabPFNRegressor, unsupervised
 
-    class TabPFNImputer:  # type: ignore[no-redef]
-        def __init__(self, *args, **kwargs):
-            _raise_tabpfn_extensions_missing()
+        self.device = device
+        clf = TabPFNClassifier(device=device, n_estimators=3)
+        reg = TabPFNRegressor(device=device, n_estimators=3)
+        self.model = unsupervised.TabPFNUnsupervisedModel(
+            tabpfn_clf=clf,
+            tabpfn_reg=reg,
+        )
 
-    class TabPFNUnsupervisedModel:  # type: ignore[no-redef]
-        def __init__(self, *args, **kwargs):
-            _raise_tabpfn_extensions_missing()
+    def impute(self, X, n_permutations=10):
+        self.model.fit(X)
+        return self.model.impute(X, n_permutations=n_permutations).cpu().numpy()
+
+
+class MCTabPFNEnsemble:
+    def __init__(
+        self,
+        device: str = "cpu",
+        nhead: int = 2,
+        preprocessors: list[Preprocess] = None,
+    ):
+        self.device = device
+        self.tabpfn_imputer = TabPFNImputer(device=device)
+        self.mcpfn_imputer = ImputePFN(
+            device=device, nhead=nhead, preprocessors=preprocessors
+        )
+
+    def impute(self, X):
+        missing_mask = np.isnan(X)
+        y_observed = X[~missing_mask]
+
+        X_tabpfn, X_full_tabpfn = self.tabpfn_imputer.impute(X, return_full=True)
+        X_mcpfn, X_full_mcpfn = self.mcpfn_imputer.impute(X, return_full=True)
+
+        y_tabpfn = X_full_tabpfn[~missing_mask]
+        y_mcpfn = X_full_mcpfn[~missing_mask]
+
+        w_tabpfn, w_mcpfn = self.optimal_weights(y_tabpfn, y_mcpfn, y_observed)
+
+        X[missing_mask] = (w_tabpfn * X_tabpfn[missing_mask]) + (
+            w_mcpfn * X_mcpfn[missing_mask]
+        )
+
+        return X
+
+    def optimal_weights(self, x: np.ndarray, y: np.ndarray, z: np.ndarray):
+        """
+        Optimal weights for a convex combination of x and y to minimize the distance to z.
+        Returns the weights for x and y.
+        """
+        d = x - y
+        numerator = np.dot(z - y, d)
+        denominator = np.dot(d, d)
+
+        if denominator == 0:
+            # x and y are identical, any convex combo works
+            return 0.5, 0.5
+
+        w = numerator / denominator
+        w = np.clip(w, 0, 1)  # enforce nonnegativity and sum-to-1
+        return w, 1 - w
+    
+class TabImputeRouter:
+    def __init__(
+        self,
+        device: str = "cpu",
+        nhead: int = 2,
+        preprocessors: list[Preprocess] = None,
+        checkpoint_paths: list[str] = None,
+    ):
+        self.tabimpute_models = []
+        self.routing_models = []
+        for checkpoint_path in checkpoint_paths:
+            self.tabimpute_models.append(
+                ImputePFN(device=device, nhead=nhead, preprocessors=preprocessors, checkpoint_path=checkpoint_path)
+            )
+            self.routing_models.append(
+                ImputePFN(device=device, nhead=nhead, preprocessors=None, checkpoint_path=checkpoint_path)
+            )
+        self.device = device
+
+    def impute(self, X):
+        missing_mask = np.isnan(X)
+        y_observed = X[~missing_mask]
+        
+        X_full_list = []
+        X_imputed_list = []
+        best_model_mse = float('inf')
+        best_model_index = None
+        
+        names = ['mcar', 'mar', 'mnar']
+        
+        for i, model in enumerate(self.routing_models):
+            X_imputed, X_full = model.impute(X.copy(), return_full=True)
+            X_full_list.append(X_full)
+            X_imputed_list.append(X_imputed)
+            mse = np.mean((X_full[~missing_mask] - y_observed) ** 2)
+            mae = np.mean(np.abs(X_full[~missing_mask] - y_observed))
+            
+            if mse < best_model_mse:
+                best_model_mse = mse
+                best_model_index = i
+            print(f"Routing model {names[i]}: MSE: {mse}, MAE: {mae}, Best MSE: {best_model_mse}")
+            
+        # Calculate the imputation for the best model
+        X_imputed = self.tabimpute_models[best_model_index].impute(X.copy())
+        
+        X[missing_mask] = X_imputed[missing_mask]
+        
+        return X
+    
+class TabImputeEnsemble:
+    def __init__(
+        self,
+        device: str = "cpu",
+        nhead: int = 2,
+        preprocessors: list[Preprocess] = None,
+        checkpoint_paths: list[str] = None,
+    ):
+        self.tabimpute_models = [
+            ImputePFN(device=device, nhead=nhead, preprocessors=preprocessors, checkpoint_path=checkpoint_path) for checkpoint_path in checkpoint_paths
+        ]
+        self.device = device
+
+    def impute(self, X):
+        missing_mask = np.isnan(X)
+        y_observed = X[~missing_mask]
+        
+        X_full_list = []
+        X_imputed_list = []
+        for model in self.tabimpute_models:
+            X_imputed, X_full = model.impute(X.copy(), return_full=True)
+            X_full_list.append(X_full)
+            X_imputed_list.append(X_imputed)
+        
+        # Create list of prediction values
+        y_pred_list = [X_full[~missing_mask] for X_full in X_full_list]
+        
+        w_optimal = self.find_optimal_weights(y_pred_list, y_observed)
+        
+        # Impute the missing values as a weighted sum of the imputed values
+        imputed_vals = np.zeros_like(X[missing_mask])
+        
+        for i, X_imputed in enumerate(X_imputed_list):
+            imputed_vals += w_optimal[i] * X_imputed[missing_mask]
+            
+        X[missing_mask] = imputed_vals
+        
+        return X
+
+    def find_optimal_weights(self, x_list: list[np.ndarray], y: np.ndarray):
+        """
+        Find optimal nonnegative weights that sum to 1 and minimize
+        the squared distance between the weighted sum of x_list and target y.
+        
+        Args:
+            x_list: list of numpy arrays (each shape (n,))
+            y: numpy array of shape (n,)
+        
+        Returns:
+            w_opt: numpy array of optimal weights (shape (m,))
+        """
+        from sklearn.linear_model import LinearRegression
+
+        m = len(x_list)
+        X = np.column_stack(x_list)  # shape: (n, m)
+
+        # # Objective: ||Xw - y||^2
+        # def objective(w):
+        #     return np.sum((X @ w - y)**2)
+
+        # # Constraints: sum(w) = 1, w >= 0
+        # constraints = [{'type': 'eq', 'fun': lambda w: np.sum(w) - 1}]
+        # bounds = [(0, None)] * m
+        # w0 = np.ones(m) / m
+
+        # Solve using SLSQP
+        # result = minimize(objective, w0, bounds=bounds, constraints=constraints)
+        # return result.x
+        reg = LinearRegression(fit_intercept=False).fit(X, y)
+        
+        return reg.coef_
+    
+    
     
 class TabImputeCategorical:
     def __init__(self, 
                  device: str = "cuda",
                  nhead: int = 2,
-                 preprocessors: list[Any] = None,
+                 preprocessors: list[Preprocess] = None,
                  checkpoint_path: str = None):
         self.device = device
         self.imputer = ImputePFN(device=device, nhead=nhead, preprocessors=preprocessors, checkpoint_path=checkpoint_path)
@@ -432,6 +2049,8 @@ class TabImputeCategorical:
             Imputed matrix of shape (n_samples, n_features) with categorical
             values restored from one-hot encodings.
         """
+        from scipy.special import softmax
+
         def _isnan_or_none(x):
             if isinstance(x, float) and np.isnan(x):
                 return True
@@ -441,7 +2060,6 @@ class TabImputeCategorical:
                 return False
 
         my_isnan = np.vectorize(_isnan_or_none)
-        from scipy.special import softmax
         
         if categorical_columns is None:
             categorical_columns = []
@@ -556,8 +2174,45 @@ print(out)
 
 import time
 if __name__ == "__main__":
-    imputer = ImputePFN(device='cuda')
-    print(f"Model size: {sum(p.numel() for p in imputer.model.parameters()):,}")
+    # --- Test new chunking (entry_wise_features=True, no checkpoint needed) ---
+    print("Testing chunking path (entry_wise_features=True)...")
+    np.random.seed(42)
+    X_test = np.random.randn(80, 8)
+    X_test = (X_test - X_test.mean(axis=0)) / (X_test.std(axis=0) + 1e-8)
+    X_test[np.random.rand(*X_test.shape) < 0.15] = np.nan
+
+    imputer_no_chunk = ImputePFN(device="cpu", entry_wise_features=True, max_num_rows=None)
+    imputer_chunk = ImputePFN(
+        device="cpu",
+        entry_wise_features=True,
+        max_num_rows=25,
+        max_num_cols=4,
+    )
+
+    out_no_chunk, full_no_chunk = imputer_no_chunk.impute(X_test.copy(), return_full=True)
+    out_chunk, full_chunk = imputer_chunk.impute(X_test.copy(), return_full=True)
+
+    assert out_no_chunk.shape == out_chunk.shape == X_test.shape
+    assert full_no_chunk.shape == full_chunk.shape == X_test.shape
+    assert not np.any(np.isnan(out_chunk)), "Chunked output should have no NaN"
+    assert not np.any(np.isnan(full_chunk)), "Chunked full should have no NaN"
+    print("  Chunking test passed: shapes correct, no NaN in output.")
+    
+    exit()
+
+    # --- Benchmark (requires checkpoint for entry_wise_features=False) ---
+    try:
+        imputer = ImputePFN(device='cuda', 
+                            entry_wise_features=False, 
+                            checkpoint_path='/home/jacobf18/tabular/mcpfn/src/tabimpute/workdir/tabimpute-mcar_p0.4-num_cls_8-rank_1_11/checkpoint_60000.pth')
+    except FileNotFoundError:
+        print("Skipping benchmark: checkpoint not found.")
+        exit(0)
+
+    imputer_old = ImputePFN(device='cuda', entry_wise_features=True)
+    
+    print(f"New Model size: {sum(p.numel() for p in imputer.model.parameters()):,}")
+    print(f"Old Model size: {sum(p.numel() for p in imputer_old.model.parameters()):,}")
     
     # X = np.arange(25).reshape(5, 5) # Test matrix of size 10 x 10
     X = np.random.randn(100,10)
@@ -570,7 +2225,16 @@ if __name__ == "__main__":
     start_time = time.time()
     out, full = imputer.impute(X, return_full=True) # Impute the missing values
     end_time = time.time()
-    print(f"Time taken: {end_time - start_time:.4f} seconds")
+    speed_new = end_time - start_time
+    print(f"New Model Time taken: {end_time - start_time:.4f} seconds")
+    
+    start_time = time.time()
+    out_old, full_old = imputer_old.impute(X, return_full=True)
+    end_time = time.time()
+    speed_old = end_time - start_time
+    print(f"Old Model Time taken: {end_time - start_time:.4f} seconds")
+    
+    print(f"Speedup: {speed_old / speed_new:.4f} x")
     
     exit()
     

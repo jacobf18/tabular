@@ -1,0 +1,113 @@
+{
+  "generated_on": "2026-04-21",
+  "manifest_name": "anchor3_init_eval_manifest_renamed_20260421",
+  "source_manifest_name": "anchor3_init_eval_manifest_20260420",
+  "notes": [
+    "Normalized TabImpute model config for the matrix-completion benchmark harness.",
+    "Each model points at a checkpoint file and an architecture file, plus an explicit model_config block with hyperparameters verified against the checkpoint state_dict shapes.",
+    "If the checkpoint_path does not exist at load time, the adapter fails fast and suggests passing --checkpoint-override. The architecture_file is resolved to the local repo's matching basename if the absolute path is missing.",
+    "Checkpoint paths live under /root/tabimpute_anchor3_named/; the original absolute paths from the source manifest (/mnt/checkpoints_sweep/workdir/dwip_v*-trial_*/checkpoint_*.pth) are preserved in original_checkpoint_path."
+  ],
+  "shared_base_training_regime": {
+    "generator_type": "latent_factor",
+    "missingness_type": "mcar",
+    "num_rows_range": [10, 50],
+    "num_cols_range": [5, 50],
+    "latent_rank_range": [1, 11],
+    "p_missing": 0.4,
+    "apply_feature_warping_prob": 0.0,
+    "apply_quantization_prob": 0.0
+  },
+  "models": [
+    {
+      "name": "dwip-v2-1",
+      "original_key": "dwip_v2_t002",
+      "aliases": ["round2_t002", "shallow_t002", "dwip_v2_t002", "dwip-v2-1"],
+      "architecture_file": "/root/tabular/mcpfn/src/tabimpute/model/model_new_stable.py",
+      "architecture_basename": "model_new_stable.py",
+      "model_family": "new_stable",
+      "run_name": "dwip_v2-trial_002",
+      "checkpoint_step": 17000,
+      "checkpoint_path": "/root/tabimpute_anchor3_named/dwip_v2_t002_checkpoint_17000.pth",
+      "original_checkpoint_path": "/mnt/checkpoints_sweep/workdir/dwip_v2-trial_002/checkpoint_17000.pth",
+      "best_mae_missing": 0.08128536492586136,
+      "model_config": {
+        "embedding_size": 768,
+        "num_attention_heads": 16,
+        "mlp_hidden_size": 1536,
+        "num_layers": 8,
+        "num_outputs": 5000,
+        "num_cls": 12,
+        "use_rope": true,
+        "rope_base": 10000.0,
+        "rope_fraction": 0.5,
+        "use_absolute_positional_embeddings": false,
+        "positional_damping_factor": 0.1,
+        "attention_dropout": 0.0,
+        "ffn_dropout": 0.0,
+        "drop_path_rate": 0.0,
+        "residual_scale_init": 1.0,
+        "rms_norm_eps": 1e-6,
+        "embedding_dropout": 0.0
+      }
+    },
+    {
+      "name": "dwip-v2-2",
+      "original_key": "dwip_v2_t003",
+      "aliases": ["round2_t003", "shallow_t003", "dwip_v2_t003", "dwip-v2-2"],
+      "architecture_file": "/root/tabular/mcpfn/src/tabimpute/model/model_new_stable.py",
+      "architecture_basename": "model_new_stable.py",
+      "model_family": "new_stable",
+      "run_name": "dwip_v2-trial_004",
+      "checkpoint_step": 17000,
+      "checkpoint_path": "/root/tabimpute_anchor3_named/dwip_v2_t003_checkpoint_17000.pth",
+      "original_checkpoint_path": "/mnt/checkpoints_sweep/workdir/dwip_v2-trial_004/checkpoint_17000.pth",
+      "best_mae_missing": 0.14997480809688568,
+      "model_config": {
+        "embedding_size": 768,
+        "num_attention_heads": 16,
+        "mlp_hidden_size": 1536,
+        "num_layers": 8,
+        "num_outputs": 5000,
+        "num_cls": 12,
+        "use_rope": true,
+        "rope_base": 10000.0,
+        "rope_fraction": 0.5,
+        "use_absolute_positional_embeddings": false,
+        "positional_damping_factor": 0.1,
+        "attention_dropout": 0.0,
+        "ffn_dropout": 0.0,
+        "drop_path_rate": 0.0,
+        "residual_scale_init": 1.0,
+        "rms_norm_eps": 1e-6,
+        "embedding_dropout": 0.0
+      }
+    },
+    {
+      "name": "dwip-v1",
+      "original_key": "dwip_v1_local14",
+      "aliases": ["local14", "dwip_v1_local14", "dwip-v1"],
+      "architecture_file": "/root/tabular/mcpfn/src/tabimpute/model/model_new.py",
+      "architecture_basename": "model_new.py",
+      "model_family": "new",
+      "run_name": "dwip_v1-trial_003",
+      "checkpoint_step": 10000,
+      "checkpoint_path": "/root/tabimpute_anchor3_named/dwip_v1_local14_checkpoint_10000.pth",
+      "original_checkpoint_path": "/mnt/checkpoints_sweep/workdir/dwip_v1-trial_003/checkpoint_10000.pth",
+      "best_mae_missing": 0.1064478010,
+      "model_config": {
+        "embedding_size": 768,
+        "num_attention_heads": 16,
+        "mlp_hidden_size": 1536,
+        "num_layers": 8,
+        "num_outputs": 5000,
+        "num_cls": 12,
+        "use_rope": true,
+        "rope_base": 10000.0,
+        "rope_fraction": 0.75,
+        "use_absolute_positional_embeddings": false,
+        "positional_damping_factor": 0.1
+      }
+    }
+  ]
+}

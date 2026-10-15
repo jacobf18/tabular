@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "master_seed": 20261004,
+  "generator": "Gaussian U V^T / sqrt(rank); independent additive Gaussian noise",
+  "mask": "Uniform exact-count MCAR, nested across missing rates; no support repair",
+  "methods": ["column_mean", "knn", "softimpute", "iterative_svd", "matrixformer", "recsys_specialist", "matrixformer_plus"],
+  "baseline_settings": {
+    "validation_fraction": 0.1,
+    "knn_neighbors": [3, 5, 10],
+    "softimpute_shrinkage_fractions": [0.01, 0.05, 0.2],
+    "iterative_svd_ranks": [2, 4, 8, 16, 32, 64, 128],
+    "max_iters": 100,
+    "tolerance": 0.0001
+  },
+  "profiles": {
+    "smoke": {
+      "shapes": [[32, 24]], "ranks": [2, 8],
+      "noise_stds": [0.0], "missing_rates": [0.5, 0.9], "seeds": [50000, 50001]
+    },
+    "main": {
+      "shapes": [[256, 256]], "ranks": [2, 8, 16, 32, 64, 128],
+      "noise_stds": [0.0, 0.1], "missing_rates": [0.1, 0.3, 0.5, 0.7, 0.8, 0.9, 0.95],
+      "seeds": [50000, 50001, 50002, 50003, 50004, 50005, 50006, 50007, 50008, 50009]
+    },
+    "stress": {
+      "shapes": [[512, 512], [1024, 128], [128, 1024], [2048, 128], [128, 2048]],
+      "ranks": [4, 16, 64, 128], "noise_stds": [0.0, 0.1],
+      "missing_rates": [0.5, 0.8, 0.9, 0.95], "seeds": [50000, 50001, 50002, 50003, 50004]
+    }
+  }
+}
