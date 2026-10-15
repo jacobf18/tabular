@@ -146,7 +146,7 @@ class StreamedImputePFN:
         last_points = None if last_values is None else self._stream_points(last_values)
         return points, last_points
 
-    def impute(self, matrix, *, means=None, stds=None):
+    def impute(self, matrix, *, means=None, stds=None, return_full=False):
         matrix = np.asarray(matrix, dtype=np.float64)
         if matrix.ndim != 2 or min(matrix.shape) <= 0 or np.isinf(matrix).any():
             raise ValueError("Expected a nonempty matrix with finite observations or NaN")
@@ -160,6 +160,7 @@ class StreamedImputePFN:
             raise ValueError("Invalid normalization statistics")
         normalized = (matrix - means) / (stds + 1e-16)
         totals = np.zeros_like(normalized)
+        raw_totals = np.zeros_like(normalized) if return_full else None
         counts = np.zeros(matrix.shape, dtype=np.uint8)
         for row_start, row_stop in overlapping_spans(matrix.shape[0], self.max_num_rows):
             for col_start, col_stop in overlapping_spans(matrix.shape[1], self.max_num_cols):
@@ -168,9 +169,13 @@ class StreamedImputePFN:
                 values = torch.from_numpy(block.copy()).to(device=self.device, dtype=self.direct_dtype).unsqueeze(0)
                 points = self._stream_points(values)[0].cpu().numpy()
                 totals[selection] += np.where(np.isnan(block), points, block)
+                if return_full:
+                    raw_totals[selection] += points
                 counts[selection] += 1
         completed = (totals / counts) * (stds + 1e-16) + means
         completed[np.isfinite(matrix)] = matrix[np.isfinite(matrix)]
+        if return_full:
+            return completed, (raw_totals / counts) * (stds + 1e-16) + means
         return completed
 
 

@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_DIR="${REPO_DIR:-/root/tabular/mcpfn}"
+export PYTHONPATH="${REPO_DIR}/src:${REPO_DIR}/scripts:${PYTHONPATH:-}"
+export WANDB_MODE="${WANDB_MODE:-online}"
+
+BASE_RUN_NAME="${BASE_RUN_NAME:-tabimpute-direct-rowcol-latentattn768-rank10-p02-curriculum-100k-scratch}"
+BASE_CHECKPOINT="${BASE_CHECKPOINT:-${REPO_DIR}/src/tabimpute/workdir/${BASE_RUN_NAME}/checkpoint_100000.pth}"
+
+RUN_NAME="${RUN_NAME:-tabimpute-direct-rowcol-latentattn768-rank10-p02-large-80k-from100k}"
+WORK_DIR="${WORK_DIR:-${REPO_DIR}/src/tabimpute/workdir/${RUN_NAME}}"
+
+DEFAULT_PHASES_JSON='[{"name":"250_to_400","end_step":15000,"rows_low":250,"rows_high":400,"cols_low":250,"cols_high":400,"batch_size":1},{"name":"400_to_600","end_step":55000,"rows_low":400,"rows_high":600,"cols_low":400,"cols_high":600,"batch_size":1},{"name":"600_to_800","end_step":80000,"rows_low":600,"rows_high":800,"cols_low":600,"cols_high":800,"batch_size":1}]'
+PHASES_JSON="${PHASES_JSON:-${DEFAULT_PHASES_JSON}}"
+
+EXTRA_ARGS=()
+if [[ -n "${RESUME_CHECKPOINT:-}" ]]; then
+  EXTRA_ARGS+=(--resume "${RESUME_CHECKPOINT}")
+else
+  EXTRA_ARGS+=(--init-model-checkpoint "${INIT_MODEL_CHECKPOINT:-${BASE_CHECKPOINT}}")
+fi
+if [[ "${SMOKE:-0}" == "1" ]]; then
+  EXTRA_ARGS+=(--smoke)
+fi
+
+python "${REPO_DIR}/scripts/train_direct_rowcol_latent_attention_random_rank_curriculum.py" \
+  --run-name "${RUN_NAME}" \
+  --work-dir "${WORK_DIR}" \
+  --device "${DEVICE:-cuda}" \
+  --seed "${SEED:-46}" \
+  --prior-kind latent_factor \
+  --missingness-type "${MISSINGNESS_TYPE:-mcar}" \
+  --p-missing "${P_MISSING:-0.2}" \
+  --latent-rank-low "${LATENT_RANK_LOW:-10}" \
+  --latent-rank-high "${LATENT_RANK_HIGH:-10}" \
+  --lr "${LR:-5e-5}" \
+  --weight-decay "${WEIGHT_DECAY:-0.03}" \
+  --grad-clip-norm "${GRAD_CLIP_NORM:-2.0}" \
+  --warmup-steps "${WARMUP_STEPS:-1000}" \
+  --stable-steps "${STABLE_STEPS:-59000}" \
+  --decay-steps "${DECAY_STEPS:-20000}" \
+  --min-lr-ratio "${MIN_LR_RATIO:-0.20}" \
+  --checkpoint-every "${CHECKPOINT_EVERY:-5000}" \
+  --phases-json "${PHASES_JSON}" \
+  --wandb-project "${WANDB_PROJECT:-tabimpute}" \
+  "${EXTRA_ARGS[@]}"

@@ -51,6 +51,7 @@ class DirectSpec:
     checkpoint: Path
     chunk_size: int
     model_family: str
+    prior_index: int | None = None
 
 
 @dataclass(frozen=True)
@@ -140,6 +141,35 @@ def load_config(checkpoint: Path) -> dict:
     with (checkpoint.parent / "config.json").open("r", encoding="utf-8") as f:
         cfg = json.load(f)
     return cfg
+
+
+def parse_extra_direct_spec(value: str) -> DirectSpec:
+    parts = value.split("|")
+    if len(parts) not in {4, 5}:
+        raise ValueError(
+            "--extra-direct must be formatted as "
+            "'name|checkpoint_path|chunk_size|model_family[|prior_index]'"
+        )
+    name = parts[0].strip()
+    checkpoint = Path(parts[1]).expanduser()
+    chunk_size = int(parts[2])
+    model_family = parts[3].strip()
+    prior_index = int(parts[4]) if len(parts) == 5 and parts[4].strip() else None
+    if not name:
+        raise ValueError("Extra direct spec name cannot be empty.")
+    if not checkpoint.exists():
+        raise FileNotFoundError(checkpoint)
+    if chunk_size <= 0:
+        raise ValueError("Extra direct spec chunk_size must be positive.")
+    if not model_family:
+        raise ValueError("Extra direct spec model_family cannot be empty.")
+    return DirectSpec(
+        name=name,
+        checkpoint=checkpoint,
+        chunk_size=chunk_size,
+        model_family=model_family,
+        prior_index=prior_index,
+    )
 
 
 def model_config(checkpoint: Path) -> dict:
@@ -296,6 +326,7 @@ def eval_direct(
     use_old_preprocessors: bool,
     dynamic_half_until_size: int | None = None,
     dynamic_fixed_chunk_size: int | None = None,
+    prediction_stat: str = "median",
 ) -> list[dict[str, object]]:
     preprocessors = None
     if use_old_preprocessors:
@@ -315,6 +346,8 @@ def eval_direct(
         max_num_cols=spec.chunk_size,
         max_num_chunks=1,
         preprocessors=preprocessors,
+        prediction_stat=prediction_stat,
+        direct_prior_index=spec.prior_index,
     )
     rows = []
     for size in sizes:
@@ -484,15 +517,17 @@ def summarize(rows: list[dict[str, object]]) -> list[dict[str, object]]:
     return out
 
 
-def plot(summary_rows: list[dict[str, object]], path: Path, include_compressed: bool) -> None:
+def plot(
+    summary_rows: list[dict[str, object]],
+    path: Path,
+    direct_specs: list[DirectSpec],
+    compressed_specs: list[CompressedSpec],
+) -> None:
     methods = [
         "SoftImpute",
-        "TabImpute 100x100 chunks",
-        "TabImpute 200x200 chunks",
-        "TabImpute 50x50 chunks",
     ]
-    if include_compressed:
-        methods.extend([spec.name for spec in COMPRESSED_SPECS])
+    methods.extend([spec.name for spec in direct_specs])
+    methods.extend([spec.name for spec in compressed_specs])
 
     fig, ax = plt.subplots(figsize=(12, 7), dpi=150)
     for method in methods:
@@ -535,6 +570,21 @@ def main() -> None:
     parser.add_argument("--skip-softimpute", action="store_true")
     parser.add_argument("--skip-direct", action="store_true")
     parser.add_argument("--direct-names", nargs="*", default=None)
+    parser.add_argument(
+        "--direct-prediction-stat",
+        choices=("median", "mean"),
+        default="median",
+        help="Distribution statistic used by direct ImputePFN models.",
+    )
+    parser.add_argument(
+        "--extra-direct",
+        action="append",
+        default=None,
+        help=(
+            "Add a direct ImputePFN model formatted as "
+            "'name|checkpoint_path|chunk_size|model_family'. May be repeated."
+        ),
+    )
     parser.add_argument("--compressed-names", nargs="*", default=None)
     parser.add_argument(
         "--compressed-dynamic-half-chunk-cap",
@@ -564,6 +614,8 @@ def main() -> None:
     args = parser.parse_args()
 
     all_rows: list[dict[str, object]] = []
+    direct_specs_for_plot: list[DirectSpec] = []
+    compressed_specs_for_plot: list[CompressedSpec] = []
     if not args.skip_softimpute:
         all_rows.extend(
             eval_softimpute(
@@ -588,6 +640,9 @@ def main() -> None:
             missing = requested - {spec.name for spec in direct_specs}
             if missing:
                 raise ValueError(f"Unknown direct spec name(s): {sorted(missing)}")
+        if args.extra_direct is not None:
+            direct_specs = [*direct_specs, *[parse_extra_direct_spec(value) for value in args.extra_direct]]
+        direct_specs_for_plot = list(direct_specs)
         for spec in direct_specs:
             print(f"Evaluating {spec.name} via ImputePFN")
             all_rows.extend(
@@ -603,6 +658,7 @@ def main() -> None:
                     use_old_preprocessors=not args.no_old_preprocessors,
                     dynamic_half_until_size=args.dynamic_half_until_size,
                     dynamic_fixed_chunk_size=args.dynamic_fixed_chunk_size,
+                    prediction_stat=args.direct_prediction_stat,
                 )
             )
 
@@ -616,6 +672,7 @@ def main() -> None:
             missing = requested - {spec.name for spec in compressed_specs}
             if missing:
                 raise ValueError(f"Unknown compressed spec name(s): {sorted(missing)}")
+        compressed_specs_for_plot = list(compressed_specs)
         for spec in compressed_specs:
             print(f"Evaluating {spec.name} via CompressedCrossImputePFN")
             sizes = args.sizes
@@ -640,7 +697,12 @@ def main() -> None:
     summary_rows = summarize(all_rows)
     write_csv(args.output_prefix.with_suffix(".csv"), all_rows)
     write_csv(args.output_prefix.with_name(args.output_prefix.name + "_summary.csv"), summary_rows)
-    plot(summary_rows, args.output_prefix.with_suffix(".png"), args.include_compressed)
+    plot(
+        summary_rows,
+        args.output_prefix.with_suffix(".png"),
+        direct_specs_for_plot,
+        compressed_specs_for_plot,
+    )
 
     print("method\tsize\trmse\tsem\tmae\tnrmse\tn")
     for row in summary_rows:

@@ -53,6 +53,21 @@ from tabimpute.model.model_compressed_cross_pure_rabel import (
 from tabimpute.model.model_new_stable_rabel import (
     TabImputeModelPureRaBEL,
 )
+from tabimpute.model.model_new_stable_rabel_context_decoder import (
+    TabImputeModelPureRaBELContextDecoder,
+)
+from tabimpute.model.model_rowcol_latent import (
+    TabImputeModelRowColumnLatent,
+)
+from tabimpute.model.model_rowcol_latent_attention import (
+    TabImputeModelRowColumnLatentAttention,
+)
+from tabimpute.model.model_rowcol_als_hybrid import (
+    TabImputeModelRowColumnALSHybrid,
+)
+from tabimpute.model.model_rowcol_svt_hybrid import (
+    TabImputeModelRowColumnSVTHybrid,
+)
 
 import matplotlib.pyplot as plt
 
@@ -122,16 +137,31 @@ class ImputePFN:
         json_config: dict = None,
         model_family: str = "new_stable",
         use_ema: bool = False,
+        prediction_stat: str = "median",
+        direct_prior_index: int | None = None,
+        precision_mode: str = "full_bfloat16",
     ):
         self.device = device
         self.model_family = model_family
+        self.direct_prior_index = direct_prior_index
+        if precision_mode not in {"full_bfloat16", "amp_bfloat16", "amp_float16", "float32"}:
+            raise ValueError(f"Unknown precision_mode: {precision_mode}")
+        if entry_wise_features and precision_mode != "full_bfloat16":
+            raise ValueError("precision_mode currently applies to direct models only")
+        self.precision_mode = precision_mode
+        self.direct_dtype = torch.bfloat16 if precision_mode == "full_bfloat16" else torch.float32
+        if prediction_stat not in {"median", "mean"}:
+            raise ValueError(
+                f"prediction_stat must be 'median' or 'mean', got {prediction_stat!r}"
+            )
+        self.prediction_stat = prediction_stat
 
         # Build model
         if entry_wise_features:
             self.model = MCPFN(nhead=nhead).to(self.device).to(torch.bfloat16)
         else:
             self.model = self._build_direct_model(json_config=json_config).to(
-                self.device, dtype=torch.bfloat16
+                self.device, dtype=self.direct_dtype
             )
             self.model.eval()
         # torch.compile(self.model)
@@ -168,6 +198,24 @@ class ImputePFN:
         self.bar_distribution = FullSupportBarDistribution(borders=borders)
         self.verbose = verbose
         self.entry_wise_features = entry_wise_features
+
+    def _point_predictions(self, logits: torch.Tensor) -> torch.Tensor:
+        from tabimpute.model.prediction_distribution import prediction_distribution
+        distribution = prediction_distribution(self.model, self.bar_distribution)
+        logits = logits.float()
+        if self.prediction_stat == "mean":
+            return distribution.mean(logits=logits)
+        return distribution.median(logits=logits)
+
+    def _call_direct_model(self, x: torch.Tensor) -> torch.Tensor:
+        with torch.autocast(
+            device_type=torch.device(self.device).type,
+            dtype=torch.float16 if self.precision_mode == "amp_float16" else torch.bfloat16,
+            enabled=self.precision_mode.startswith("amp_"),
+        ):
+            if self.direct_prior_index is None:
+                return self.model(x.to(self.direct_dtype))
+            return self.model(x.to(self.direct_dtype), prior_index=self.direct_prior_index)
 
     def set_attention_capture(
         self, enabled: bool = True, store_weights: bool = True
@@ -228,12 +276,12 @@ class ImputePFN:
             torch.from_numpy(X_normalized)
             .unsqueeze(0)
             .to(self.device)
-            .to(torch.bfloat16)
+            .to(self.direct_dtype)
         )
 
         self.set_attention_capture(True, store_weights=store_weights)
         with torch.no_grad():
-            self.model(X_tensor)
+            self._call_direct_model(X_tensor)
         diagnostics = self.get_attention_diagnostics()
         self.set_attention_capture(False)
         return diagnostics
@@ -395,6 +443,533 @@ class ImputePFN:
                 ),
             }
             return TabImputeModelPureRaBEL(**rabel_kwargs)
+
+        if model_family in {
+            "pure_rabel_context_decoder",
+            "pure_rabel_rowcol_decoder",
+            "new_stable_pure_rabel_context_decoder",
+        }:
+            rabel_kwargs = {
+                **common_kwargs,
+                "attention_dropout": config.get("attention_dropout", 0.0),
+                "ffn_dropout": config.get("ffn_dropout", 0.0),
+                "drop_path_rate": config.get("drop_path_rate", 0.0),
+                "residual_scale_init": config.get("residual_scale_init", 1.0),
+                "rms_norm_eps": config.get("rms_norm_eps", 1e-6),
+                "embedding_dropout": config.get("embedding_dropout", 0.0),
+                "attention_batch_chunk_size": config.get(
+                    "attention_batch_chunk_size", None
+                ),
+                "use_activation_checkpointing": config.get(
+                    "use_activation_checkpointing", True
+                ),
+                "checkpoint_use_reentrant": config.get(
+                    "checkpoint_use_reentrant", False
+                ),
+                "rabel_num_kernels": config.get("rabel_num_kernels", 64),
+                "rabel_sigma": config.get("rabel_sigma", 1.0),
+                "rabel_exponent_digits": config.get(
+                    "rabel_exponent_digits", 1
+                ),
+                "rabel_exponent_embedding_size": config.get(
+                    "rabel_exponent_embedding_size", 32
+                ),
+                "context_scale_init": config.get("context_scale_init", 0.05),
+                "context_include_interaction": config.get(
+                    "context_include_interaction", True
+                ),
+            }
+            return TabImputeModelPureRaBELContextDecoder(**rabel_kwargs)
+
+        if model_family in {
+            "rowcol_latent",
+            "row_column_latent",
+            "bipartite_latent",
+        }:
+            rowcol_kwargs = {
+                **common_kwargs,
+                "attention_dropout": config.get("attention_dropout", 0.0),
+                "ffn_dropout": config.get("ffn_dropout", 0.0),
+                "drop_path_rate": config.get("drop_path_rate", 0.0),
+                "residual_scale_init": config.get("residual_scale_init", 0.1),
+                "rms_norm_eps": config.get("rms_norm_eps", 1e-6),
+                "embedding_dropout": config.get("embedding_dropout", 0.0),
+                "attention_batch_chunk_size": config.get(
+                    "attention_batch_chunk_size", None
+                ),
+                "use_activation_checkpointing": config.get(
+                    "use_activation_checkpointing", True
+                ),
+                "checkpoint_use_reentrant": config.get(
+                    "checkpoint_use_reentrant", False
+                ),
+                "rabel_num_kernels": config.get("rabel_num_kernels", 64),
+                "rabel_sigma": config.get("rabel_sigma", 1.0),
+                "rabel_exponent_digits": config.get(
+                    "rabel_exponent_digits", 1
+                ),
+                "rabel_exponent_embedding_size": config.get(
+                    "rabel_exponent_embedding_size", 32
+                ),
+                "count_hidden_size": config.get("count_hidden_size", None),
+                "decoder_interaction_scale_init": config.get(
+                    "decoder_interaction_scale_init", 0.1
+                ),
+                "decoder_feature_size": config.get("decoder_feature_size", None),
+                "decoder_hidden_size": config.get("decoder_hidden_size", None),
+                "extra_decoder_hidden_size": config.get(
+                    "extra_decoder_hidden_size", None
+                ),
+                "extra_decoder_scale_init": config.get(
+                    "extra_decoder_scale_init", 0.0
+                ),
+                "use_axis_identity_features": config.get(
+                    "use_axis_identity_features", False
+                ),
+                "axis_identity_hidden_size": config.get(
+                    "axis_identity_hidden_size", None
+                ),
+                "axis_identity_scale_init": config.get(
+                    "axis_identity_scale_init", 0.05
+                ),
+                "positional_encoding_kind": config.get(
+                    "positional_encoding_kind", None
+                ),
+                "positional_num_frequencies": config.get(
+                    "positional_num_frequencies", 32
+                ),
+                "positional_max_size": config.get("positional_max_size", 1024),
+                "use_value_weighted_messages": config.get(
+                    "use_value_weighted_messages", False
+                ),
+                "value_weighted_message_scale_init": config.get(
+                    "value_weighted_message_scale_init", 0.01
+                ),
+            }
+            return TabImputeModelRowColumnLatent(**rowcol_kwargs)
+
+        if model_family in {
+            "rowcol_latent_attention",
+            "row_column_latent_attention",
+            "bipartite_latent_attention",
+        }:
+            rowcol_kwargs = {
+                **common_kwargs,
+                "attention_dropout": config.get("attention_dropout", 0.0),
+                "latent_attention_dropout": config.get(
+                    "latent_attention_dropout", config.get("attention_dropout", 0.0)
+                ),
+                "ffn_dropout": config.get("ffn_dropout", 0.0),
+                "drop_path_rate": config.get("drop_path_rate", 0.0),
+                "residual_scale_init": config.get("residual_scale_init", 0.1),
+                "rms_norm_eps": config.get("rms_norm_eps", 1e-6),
+                "embedding_dropout": config.get("embedding_dropout", 0.0),
+                "attention_batch_chunk_size": config.get(
+                    "attention_batch_chunk_size", None
+                ),
+                "use_activation_checkpointing": config.get(
+                    "use_activation_checkpointing", True
+                ),
+                "checkpoint_use_reentrant": config.get(
+                    "checkpoint_use_reentrant", False
+                ),
+                "rabel_num_kernels": config.get("rabel_num_kernels", 64),
+                "rabel_sigma": config.get("rabel_sigma", 1.0),
+                "rabel_exponent_digits": config.get(
+                    "rabel_exponent_digits", 1
+                ),
+                "rabel_exponent_embedding_size": config.get(
+                    "rabel_exponent_embedding_size", 32
+                ),
+                "count_hidden_size": config.get("count_hidden_size", None),
+                "decoder_interaction_scale_init": config.get(
+                    "decoder_interaction_scale_init", 0.1
+                ),
+                "decoder_feature_size": config.get("decoder_feature_size", None),
+                "decoder_hidden_size": config.get("decoder_hidden_size", None),
+                "extra_decoder_hidden_size": config.get(
+                    "extra_decoder_hidden_size", None
+                ),
+                "extra_decoder_scale_init": config.get(
+                    "extra_decoder_scale_init", 0.0
+                ),
+                "use_axis_identity_features": config.get(
+                    "use_axis_identity_features", False
+                ),
+                "axis_identity_hidden_size": config.get(
+                    "axis_identity_hidden_size", None
+                ),
+                "axis_identity_scale_init": config.get(
+                    "axis_identity_scale_init", 0.05
+                ),
+                "positional_encoding_kind": config.get(
+                    "positional_encoding_kind", None
+                ),
+                "positional_num_frequencies": config.get(
+                    "positional_num_frequencies", 32
+                ),
+                "positional_max_size": config.get("positional_max_size", 1024),
+                "use_value_weighted_messages": config.get(
+                    "use_value_weighted_messages", False
+                ),
+                "value_weighted_message_scale_init": config.get(
+                    "value_weighted_message_scale_init", 0.01
+                ),
+                "latent_memory_residual_start_layer": config.get(
+                    "latent_memory_residual_start_layer", None
+                ),
+                "latent_memory_residual_scale_init": config.get(
+                    "latent_memory_residual_scale_init", 0.0
+                ),
+                "latent_memory_residual_normalize": config.get(
+                    "latent_memory_residual_normalize", True
+                ),
+            }
+            return TabImputeModelRowColumnLatentAttention(**rowcol_kwargs)
+
+        if model_family in {
+            "rowcol_als_hybrid",
+            "rowcol_latent_als_hybrid",
+            "row_column_als_hybrid",
+        }:
+            rowcol_kwargs = {
+                **common_kwargs,
+                "attention_dropout": config.get("attention_dropout", 0.0),
+                "latent_attention_dropout": config.get(
+                    "latent_attention_dropout", config.get("attention_dropout", 0.0)
+                ),
+                "ffn_dropout": config.get("ffn_dropout", 0.0),
+                "drop_path_rate": config.get("drop_path_rate", 0.0),
+                "residual_scale_init": config.get("residual_scale_init", 0.1),
+                "rms_norm_eps": config.get("rms_norm_eps", 1e-6),
+                "embedding_dropout": config.get("embedding_dropout", 0.0),
+                "attention_batch_chunk_size": config.get(
+                    "attention_batch_chunk_size", None
+                ),
+                "use_activation_checkpointing": config.get(
+                    "use_activation_checkpointing", True
+                ),
+                "checkpoint_use_reentrant": config.get(
+                    "checkpoint_use_reentrant", False
+                ),
+                "rabel_num_kernels": config.get("rabel_num_kernels", 64),
+                "rabel_sigma": config.get("rabel_sigma", 1.0),
+                "rabel_exponent_digits": config.get(
+                    "rabel_exponent_digits", 1
+                ),
+                "rabel_exponent_embedding_size": config.get(
+                    "rabel_exponent_embedding_size", 32
+                ),
+                "count_hidden_size": config.get("count_hidden_size", None),
+                "decoder_interaction_scale_init": config.get(
+                    "decoder_interaction_scale_init", 0.1
+                ),
+                "decoder_feature_size": config.get("decoder_feature_size", None),
+                "decoder_hidden_size": config.get("decoder_hidden_size", None),
+                "extra_decoder_hidden_size": config.get(
+                    "extra_decoder_hidden_size", None
+                ),
+                "extra_decoder_scale_init": config.get(
+                    "extra_decoder_scale_init", 0.0
+                ),
+                "use_axis_identity_features": config.get(
+                    "use_axis_identity_features", False
+                ),
+                "axis_identity_hidden_size": config.get(
+                    "axis_identity_hidden_size", None
+                ),
+                "axis_identity_scale_init": config.get(
+                    "axis_identity_scale_init", 0.05
+                ),
+                "positional_encoding_kind": config.get(
+                    "positional_encoding_kind", None
+                ),
+                "positional_num_frequencies": config.get(
+                    "positional_num_frequencies", 32
+                ),
+                "positional_max_size": config.get("positional_max_size", 1024),
+                "use_value_weighted_messages": config.get(
+                    "use_value_weighted_messages", False
+                ),
+                "value_weighted_message_scale_init": config.get(
+                    "value_weighted_message_scale_init", 0.01
+                ),
+                "latent_memory_residual_start_layer": config.get(
+                    "latent_memory_residual_start_layer", None
+                ),
+                "latent_memory_residual_scale_init": config.get(
+                    "latent_memory_residual_scale_init", 0.0
+                ),
+                "latent_memory_residual_normalize": config.get(
+                    "latent_memory_residual_normalize", True
+                ),
+                "als_rank": config.get("als_rank", 10),
+                "als_steps": config.get("als_steps", 4),
+                "als_ridge": config.get("als_ridge", 1e-3),
+                "als_update_damping": config.get("als_update_damping", 0.85),
+                "als_ridge_scale_by_obs": config.get(
+                    "als_ridge_scale_by_obs", False
+                ),
+                "als_solve_method": config.get("als_solve_method", "cholesky"),
+                "als_jitter": config.get("als_jitter", 1e-6),
+                "als_factor_norm_clip": config.get(
+                    "als_factor_norm_clip", None
+                ),
+                "als_init_scale": config.get("als_init_scale", 0.05),
+                "logit_sigma_init": config.get("logit_sigma_init", 0.025),
+                "logit_sigma_min": config.get("logit_sigma_min", 0.003),
+                "use_neural_residual": config.get("use_neural_residual", False),
+                "neural_residual_scale_init": config.get(
+                    "neural_residual_scale_init", 0.0
+                ),
+            }
+            return TabImputeModelRowColumnALSHybrid(**rowcol_kwargs)
+
+        if model_family in {
+            "rowcol_svt_hybrid",
+            "rowcol_latent_svt_hybrid",
+            "row_column_svt_hybrid",
+        }:
+            rowcol_kwargs = {
+                **common_kwargs,
+                "attention_dropout": config.get("attention_dropout", 0.0),
+                "latent_attention_dropout": config.get(
+                    "latent_attention_dropout", config.get("attention_dropout", 0.0)
+                ),
+                "ffn_dropout": config.get("ffn_dropout", 0.0),
+                "drop_path_rate": config.get("drop_path_rate", 0.0),
+                "residual_scale_init": config.get("residual_scale_init", 0.1),
+                "rms_norm_eps": config.get("rms_norm_eps", 1e-6),
+                "embedding_dropout": config.get("embedding_dropout", 0.0),
+                "attention_batch_chunk_size": config.get(
+                    "attention_batch_chunk_size", None
+                ),
+                "use_activation_checkpointing": config.get(
+                    "use_activation_checkpointing", True
+                ),
+                "checkpoint_use_reentrant": config.get(
+                    "checkpoint_use_reentrant", False
+                ),
+                "rabel_num_kernels": config.get("rabel_num_kernels", 64),
+                "rabel_sigma": config.get("rabel_sigma", 1.0),
+                "rabel_exponent_digits": config.get(
+                    "rabel_exponent_digits", 1
+                ),
+                "rabel_exponent_embedding_size": config.get(
+                    "rabel_exponent_embedding_size", 32
+                ),
+                "count_hidden_size": config.get("count_hidden_size", None),
+                "decoder_interaction_scale_init": config.get(
+                    "decoder_interaction_scale_init", 0.1
+                ),
+                "decoder_feature_size": config.get("decoder_feature_size", None),
+                "decoder_hidden_size": config.get("decoder_hidden_size", None),
+                "extra_decoder_hidden_size": config.get(
+                    "extra_decoder_hidden_size", None
+                ),
+                "extra_decoder_scale_init": config.get(
+                    "extra_decoder_scale_init", 0.0
+                ),
+                "use_axis_identity_features": config.get(
+                    "use_axis_identity_features", False
+                ),
+                "axis_identity_hidden_size": config.get(
+                    "axis_identity_hidden_size", None
+                ),
+                "axis_identity_scale_init": config.get(
+                    "axis_identity_scale_init", 0.05
+                ),
+                "positional_encoding_kind": config.get(
+                    "positional_encoding_kind", None
+                ),
+                "positional_num_frequencies": config.get(
+                    "positional_num_frequencies", 32
+                ),
+                "positional_max_size": config.get("positional_max_size", 1024),
+                "use_value_weighted_messages": config.get(
+                    "use_value_weighted_messages", False
+                ),
+                "value_weighted_message_scale_init": config.get(
+                    "value_weighted_message_scale_init", 0.01
+                ),
+                "latent_memory_residual_start_layer": config.get(
+                    "latent_memory_residual_start_layer", None
+                ),
+                "latent_memory_residual_scale_init": config.get(
+                    "latent_memory_residual_scale_init", 0.0
+                ),
+                "latent_memory_residual_normalize": config.get(
+                    "latent_memory_residual_normalize", True
+                ),
+                "svt_init_rank": config.get("svt_init_rank", 10),
+                "svt_steps": config.get("svt_steps", 4),
+                "svt_max_rank": config.get("svt_max_rank", 20),
+                "svt_threshold_fraction_init": config.get(
+                    "svt_threshold_fraction_init", 0.02
+                ),
+                "svt_threshold_fraction_min": config.get(
+                    "svt_threshold_fraction_min", 1e-4
+                ),
+                "svt_threshold_fraction_max": config.get(
+                    "svt_threshold_fraction_max", None
+                ),
+                "svt_threshold_mode": config.get(
+                    "svt_threshold_mode", "constant"
+                ),
+                "svt_threshold_size_scale_init": config.get(
+                    "svt_threshold_size_scale_init", 1.2
+                ),
+                "svt_update_damping": config.get("svt_update_damping", 1.0),
+                "svt_init_scale": config.get("svt_init_scale", 0.035),
+                "logit_sigma_init": config.get("logit_sigma_init", 0.08),
+                "logit_sigma_min": config.get("logit_sigma_min", 0.008),
+                "use_neural_residual": config.get("use_neural_residual", False),
+                "neural_residual_rank": config.get("neural_residual_rank", None),
+                "neural_residual_scale_init": config.get(
+                    "neural_residual_scale_init", 0.0
+                ),
+                "use_svt_feature_decoder": config.get(
+                    "use_svt_feature_decoder", False
+                ),
+                "use_svt_magnitude_channel": config.get("use_svt_magnitude_channel", False),
+                "use_svt_output_correction": config.get("use_svt_output_correction", False),
+                "use_cell_query_decoder": config.get("use_cell_query_decoder", False),
+                "cell_query_width": config.get("cell_query_width", 128),
+                "cell_query_heads": config.get("cell_query_heads", 4),
+                "cell_query_layers": config.get("cell_query_layers", 2),
+                "cell_query_chunk_size": config.get("cell_query_chunk_size", 128),
+                "cell_query_checkpoint_chunks": config.get("cell_query_checkpoint_chunks", True),
+                "cell_query_axis_balanced": config.get("cell_query_axis_balanced", False),
+                "svt_feature_decoder_scale_init": config.get(
+                    "svt_feature_decoder_scale_init", 0.1
+                ),
+                "svt_feature_decoder_hidden_size": config.get(
+                    "svt_feature_decoder_hidden_size", None
+                ),
+                "use_observed_neighbor_features": config.get(
+                    "use_observed_neighbor_features", False
+                ),
+                "observed_neighbor_temperature": config.get(
+                    "observed_neighbor_temperature", 0.20
+                ),
+                "observed_neighbor_topk": config.get("observed_neighbor_topk", 64),
+                "use_observed_attention_decoder": config.get(
+                    "use_observed_attention_decoder", False
+                ),
+                "observed_attention_topk": config.get(
+                    "observed_attention_topk", 64
+                ),
+                "observed_attention_dim": config.get(
+                    "observed_attention_dim", 128
+                ),
+                "observed_attention_temperature_init": config.get(
+                    "observed_attention_temperature_init", 1.0
+                ),
+                "observed_attention_scale_init": config.get(
+                    "observed_attention_scale_init", 0.05
+                ),
+                "observed_attention_hidden_size": config.get(
+                    "observed_attention_hidden_size", None
+                ),
+                "use_empirical_bayes_decoder": config.get(
+                    "use_empirical_bayes_decoder", False
+                ),
+                "empirical_bayes_ridge_init": config.get(
+                    "empirical_bayes_ridge_init", 0.02
+                ),
+                "empirical_bayes_ridge_min": config.get(
+                    "empirical_bayes_ridge_min", 1e-5
+                ),
+                "empirical_bayes_shrinkage_init": config.get(
+                    "empirical_bayes_shrinkage_init", 0.05
+                ),
+                "empirical_bayes_feature_scale_init": config.get(
+                    "empirical_bayes_feature_scale_init", 0.10
+                ),
+                "empirical_bayes_hidden_size": config.get(
+                    "empirical_bayes_hidden_size", None
+                ),
+                "empirical_bayes_solve_steps": config.get(
+                    "empirical_bayes_solve_steps", 12
+                ),
+                "num_prior_adapters": config.get("num_prior_adapters", 0),
+                "default_prior_index": config.get("default_prior_index", None),
+                "prior_adapter_scale_init": config.get(
+                    "prior_adapter_scale_init", 0.05
+                ),
+                "prior_adapter_calibration_scale_init": config.get(
+                    "prior_adapter_calibration_scale_init", 0.02
+                ),
+                "prior_svt_steps": config.get("prior_svt_steps", None),
+                "svt_mixture_steps": config.get("svt_mixture_steps", None),
+                "svt_mixture_hidden_size": config.get(
+                    "svt_mixture_hidden_size", 512
+                ),
+                "svt_mixture_temperature": config.get(
+                    "svt_mixture_temperature", 1.0
+                ),
+                "svt_mixture_initial_logit": config.get(
+                    "svt_mixture_initial_logit", 4.0
+                ),
+                "svt_mixture_other_logit": config.get(
+                    "svt_mixture_other_logit", -2.0
+                ),
+                "svt_mixture_detach_refinement": config.get(
+                    "svt_mixture_detach_refinement", True
+                ),
+                "svt_mixture_spectral_feature_count": config.get(
+                    "svt_mixture_spectral_feature_count", 0
+                ),
+                "svt_mixture_missingness_feature_count": config.get(
+                    "svt_mixture_missingness_feature_count", 0
+                ),
+                "svt_mixture_spectrum_encoder_size": config.get(
+                    "svt_mixture_spectrum_encoder_size", 0
+                ),
+                "svt_mixture_spectrum_encoder_layers": config.get(
+                    "svt_mixture_spectrum_encoder_layers", 1
+                ),
+                "svt_mixture_spectrum_encoder_heads": config.get(
+                    "svt_mixture_spectrum_encoder_heads", 4
+                ),
+                "svt_mixture_spectrum_encoder_dropout": config.get(
+                    "svt_mixture_spectrum_encoder_dropout", 0.0
+                ),
+                "svt_adaptive_threshold": config.get(
+                    "svt_adaptive_threshold", False
+                ),
+                "svt_adaptive_threshold_hidden_size": config.get(
+                    "svt_adaptive_threshold_hidden_size", None
+                ),
+                "svt_adaptive_threshold_min_scale": config.get(
+                    "svt_adaptive_threshold_min_scale", 0.25
+                ),
+                "svt_adaptive_threshold_max_scale": config.get(
+                    "svt_adaptive_threshold_max_scale", 4.0
+                ),
+                "svt_adaptive_threshold_init_scale": config.get(
+                    "svt_adaptive_threshold_init_scale", 1.0
+                ),
+                "svt_mixture_policy": config.get(
+                    "svt_mixture_policy", "controller"
+                ),
+                "svt_mixture_cv_fraction": config.get(
+                    "svt_mixture_cv_fraction", 0.0
+                ),
+                "svt_mixture_cv_temperature": config.get(
+                    "svt_mixture_cv_temperature", 0.01
+                ),
+                "svt_mixture_cv_seed": config.get("svt_mixture_cv_seed", 17),
+                "svt_solver_precision": config.get("svt_solver_precision", "inherit"),
+                "svt_mixture_cv_reencode": config.get("svt_mixture_cv_reencode", False),
+                "svt_mixture_cv_min_count": config.get(
+                    "svt_mixture_cv_min_count", 32
+                ),
+                "svt_mixture_include_cv_features": config.get(
+                    "svt_mixture_include_cv_features", False
+                ),
+            }
+            return TabImputeModelRowColumnSVTHybrid(**rowcol_kwargs)
 
         if model_family in {
             "new_stable_memory_efficient",
@@ -705,7 +1280,7 @@ class ImputePFN:
         """
         row_chunks, start_indices, end_indices = self.split_into_chunks(X_normalized, self.max_num_rows)
         chunk_tensors = [
-            torch.from_numpy(chunk).to(self.device).to(torch.bfloat16)
+            torch.from_numpy(chunk).to(self.device).to(self.direct_dtype)
             for chunk in row_chunks
         ]
         X_batch_chunks, X_last_chunk = self._stack_chunks_for_batch(chunk_tensors)
@@ -753,14 +1328,14 @@ class ImputePFN:
     def _run_model_direct(
         self, X_batch: torch.Tensor, X_last: torch.Tensor | None
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
-        """Run model (entry_wise_features=False) on batched chunks and return medians."""
+        """Run model (entry_wise_features=False) on batched chunks."""
         with torch.no_grad():
-            preds = self.model(X_batch)
-            medians_chunks = self.bar_distribution.median(logits=preds)
+            preds = self._call_direct_model(X_batch)
+            medians_chunks = self._point_predictions(preds)
             medians_last = None
             if X_last is not None:
-                preds_last = self.model(X_last)
-                medians_last = self.bar_distribution.median(logits=preds_last)
+                preds_last = self._call_direct_model(X_last)
+                medians_last = self._point_predictions(preds_last)
         return medians_chunks, medians_last
 
     def _get_imputation_chunk_entry_wise(self, X_normalized: np.ndarray, num_repeats: int = 1) -> tuple[np.ndarray, np.ndarray]:
@@ -802,13 +1377,13 @@ class ImputePFN:
         with torch.no_grad():
             preds = self.model(X_batch_chunks, input_y_batch_chunks) # shape: (num_chunks, T, H)
             # Get the median predictions
-            medians_chunks = self.bar_distribution.median(logits=preds)
+            medians_chunks = self._point_predictions(preds)
             
             if X_last_chunk is not None:
                 preds_last = self.model(
                     X_last_chunk.unsqueeze(0), input_y_last_chunk.unsqueeze(0)
                 )
-                medians_last_chunk = self.bar_distribution.median(logits=preds_last)
+                medians_last_chunk = self._point_predictions(preds_last)
                 
         X_full = X_normalized.copy()
         
@@ -854,7 +1429,7 @@ class ImputePFN:
             with torch.no_grad():
                 preds = self.model(X_input, input_y)
 
-                medians = self.bar_distribution.median(logits=preds).flatten()
+                medians = self._point_predictions(preds).flatten()
                 
                 if num_repeats > 1:
                     out_full = []
@@ -892,9 +1467,9 @@ class ImputePFN:
             return X_normalized, X_full
         else:
             with torch.no_grad():
-                X_normalized_tensor = X_normalized_tensor.unsqueeze(0).to(torch.bfloat16)
-                preds = self.model(X_normalized_tensor)
-                medians = self.bar_distribution.median(logits=preds).squeeze(0)
+                X_normalized_tensor = X_normalized_tensor.unsqueeze(0).to(self.direct_dtype)
+                preds = self._call_direct_model(X_normalized_tensor)
+                medians = self._point_predictions(preds).squeeze(0)
                 # print(medians)
                 # preds_0 = preds[0,0,0,:]
                 # # print the softmax of the predictions

@@ -1,0 +1,12 @@
+diff --git a/baselines/remasker/model_mae.py b/baselines/remasker/model_mae.py
+index 4265185..01d6ee9 100644
+--- a/baselines/remasker/model_mae.py
++++ b/baselines/remasker/model_mae.py
+@@ -1,7 +1,6 @@
+ # current implementation: only support numerical values
+ 
+ from functools import partial
+-from tkinter import E
+ 
+ import torch
+ import numpy as np

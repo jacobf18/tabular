@@ -1,0 +1,42 @@
+{
+  "description": "Frozen two-expert MatrixFormer+ artifact reference. Paths are relative to mcpfn; checkpoint tensors are not distributed in Git.",
+  "architecture": "new_stable",
+  "model": {
+    "attention_dropout": 0.0,
+    "drop_path_rate": 0.0,
+    "embedding_dropout": 0.0,
+    "embedding_size": 768,
+    "ffn_dropout": 0.0,
+    "mlp_hidden_size": 1536,
+    "num_attention_heads": 16,
+    "num_cls": 12,
+    "num_layers": 8,
+    "num_outputs": 5000,
+    "positional_damping_factor": 0.1,
+    "residual_scale_init": 1.0,
+    "rms_norm_eps": 1e-6,
+    "rope_base": 10000.0,
+    "rope_fraction": 0.5,
+    "use_absolute_positional_embeddings": false,
+    "use_rope": true
+  },
+  "experts": {
+    "general": {
+      "checkpoint": "runs/streamed_training/large_matrices_98k_20260930/best_validation_checkpoint.pth",
+      "checkpoint_sha256": "c0ddf75274c8ff92ca5fd22c1263369ffa7e55eb7cb85fe80961b0afa101f7a9",
+      "config": "runs/streamed_training/large_matrices_98k_20260930/config.json"
+    },
+    "specialist": {
+      "checkpoint": "runs/recsys_goal_20260920/synthetic_user_scaled_parent_risk_400/best_validation_checkpoint.pth",
+      "checkpoint_sha256": "1fcadc0c5846f9c35fbbae4e3b519b9244b608272cb1eda68c0850132321f770",
+      "config": "runs/recsys_goal_20260920/synthetic_user_scaled_parent_risk_400/config.json"
+    }
+  },
+  "inference": {
+    "entry_wise_features": false,
+    "prediction_stat": "mean",
+    "precision_mode": "amp_bfloat16",
+    "routing_policy": "observed_blend",
+    "note": "Normalization, clipping, orientation, and context limits remain evaluation-specific. Follow the corresponding protocol. No additional blend checkpoint exists."
+  }
+}

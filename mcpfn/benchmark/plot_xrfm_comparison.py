@@ -40,6 +40,7 @@ except Exception:
 
 OUT_METHOD = "xrfm"
 HIGHLIGHT = "#2A6FBB"
+SECONDARY_HIGHLIGHT = "#D55E00"
 NEUTRAL = "#B8B8B8"
 
 
@@ -55,6 +56,17 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--exclude-prefixes", nargs="*",
                    default=["dwip_", "round2_t2"],
                    help="Method-name prefixes to drop (variant-noise filter).")
+    p.add_argument("--always-include", nargs="*", default=[],
+                   help="Method names to include even if they are outside top-N.")
+    p.add_argument("--highlight-methods", nargs="*", default=[OUT_METHOD],
+                   help="Method names to highlight in the bars/tick labels.")
+    p.add_argument("--formats", nargs="*", default=["png"],
+                   choices=["png", "pdf", "svg"],
+                   help="Output formats to write for each figure.")
+    p.add_argument("--limit-draws-per-method", type=int, default=None,
+                   help="Use at most this many draws per method, ordered by draw_id/draw_name.")
+    p.add_argument("--include-observed-panel", action="store_true",
+                   help="Also plot observed-block RMSE. Usually zero because observed cells are preserved.")
     p.add_argument("--out-subdir", default="xrfm_comparison")
     return p.parse_args()
 
@@ -62,7 +74,17 @@ def parse_args() -> argparse.Namespace:
 def label_for(method: str) -> str:
     extras = {"did": "DiD", "sdid": "SDiD", "sc": "SC",
               "augsynth": "AugSynth", "dwip-v2-2": "MatFormer",
-              "xrfm": "xRFM"}
+              "xrfm": "xRFM",
+              "boost_matformer_dwip_v2_t002_a0p1": "MatFormer+xRFM a0.1",
+              "boost_matformer_dwip_v2_t002_a0p05": "MatFormer+xRFM a0.05",
+              "direct_pure_rabel_rank10": "RaBEL rank10",
+              "direct_pure_rabel_causal_panel": "RaBEL causal-panel",
+              "direct_pure_rabel_causal_panel_v2": "RaBEL causal-panel v2",
+              "random_rank_sigma05_20k": "RaBEL random-rank",
+              "mcar_to_block_10k": "RaBEL MCAR->block",
+              "mcar_blockmix_10k": "RaBEL MCAR/block",
+              "blockmix25_10k": "RaBEL blockmix25",
+              "soup_blockmix_block_mcar": "RaBEL soup"}
     if method in extras:
         return extras[method]
     return METHOD_NAMES.get(method, method)
@@ -93,8 +115,17 @@ def aggregate(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def limit_draws_per_method(df: pd.DataFrame, limit: int | None) -> pd.DataFrame:
+    if limit is None:
+        return df
+    sort_cols = [c for c in ["method", "draw_id", "draw_name"] if c in df.columns]
+    if sort_cols:
+        df = df.sort_values(sort_cols)
+    return df.groupby("method", group_keys=False).head(limit).reset_index(drop=True)
+
+
 def filter_methods(summary: pd.DataFrame, exclude_prefixes: list[str],
-                   top: int) -> pd.DataFrame:
+                   top: int, always_include: list[str]) -> pd.DataFrame:
     if exclude_prefixes:
         mask = ~summary["method"].apply(
             lambda m: any(m.startswith(p) for p in exclude_prefixes)
@@ -103,27 +134,47 @@ def filter_methods(summary: pd.DataFrame, exclude_prefixes: list[str],
 
     summary = summary.sort_values("rmse_tau", ascending=True).reset_index(drop=True)
     keep = summary.head(top).copy()
-    if OUT_METHOD in summary["method"].values and OUT_METHOD not in keep["method"].values:
-        keep = pd.concat(
-            [keep, summary[summary["method"] == OUT_METHOD]],
-            ignore_index=True,
-        )
-    return keep
+    for method in [OUT_METHOD, *always_include]:
+        if method in summary["method"].values and method not in keep["method"].values:
+            keep = pd.concat(
+                [keep, summary[summary["method"] == method]],
+                ignore_index=True,
+            )
+    return keep.drop_duplicates("method")
 
 
-def plot_one(summary: pd.DataFrame, title: str, out_path: Path) -> None:
+def plot_one(
+    summary: pd.DataFrame,
+    title: str,
+    out_path: Path,
+    *,
+    highlight_methods: set[str],
+    formats: list[str],
+    include_observed_panel: bool,
+) -> None:
     summary = summary.sort_values("rmse_tau", ascending=True).reset_index(drop=True)
     methods = summary["method"].tolist()
     labels = [label_for(m) for m in methods]
-    colors = [HIGHLIGHT if m == OUT_METHOD else NEUTRAL for m in methods]
+    colors = [
+        HIGHLIGHT if m == OUT_METHOD
+        else SECONDARY_HIGHLIGHT if m in highlight_methods
+        else NEUTRAL
+        for m in methods
+    ]
     metrics_to_plot = [
         ("rmse_tau", r"RMSE($\hat\tau$)"),
         ("mae_tau", r"MAE($\hat\tau$)"),
         ("treated_block_rmse", "Treated-block RMSE"),
-        ("observed_block_rmse", "Observed-block RMSE"),
     ]
-    fig, axes = plt.subplots(2, 2, figsize=(13, 9))
-    for ax, (col, ylabel) in zip(axes.flat, metrics_to_plot):
+    if include_observed_panel:
+        metrics_to_plot.append(("observed_block_rmse", "Observed-block RMSE"))
+
+    if len(metrics_to_plot) == 3:
+        fig, axes = plt.subplots(1, 3, figsize=(16, 4.8))
+    else:
+        fig, axes = plt.subplots(2, 2, figsize=(13, 9))
+
+    for ax, (col, ylabel) in zip(np.ravel(axes), metrics_to_plot):
         if col not in summary.columns:
             ax.set_visible(False)
             continue
@@ -133,15 +184,15 @@ def plot_one(summary: pd.DataFrame, title: str, out_path: Path) -> None:
         ax.set_xticklabels(labels, rotation=45, ha="right")
         ax.set_ylabel(ylabel)
         ax.set_title(ylabel)
-        # Highlight xRFM tick label
         for i, lab in enumerate(ax.get_xticklabels()):
-            if methods[i] == OUT_METHOD:
+            if methods[i] == OUT_METHOD or methods[i] in highlight_methods:
                 lab.set_fontweight("bold")
-                lab.set_color(HIGHLIGHT)
+                lab.set_color(HIGHLIGHT if methods[i] == OUT_METHOD else SECONDARY_HIGHLIGHT)
     fig.suptitle(title, fontsize=14)
     fig.tight_layout(rect=(0, 0, 1, 0.97))
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    for fmt in formats:
+        fig.savefig(out_path.with_suffix(f".{fmt}"), dpi=150, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -172,19 +223,30 @@ def main() -> int:
                 continue
 
             df = pd.read_csv(csv_path)
-            if OUT_METHOD not in df["method"].unique():
-                print(f"  [skip] no xrfm rows in {csv_path}")
-                skipped += 1
-                continue
-
+            df = limit_draws_per_method(df, args.limit_draws_per_method)
             summary = aggregate(df)
-            summary = filter_methods(summary, args.exclude_prefixes, args.top)
+            summary = filter_methods(
+                summary,
+                args.exclude_prefixes,
+                args.top,
+                args.always_include,
+            )
 
             n_xrfm = int((df["method"] == OUT_METHOD).sum())
-            title = f"{fam} / {sc.name}   (xRFM n_draws={n_xrfm})"
+            draw_note = f"xRFM n_draws={n_xrfm}" if n_xrfm else f"n_methods={summary['method'].nunique()}"
+            if args.limit_draws_per_method is not None:
+                draw_note += f", capped at {args.limit_draws_per_method}/method"
+            title = f"{fam} / {sc.name}   ({draw_note})"
             out_path = family_dir / "figures" / args.out_subdir / f"{sc.name}.png"
-            plot_one(summary, title, out_path)
-            print(f"  -> {out_path}")
+            plot_one(
+                summary,
+                title,
+                out_path,
+                highlight_methods=set(args.highlight_methods),
+                formats=args.formats,
+                include_observed_panel=args.include_observed_panel,
+            )
+            print(f"  -> {out_path.parent / (out_path.stem + '.' + args.formats[0])}")
             rendered += 1
 
     print(f"\nDone. rendered={rendered}  skipped={skipped}")

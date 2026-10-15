@@ -193,6 +193,9 @@ def make_mcpfn_imputer(
 
     init_kwargs = dict(MCPFN_SHARED_KWARGS)
     init_kwargs["device"] = device
+    for key in ("precision_mode", "prediction_stat"):
+        if key in spec:
+            init_kwargs[key] = spec[key]
     model = ImputePFN(
         checkpoint_path=spec["checkpoint_path"],
         json_config=spec["json_config"],

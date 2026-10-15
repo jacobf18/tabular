@@ -1,0 +1,25 @@
+diff --git a/model_mae.py b/model_mae.py
+index 4265185..01d6ee9 100644
+--- a/model_mae.py
++++ b/model_mae.py
+@@ -1,7 +1,6 @@
+ # current implementation: only support numerical values
+ 
+ from functools import partial
+-from tkinter import E
+ 
+ import torch
+ import numpy as np
+diff --git a/utils.py b/utils.py
+index 49df3ec..357f06e 100644
+--- a/utils.py
++++ b/utils.py
+@@ -56,7 +56,7 @@ def get_1d_sincos_pos_embed(embed_dim, pos, cls_token=False):
+     """
+ 
+     assert embed_dim % 2 == 0
+-    omega = np.arange(embed_dim // 2, dtype=np.float)
++    omega = np.arange(embed_dim // 2, dtype=np.float64)
+     omega /= embed_dim / 2.
+     omega = 1. / 10000**omega  # (D/2,)
+ 

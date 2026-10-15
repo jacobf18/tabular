@@ -57,6 +57,26 @@ ANCHOR_SPECS_BY_NAME: dict[str, dict] = {
     },
 }
 
+DWIP_SPECTRAL_TM128K_DIR = Path(
+    "/root/tabular/mcpfn/src/tabimpute/workdir/"
+    "tabimpute-dwip_spectral_anchor_mix25_teacher_mean_huber1_128k_20260918-dwip1e5"
+)
+DWIP_SPECTRAL_TM128K_CONFIG = {
+    "config": json.loads((DWIP_SPECTRAL_TM128K_DIR / "config.json").read_text())["model"]
+}
+for _name, _precision, _stat in (
+    ("dwip-spectral-tm128k", "amp_bfloat16", "mean"),
+    ("dwip-spectral-tm128k-median", "full_bfloat16", "median"),
+):
+    ANCHOR_SPECS_BY_NAME[_name] = {
+        "name": _name,
+        "model_family": "new_stable",
+        "checkpoint_path": str(DWIP_SPECTRAL_TM128K_DIR / "best_validation_checkpoint.pth"),
+        "json_config": DWIP_SPECTRAL_TM128K_CONFIG,
+        "precision_mode": _precision,
+        "prediction_stat": _stat,
+    }
+
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)

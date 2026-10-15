@@ -349,10 +349,10 @@ class NonLinearFactorPrior(LatentFactorPrior):
                 self.config["num_cols_low"], self.config["num_cols_high"]
             )[0]
         )
-        rank = np.random.randint(
-            self.config.get("latent_rank_low", 1),
-            self.config.get("latent_rank_high", 11),
-        )
+        rank_low = int(self.config.get("latent_rank_low", 1))
+        rank_high = min(int(self.config.get("latent_rank_high", 11)), n_rows, n_cols)
+        rank_low = min(rank_low, rank_high)
+        rank = np.random.randint(rank_low, rank_high + 1)
         U = self._sample_latent_vectors(n_rows, rank)
         V = self._sample_latent_vectors(n_cols, rank)
         dot_products = U @ V.T
@@ -884,9 +884,12 @@ class MNARLatentFactorPattern(BaseMissingness):
 
     def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
         n_rows, n_cols = X.shape
+        rank_low = int(self.config.get("latent_rank_low", 1))
+        rank_high = min(int(self.config.get("latent_rank_high", 11)), n_rows, n_cols)
+        rank_low = min(rank_low, rank_high)
         rank = np.random.randint(
-            self.config.get("latent_rank_low", 1),
-            self.config.get("latent_rank_high", 11),
+            rank_low,
+            rank_high + 1,
         )
 
         # Sample latent factors and biases
@@ -895,9 +898,20 @@ class MNARLatentFactorPattern(BaseMissingness):
         b = torch.randn(n_rows, 1)
         c = torch.randn(1, n_cols)
 
-        # Calculate observation probabilities via sigmoid
-        logits = U @ V.T + b + c
-        p_obs = torch.sigmoid(logits)
+        # Calculate observation probabilities via sigmoid, calibrated to the
+        # requested density while preserving low-rank exposure structure.
+        logits = (U @ V.T) / np.sqrt(max(rank, 1)) + b + c
+        target_obs = 1.0 - float(self.config.get("p_missing", 0.6))
+        target_obs = min(max(target_obs, 1e-4), 1.0 - 1e-4)
+        low, high = -40.0, 40.0
+        for _ in range(40):
+            mid = 0.5 * (low + high)
+            realized = float(torch.sigmoid(logits + mid).mean())
+            if realized < target_obs:
+                low = mid
+            else:
+                high = mid
+        p_obs = torch.sigmoid(logits + 0.5 * (low + high))
 
         # Induce missingness
         mask = torch.rand_like(p_obs) > p_obs
@@ -929,6 +943,63 @@ class MNARPositivityViolationPattern(BaseMissingness):
         return X
 
 
+class MCARBlockMixedPattern(BaseMissingness):
+    """
+    Generic mixture of entrywise MCAR missingness and rectangular block holdouts.
+
+    This is intended for matrix-completion robustness rather than a specific
+    data domain: each generated matrix either receives ordinary MCAR missingness
+    or one random contiguous missing rectangle.
+    """
+
+    def _induce_missingness(self, X: torch.Tensor) -> torch.Tensor:
+        mcar_prob = float(self.config.get("mcar_block_mcar_prob", 0.5))
+        if np.random.rand() < mcar_prob:
+            out = MCARPattern(self.config)._induce_missingness(X)
+            self.last_metadata = {
+                "mcar_block_is_mcar": 1.0,
+                "mcar_block_area_fraction": float(torch.isnan(out).float().mean()),
+            }
+            return out
+
+        n_rows, n_cols = X.shape
+        area_low = float(self.config.get("mcar_block_area_low", 0.05))
+        area_high = float(
+            self.config.get(
+                "mcar_block_area_high",
+                min(max(float(self.config.get("p_missing", 0.4)), area_low), 0.5),
+            )
+        )
+        area_low = min(max(area_low, 1.0 / max(1, n_rows * n_cols)), 0.95)
+        area_high = min(max(area_high, area_low), 0.95)
+        area_fraction = float(np.random.uniform(area_low, area_high))
+
+        aspect_low = float(self.config.get("mcar_block_aspect_low", 0.25))
+        aspect_high = float(self.config.get("mcar_block_aspect_high", 4.0))
+        aspect = float(sample_log_uniform(aspect_low, aspect_high)[0])
+
+        row_fraction = float(np.sqrt(area_fraction * aspect))
+        col_fraction = float(np.sqrt(area_fraction / aspect))
+        row_block_size = min(n_rows, max(1, int(round(n_rows * row_fraction))))
+        col_block_size = min(n_cols, max(1, int(round(n_cols * col_fraction))))
+
+        row_start = np.random.randint(0, n_rows - row_block_size + 1)
+        col_start = np.random.randint(0, n_cols - col_block_size + 1)
+        X[
+            row_start : row_start + row_block_size,
+            col_start : col_start + col_block_size,
+        ] = torch.nan
+        self.last_metadata = {
+            "mcar_block_is_mcar": 0.0,
+            "mcar_block_area_fraction": float(
+                row_block_size * col_block_size / max(1, n_rows * n_cols)
+            ),
+            "mcar_block_row_fraction": float(row_block_size / max(1, n_rows)),
+            "mcar_block_col_fraction": float(col_block_size / max(1, n_cols)),
+        }
+        return X
+
+
 class MNARUserCascadePattern(BaseMissingness):
     """
     Induces missingness based on a user cascade model, where observing one
@@ -943,10 +1014,10 @@ class MNARUserCascadePattern(BaseMissingness):
         # Assign a random genre to each column (item)
         item_genres = torch.randint(0, n_genres, (n_cols,))
 
-        rank = np.random.randint(
-            self.config.get("latent_rank_low", 1),
-            self.config.get("latent_rank_high", 11),
-        )
+        rank_low = int(self.config.get("latent_rank_low", 1))
+        rank_high = min(int(self.config.get("latent_rank_high", 11)), n_rows, n_cols)
+        rank_low = min(rank_low, rank_high)
+        rank = np.random.randint(rank_low, rank_high + 1)
         U = torch.randn(n_rows, rank)
         V = torch.randn(n_cols, rank)
         base_logits = U @ V.T
@@ -1721,6 +1792,21 @@ class ProfileMixedPattern(BaseMissingness):
             )
         self.profile_name = profile_name
         self.profile = copy.deepcopy(MISSINGNESS_PROFILES[profile_name])
+        for field in (
+            "p_missing_anchor_prob", "p_missing_anchor_value", "p_missing_beta_alpha",
+            "p_missing_beta_beta", "p_missing_low", "p_missing_width",
+        ):
+            key = f"profile_{field}"
+            if key in config:
+                self.profile[field] = float(config[key])
+        for field in ("p_missing_anchor_prob", "p_missing_anchor_value", "p_missing_low", "p_missing_width"):
+            if not 0.0 <= self.profile[field] <= 1.0:
+                raise ValueError(f"profile_{field} must be in [0, 1]")
+        if self.profile["p_missing_low"] + self.profile["p_missing_width"] > 1.0:
+            raise ValueError("Missingness density low + width must be <= 1")
+        for field in ("p_missing_beta_alpha", "p_missing_beta_beta"):
+            if not np.isfinite(self.profile[field]) or self.profile[field] <= 0.0:
+                raise ValueError(f"profile_{field} must be finite and positive")
         self.weights = dict(self.profile["weights"])
 
     def _build_pattern_config(self, p_missing: float) -> dict:
@@ -2114,6 +2200,7 @@ class MissingnessPrior(IterableDataset):
         "mnar_soft_polarization": MNARSoftPolarizationPattern,
         "mnar_latent_factor": MNARLatentFactorPattern,
         "mnar_positivity_violation": MNARPositivityViolationPattern,
+        "mcar_block_mixed": MCARBlockMixedPattern,
         "mnar_user_cascade": MNARUserCascadePattern,
         "mnar_cluster_level": MNARClusterLevelPattern,
         "mnar_spatial_block": MNARSpatialBlockPattern,

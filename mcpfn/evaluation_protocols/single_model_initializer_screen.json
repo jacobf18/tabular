@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "name": "single_model_initializer_screen_v1",
+  "status": "registered_not_executed",
+  "motivation": "The first pilot still trails the specialist on independent synthetic ratings; its update L2 is 0.448 versus a 9.017 recommender task delta. Screen stronger common-ancestor initializations using synthetic data only. Weight geometry is not evidence that a merge will work.",
+  "checkpoints": {
+    "general": {
+      "path": "runs/streamed_training/large_matrices_98k_20260930/best_validation_checkpoint.pth",
+      "sha256": "c0ddf75274c8ff92ca5fd22c1263369ffa7e55eb7cb85fe80961b0afa101f7a9"
+    },
+    "specialist": {
+      "path": "runs/recsys_goal_20260920/synthetic_user_scaled_parent_risk_400/best_validation_checkpoint.pth",
+      "sha256": "1fcadc0c5846f9c35fbbae4e3b519b9244b608272cb1eda68c0850132321f770"
+    },
+    "shared": {
+      "path": "src/tabimpute/workdir/tabimpute-dwip_spectral_anchor_mix25_teacher_mean_huber1_128k_20260918-dwip1e5/best_validation_checkpoint.pth",
+      "sha256": "1448ca69d603ac62bb6e9372e5e02980c969062de7cf099e14e46f0449d5d43d"
+    },
+    "pilot": {
+      "path": "runs/single_model_goal_20261005/mixed_distill_v1/best_validation_checkpoint.pth",
+      "sha256": "ef5b7b9f9e199de7545d06a830de654afbe3d5674ed1488f8c95b8cbe4a651ae"
+    }
+  },
+  "candidates": [
+    {"name": "general", "kind": "checkpoint", "checkpoint": "general"},
+    {"name": "pilot150", "kind": "checkpoint", "checkpoint": "pilot"},
+    {"name": "interpolate_10", "kind": "interpolation", "alpha": 0.1},
+    {"name": "interpolate_25", "kind": "interpolation", "alpha": 0.25},
+    {"name": "interpolate_50", "kind": "interpolation", "alpha": 0.5},
+    {"name": "interpolate_75", "kind": "interpolation", "alpha": 0.75},
+    {"name": "task_add_10", "kind": "task_addition", "alpha": 0.1},
+    {"name": "task_add_25", "kind": "task_addition", "alpha": 0.25},
+    {"name": "task_add_50", "kind": "task_addition", "alpha": 0.5},
+    {"name": "task_add_75", "kind": "task_addition", "alpha": 0.75},
+    {"name": "decoder_25", "kind": "decoder_interpolation", "alpha": 0.25},
+    {"name": "decoder_50", "kind": "decoder_interpolation", "alpha": 0.5},
+    {"name": "decoder_100", "kind": "decoder_interpolation", "alpha": 1.0}
+  ],
+  "definitions": {
+    "interpolation": "general + alpha * (specialist - general)",
+    "task_addition": "general + alpha * (specialist - shared98k)",
+    "decoder_interpolation": "interpolate decoder.* only; keep every other general tensor unchanged",
+    "inference": "Materialize exactly one parameter set before inference; never average predictions or route between networks"
+  },
+  "bank": {
+    "seed_start": 12100501,
+    "imputation_small_components": [0, 1, 2, 3, 4, 5, 6, 7],
+    "imputation_small_repeats": 2,
+    "imputation_small_shape": [240, 80],
+    "imputation_large_components": [0, 1, 4, 5],
+    "imputation_large_shape": [2000, 1000],
+    "ratings_shapes": [[1000, 1000], [2000, 1000]],
+    "ratings_repeats_per_shape": 4,
+    "expected_cases": 28,
+    "policy": "Fresh synthetic seeds; cache inputs, targets, masks, and scaling once in RAM and use identical cases for all candidates; no real benchmark matrix or labels"
+  },
+  "selection": {
+    "metric": "Minimum worst ratio across imputation RMSE, ratings user-macro RMSE, and ratings user-macro MAE",
+    "imputation_reference": "The better of general and same-input observed-blend aggregate synthetic RMSE, fixed before screening candidates",
+    "ratings_reference": "The frozen specialist on the identical synthetic cases",
+    "ties": "Earlier registered candidate wins exact ties",
+    "scope": "Initialization selection only; no benchmark victory or completed training claim",
+    "confirmation": "Any follow-on trained checkpoint needs a separate, newly seeded synthetic confirmation before another complete real benchmark campaign"
+  },
+  "execution": {
+    "after_campaign": "runs/single_model_goal_20261005/mixed_distill_v1_benchmarks",
+    "reason": "Use GPU only after the existing benchmark campaign terminates; campaign scores are not inputs to the screen",
+    "storage": "Do not save all 13 full checkpoints; save only an eligible selected initialization, plus manifests and every candidate/case score",
+    "continue_training": "Not automatic; use synthetic evidence to choose initialization and objective before launching another registered continuation"
+  }
+}
