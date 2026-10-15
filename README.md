@@ -2,6 +2,15 @@
 
 This is the official repository of TabImpute, a transformer-based architecture for missing data imputation on tabular data.
 
+## MatrixFormer
+
+For MatrixFormer and MatrixFormer+, use the standalone
+[MatrixFormer repository](https://github.com/jacobf18/MatrixFormer). It contains
+the inference code, installation instructions, and Python and command-line
+examples, with no dependency on this repository. Pretrained weights are hosted
+on [Hugging Face](https://huggingface.co/Tabimpute/TabImpute) and download
+automatically when loading a model with the default settings.
+
 ## Installation
 
 ```bash
