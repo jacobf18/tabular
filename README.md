@@ -68,7 +68,7 @@ If you use TabImpute, please consider citing our paper:
 ```bibtex
 @article{feitelberg2025tabimpute,
   title={TabImpute: Accurate and Fast Zero-Shot Missing-Data Imputation with a Pre-Trained Transformer},
-  author={Feitelberg, Jacob and Saha, Dwaipayan and Choi, Kyuseong and Ahmad, Zaid and Agarwal, Anish and Dwivedi, Raaz},
+  author={Feitelberg, Jacob and Saha, Dwaipayan and Choi, Kyuseong and Agarwal, Anish and Dwivedi, Raaz},
   journal={arXiv preprint arXiv:2510.02625},
   year={2025}
 }
