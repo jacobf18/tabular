@@ -6,6 +6,10 @@ import benchmark_tabimpute_runtime_scaling as benchmark
 from benchmark_tabimpute_runtime_scaling import make_input
 
 
+def test_runtime_model_display_names():
+    assert benchmark.MODELS == {'legacy': 'TabImpute', 'matrixformer': 'MatrixFormer'}
+
+
 def test_runtime_inputs_are_matched_deterministic_and_fixed_width():
     for rows in (16, 32, 64, 128, 256, 512, 1024, 2048):
         matrix = make_input(rows, 10, 0.4, 42)

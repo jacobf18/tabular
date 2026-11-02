@@ -19,7 +19,7 @@ import psutil
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CHECKPOINT = ROOT / 'runs/streamed_training/large_matrices_98k_20260930/best_validation_checkpoint.pth'
 DEFAULT_OUTPUT = ROOT / 'runs/benchmark_evaluations/runtime_scaling_legacy_matrixformer_20261001'
-MODELS = {'legacy': 'TabImpute (legacy)', 'matrixformer': 'MatrixFormer'}
+MODELS = {'legacy': 'TabImpute', 'matrixformer': 'MatrixFormer'}
 
 
 def digest(path):
