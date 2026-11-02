@@ -11,6 +11,11 @@ examples, with no dependency on this repository. Pretrained weights are hosted
 on [Hugging Face](https://huggingface.co/Tabimpute/TabImpute) and download
 automatically when loading a model with the default settings.
 
+## Recommender evaluation
+
+For reproducible MovieLens 100K / Netflix small baseline reruns and per-user
+confidence intervals, see [the recommender evaluation workflow](mcpfn/RECSYS_CONFIDENCE_INTERVALS.md).
+
 ## Installation
 
 ```bash
