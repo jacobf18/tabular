@@ -493,15 +493,20 @@ def run_hyperimpute(plugin_name: str, X_missing: np.ndarray, random_state: int =
             "random_state": random_state,
         }
         print(f"Running miceforest MICE with 5 iterations and {num_imputations} datasets on CPU")
-        kernel = mf.ImputationKernel(miceforest_df, **kernel_kwargs)
-        kernel.mice(iterations=5, verbose=False)
-        # Collect each completed dataset as a numpy array
-        imputed_arrays = [
-            kernel.complete_data(dataset=i).to_numpy()
-            for i in range(num_imputations)
-        ]
-        # Average across imputations
-        return np.mean(imputed_arrays, axis=0)
+        for forest_parameters in [{}, {"bagging_fraction": 1.0, "bagging_freq": 0, "feature_fraction": 0.632}]:
+            if forest_parameters:
+                print("Retrying MICE-Forest without row subsampling after nonfinite predictions; retaining feature subsampling")
+            kernel = mf.ImputationKernel(miceforest_df, **kernel_kwargs)
+            kernel.mice(iterations=5, verbose=False, **forest_parameters)
+            imputed_arrays = [
+                kernel.complete_data(dataset=dataset_index).to_numpy()
+                for dataset_index in range(num_imputations)
+            ]
+            if all(np.isfinite(values).all() for values in imputed_arrays):
+                result = np.mean(imputed_arrays, axis=0)
+                if np.isfinite(result).all():
+                    return result
+        raise ValueError("MICE-Forest still produced nonfinite predictions after the no-row-subsampling retry")
     else:
         plugin = Imputers().get(plugin_name, random_state = random_state)
     # HyperImpute expects pandas DataFrame and returns a DataFrame

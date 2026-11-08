@@ -4,13 +4,13 @@ import numpy as np
 import os
 import pandas as pd
 import warnings
-from scipy import stats
 from sklearn.metrics import r2_score
 import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from plot_options import METHOD_NAMES, METHOD_COLORS
+from missbench_statistics import bootstrap_mean_interval
 
 # --- Plotting ---
 sns.set(style="whitegrid")
@@ -239,10 +239,9 @@ print("Creating LaTeX table for column-wise R^2...")
 
 
 def _ci95_halfwidth(series: pd.Series) -> float:
-    n = int(series.count())
-    if n < 2:
-        return float("nan")
-    return float(stats.t.ppf(0.975, n - 1)) * float(series.sem())
+    lower, upper = bootstrap_mean_interval(series)
+    mean = series.mean()
+    return float(max(mean - lower, upper - mean))
 
 # Define methods to include in the table (subset of all methods)
 table_methods = [
@@ -299,15 +298,17 @@ for pattern_name in patterns:
             'Method': method,
             'mean': pattern_means[method],
             'std': pattern_stds[method],
+            'datasets': int(df_norm[method].count()),
             'Pattern': pattern_name
         })
     
     pattern_r_squared[pattern_name] = pd.DataFrame(pattern_data)
 
 # Calculate overall column-wise R^2
-overall_means = df_all.mean(axis=0)
+df_overall = df_all.groupby(level=0).mean()
+overall_means = df_overall.mean(axis=0)
 # overall_stds = df_all.std(axis=0)
-overall_stds = df_all.apply(_ci95_halfwidth, axis=0)
+overall_stds = df_overall.apply(_ci95_halfwidth, axis=0)
 
 # Create summary data for overall
 overall_data = []
@@ -316,6 +317,7 @@ for method in overall_means.index:
         'Method': method,
         'mean': overall_means[method],
         'std': overall_stds[method],
+        'datasets': int(df_overall[method].count()),
         'Pattern': 'Overall'
     })
 
@@ -324,15 +326,15 @@ pattern_r_squared['Overall'] = pd.DataFrame(overall_data)
 # Create summary data for LaTeX table
 summary_data = []
 all_patterns = ['MCAR',
+                "MNARLatentFactorPattern",
+                "MNARClusterLevelPattern",
                 'MAR',
+                "MNARTwoPhaseSubsetPattern",
                 'MNAR',
                 'MAR_Neural',
                 'MAR_BlockNeural',
                 "MNARPolarizationPattern",
                 "MNARSoftPolarizationPattern",
-                "MNARLatentFactorPattern",
-                "MNARClusterLevelPattern",
-                "MNARTwoPhaseSubsetPattern",
                 "MNARCensoringPattern",
                 'Overall'
                 ]
@@ -365,6 +367,7 @@ print(summary_data)
 
 if summary_data:
     summary_df = pd.concat(summary_data, ignore_index=True)
+    summary_df.rename(columns={'std': 'ci_half_width'}).to_csv("figures/r_squared_summary.csv", index=False)
     summary_pivot = summary_df.pivot(index='Pattern', columns='Method', values=['mean', 'std'])
     
     # Flatten column names
@@ -408,9 +411,9 @@ if summary_data:
         "MAR_BlockNeural": "MNAR",
         "MNARPolarizationPattern": "MNAR",
         "MNARSoftPolarizationPattern": "MNAR",
-        "MNARLatentFactorPattern": "MNAR",
-        "MNARClusterLevelPattern": "MNAR",
-        "MNARTwoPhaseSubsetPattern": "MNAR",
+        "MNARLatentFactorPattern": "MCAR",
+        "MNARClusterLevelPattern": "MCAR",
+        "MNARTwoPhaseSubsetPattern": "MAR",
         "MNARCensoringPattern": "MNAR",
         "Overall": None,
     }
@@ -424,17 +427,17 @@ if summary_data:
     # Start single table environment
     latex_content = "\\begin{table*}[!ht]\n"
     latex_content += "\\centering\n"
-    latex_content += "\\caption{Mean Column-wise R^2 $\\pm$ 95\\% Confidence Interval by Missingness Pattern}\n"
+    latex_content += "\\caption{Mean column-wise squared Pearson correlation ($R^2$) $\\pm$ symmetrized 95\\% bootstrap confidence half-width by missingness pattern. Intervals resample the 42 datasets (1,000 resamples); Overall first averages patterns within each dataset. The half-width is the larger distance from the mean to the two bootstrap limits, conservatively enclosing the asymmetric interval. Bold marks the best method across all 15 methods for each pattern.}\n"
     latex_content += "\\label{tab:r_squared_by_pattern}\n"
 
     # Generate each tabular environment
     for tabular_idx in range(num_tabulars):
         start_col = tabular_idx * max_cols
         end_col = min(start_col + max_cols, len(all_methods))
-        table_methods = all_methods[start_col:end_col]
+        this_table_methods = all_methods[start_col:end_col]
 
         # Create column specification: leading "ll" = (group label, pattern name)
-        num_methods_table = len(table_methods)
+        num_methods_table = len(this_table_methods)
         col_spec = "ll" + "c" * num_methods_table
 
         latex_content += "\\resizebox{\\linewidth}{!}{\n"
@@ -443,7 +446,7 @@ if summary_data:
 
         # Header row: first column (group) is unlabeled, second is "Pattern".
         header = "& Pattern"
-        for method in table_methods:
+        for method in this_table_methods:
             method_name = method.replace('_', '\\_')  # Escape underscores
             header += f" & {method_name}"
         header += " \\\\\n"
@@ -491,16 +494,16 @@ if summary_data:
             # Use global row maximum for this pattern (across all methods)
             row_max = global_row_maxs[pattern]
 
-            for method in table_methods:
+            for method in this_table_methods:
                 if f"{method}_mean" in summary_pivot.columns:
                     mean_val = summary_pivot.loc[pattern, f"{method}_mean"]
                     std_val = summary_pivot.loc[pattern, f"{method}_std"]
                     if pd.notna(mean_val) and pd.notna(std_val):
                         # Bold if this is the global maximum value in this row (across all tabulars)
                         if abs(mean_val - row_max) < 1e-6:  # Use small epsilon for float comparison
-                            row += f" & \\textbf{{{mean_val:.3f} ± {std_val:.3f}}}"
+                            row += f" & \\textbf{{{mean_val:.3f} $\\pm$ {std_val:.3f}}}"
                         else:
-                            row += f" & {mean_val:.3f} ± {std_val:.3f}"
+                            row += f" & {mean_val:.3f} $\\pm$ {std_val:.3f}"
                     else:
                         row += " & --"
             row += " \\\\\n"
@@ -570,7 +573,7 @@ for method in all_methods:
 # Start single table environment
 latex_content_transposed = "\\begin{table}[h]\n"
 latex_content_transposed += "\\centering\n"
-latex_content_transposed += "\\caption{Mean Column-wise R^2 $\\pm$ 95\\% Confidence Interval by Method (Transposed)}\n"
+latex_content_transposed += "\\caption{Mean column-wise squared Pearson correlation ($R^2$) $\\pm$ symmetrized 95\\% dataset-bootstrap confidence half-width by method (transposed). Overall first averages patterns within each dataset. The half-width is the larger distance from the mean to the two bootstrap limits, conservatively enclosing the asymmetric interval.}\n"
 latex_content_transposed += "\\label{tab:r_squared_by_method_transposed}\n"
 
 # Generate each tabular environment
@@ -615,9 +618,9 @@ for tabular_idx in range(num_tabulars_transposed):
                     if pd.notna(mean_val) and pd.notna(std_val):
                         # Bold if this is the global maximum value in this row (across all tabulars)
                         if abs(mean_val - row_max) < 1e-6:  # Use small epsilon for float comparison
-                            row += f" & \\textbf{{{mean_val:.3f} ± {std_val:.3f}}}"
+                            row += f" & \\textbf{{{mean_val:.3f} $\\pm$ {std_val:.3f}}}"
                         else:
-                            row += f" & {mean_val:.3f} ± {std_val:.3f}"
+                            row += f" & {mean_val:.3f} $\\pm$ {std_val:.3f}"
                     else:
                         row += " & --"
                 else:
@@ -682,7 +685,7 @@ if not mcar_data.empty:
         # Generate LaTeX table
         latex_content_mcar = "\\begin{table}[h]\n"
         latex_content_mcar += "\\centering\n"
-        latex_content_mcar += "\\caption{Column-wise R^2 Values for MCAR Pattern by Dataset}\n"
+        latex_content_mcar += "\\caption{Column-wise squared Pearson correlation ($R^2$) for MCAR by dataset}\n"
         latex_content_mcar += "\\label{tab:r_squared_mcar_by_dataset}\n"
         
         # Create column specification

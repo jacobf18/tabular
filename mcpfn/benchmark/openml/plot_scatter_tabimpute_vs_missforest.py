@@ -1,11 +1,11 @@
 import os
 import sys
+import json
 
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from scipy import stats
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -16,6 +16,7 @@ from plot_options import (
     FIGURE_SIZES,
     compute_normalized_rmse_columnwise,
 )
+from missbench_statistics import paired_dataset_wilcoxon
 
 matplotlib.rcParams["font.family"] = "serif"
 
@@ -91,6 +92,11 @@ for dataset in datasets:
         )
 
 df = pd.DataFrame.from_records(records)
+paired_datasets, paired_test = paired_dataset_wilcoxon(df.set_index(["dataset", "pattern"]))
+paired_datasets.to_csv(f"{figure_base_path}/wilcoxon_tabimpute_vs_missforest_paired_datasets.csv")
+with open(f"{figure_base_path}/wilcoxon_tabimpute_vs_missforest.json", "w") as stream:
+    json.dump(paired_test, stream, indent=2, allow_nan=False)
+    stream.write("\n")
 
 x = df["TabImpute"].to_numpy()
 y = df["MissForest"].to_numpy()
@@ -98,21 +104,14 @@ finite = np.isfinite(x) & np.isfinite(y)
 df = df[finite].reset_index(drop=True)
 x, y = x[finite], y[finite]
 
-tabimpute_wins = int((x < y).sum())
-total = len(x)
+tabimpute_wins = paired_test["first_dataset_wins"]
+total = paired_test["dataset_pairs"]
 win_pct = 100.0 * tabimpute_wins / total if total else 0.0
 
-try:
-    _w_stat, p_wilcoxon = stats.wilcoxon(
-        x, y, alternative="less", zero_method="pratt"
-    )
-except ValueError:
-    p_wilcoxon = float("nan")
+p_wilcoxon = paired_test["two_sided_pvalue"]
 
 if np.isnan(p_wilcoxon):
     p_str = "p=n/a"
-elif p_wilcoxon < 1e-4:
-    p_str = "p<1e-4"
 else:
     p_str = f"p={p_wilcoxon:.2e}"
 
@@ -213,7 +212,8 @@ ax.set_aspect("equal", adjustable="box")
 ax.set_xlabel("TabImpute (RMSE)", fontsize=18)
 ax.set_ylabel("MissForest (RMSE)", fontsize=18)
 ax.set_title(
-    f"TabImpute vs. MissForest\nTabImpute better in {tabimpute_wins}/{total} = {win_pct:.1f}%; Wilcoxon {p_str}",
+    f"TabImpute vs. MissForest\nTabImpute better on {tabimpute_wins}/{total} datasets ({win_pct:.1f}%)\n"
+    f"Wilcoxon (two-sided): {paired_test['dataset_pairs']} datasets; {p_str}",
     fontsize=15,
 )
 ax.spines["top"].set_visible(False)
@@ -230,5 +230,6 @@ plt.close(fig)
 
 print(
     f"Scatter saved: {figure_base_path}/scatter_tabimpute_vs_missforest.pdf "
-    f"({tabimpute_wins}/{total} TabImpute wins; {win_pct:.1f}%)"
+    f"({tabimpute_wins}/{total} TabImpute dataset wins; {win_pct:.1f}%)"
 )
+print(json.dumps(paired_test, indent=2))

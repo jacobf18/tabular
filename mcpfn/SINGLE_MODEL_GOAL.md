@@ -28307,3 +28307,4122 @@ Root/checkpoint/scratch free bytes at the source-coherence check are
 No trained development boundary, sole eligible selection, fresh confirmation
 or real-benchmark score is available yet. Keep the mixed-prior full run and
 all unchanged audits/qualification requirements. The goal remains unmet.
+
+### 2026-10-15 18:23 UTC — V54 step10 fails native NRMSE despite structured/rating gains; complete saved-grid diagnosis retained
+
+The preceding goal turn was progress: it completed the standardized-Huber
+probe/audits, preserved closed storage, registered V54 and launched both
+original training/qualification chains. This turn confirms all original
+PID/start-tick identities, then polls the existing handles through step10.
+Every timeout leaves the original jobs live; no worker or scientific stage
+is restarted. The ten-attempt prefix has nine accepted updates. Attempt1
+was rejected on two MCAR grouped metrics; attempts2–10 are accepted.
+
+**Early synthetic development result, not a completed original full-run
+audit or real benchmark.** The complete152-case step10 boundary fails3/22
+unchanged guards: native MissBench-style, UCI-style and common NRMSE on the
+same40 native cases. These are not three failures on real benchmark suites.
+MissBench/UCI-style candidate0.6649092404067423 exceeds the frozen limit
+0.664351306907806; common candidate0.664909240435726 exceeds its limit
+0.6643513056134889. No tolerance is changed. All structured and rating guards
+pass, but passing their limits does not mean every metric improves over V29.
+
+| Synthetic development metric | Actual V29 step0 | V54 step10 | Relative change |
+|---|---:|---:|---:|
+|Native common NRMSE|0.664331714164|0.664909240436|+0.086933%|
+|Native RMSE|0.795280925086|0.793971935002|-0.164595%|
+|Rating RMSE|0.758233126643|0.757602930024|-0.083114%|
+|Rating MAE|0.687911318438|0.686247076822|-0.241927%|
+|Structured overall common NRMSE|0.684778692952|0.682909288484|-0.272994%|
+|MCAR common NRMSE|0.516937754603|0.516425529547|-0.099088%|
+|MAR common NRMSE|0.437721600907|0.440183215580|+0.562370%|
+|MNAR common NRMSE|0.424373553832|0.418126518688|-1.472060%|
+|MNAR censoring common NRMSE|0.753835835267|0.743396497234|-1.384829%|
+|MNAR two-phase subset common NRMSE|0.339077809023|0.337188571764|-0.557169%|
+|MNAR skip-logic common NRMSE|1.012339234337|1.013585341899|+0.123092%|
+|MNAR cluster-level common NRMSE|0.428356889943|0.427120780950|-0.288570%|
+|MAR neural common NRMSE|0.820077716609|0.822410669752|+0.284480%|
+|MAR block-neural common NRMSE|0.571888723559|0.573390695903|+0.262634%|
+|MNAR latent-factor common NRMSE|0.484894296918|0.479237001119|-1.166707%|
+|MNAR polarization common NRMSE|0.910716755496|0.900866038591|-1.081644%|
+|MNAR soft-polarization common NRMSE|1.517124144926|1.522980600776|+0.386024%|
+
+Seven structured families improve and five worsen. MAR sits only
+0.0000448860111991 below its frozen0.4402281015910897 limit. Native raw RMSE
+improves while NRMSE worsens. The minimax score improves from
+1.0606515728673378 to1.0459633612095722, but cannot override failed guards:
+`passed=false`, `best_step=0`, selected checkpoint SHA null. Step0 remains
+ineligible. No checkpoint is promoted.
+
+After ten focused tests pass, the existing
+`scripts/analyze_single_model_development_columns.py`runs once on the
+published step10 boundary, using the registered152-case
+`domain_clipping_v10/synthetic_bank.pt`, not the separate28-case initializer
+screen. Observer/analysis session6619 exits0. It preserves all136 imputation
+and16 rating cases,22,788 imputation columns and1,632 reconstructed stored
+imputation metrics for general/actual-V29/candidate roles. There are no
+query-empty columns and22,764 common-NRMSE-eligible columns. Canonical
+MissBench-style defined-column counts remain role-specific:22,764 for
+general/V29 and22,767 for the candidate. No metric coverage is harmonized
+afterward and no new inference, seed, selection or gate is introduced.
+
+Separate read-only checks verify all507 diagnostic source/input paths,
+408 imputation case-role rows,32 rating case-metric rows and all22 original
+candidate guard values reconstructed from the saved CSVs. The saved markdown
+table's22 initializer/candidate/guard rows also match the original reports
+exactly. All572 unique registered training/pipeline source paths remain
+unchanged. This does not replace the mandatory original full-run replay/audit.
+
+Complete diagnosis and tables:
+`/mnt/checkpoints_200/single_model_goal_20261005/standardized_teacher_huber_v54_development_step10_v1/`.
+`OUTCOME.md`contains all22 guards, all8 native/4 structured prior groups,
+per-case adverse counts and full limitations. The complete columns/cases/
+contributions/ratings CSVs are retained. Native cases split20 improved/20
+worsened; structured cases52/44; rating RMSE13/3 and MAE15/1. Only the native
+anchor-latent MCAR prior mean worsens among the eight native groups:
+1.9284012438855516 to1.9472278409374022 across four cases (two improve/two
+worsen). This descriptive localization is not a causal finding or permission
+to retune the live loss, prior, seeds, thresholds or optimizer.
+
+The first ten original attempts retain300 grouped and560 individual point
+slots. Individual adverse counts are2,4,2,4,0,0,5,4,4,4 (29 total, including
+the rejected proposal), with no undefined individual slot. Maximum recorded
+training`peak_gib`is113.67632389068604. The original complete10-line prefix
+SHA is`2de678976912ad1b3747d3adfa2e57f184c049f713e6ef5ea3d3dcaed54cb267`.
+The full trace/status/log remain live, not frozen full-run artifacts.
+
+| Artifact | SHA256 |
+|---|---|
+|Original validation0|`c6b6daabbce6d5b43d60ae59e1de5496600d2078d765489f4b6abe39d4f68ef8`|
+|Original validation10|`e09c5412f45a7b30794c175d447b412dae7f5fcf68219783b2cba3481298062b`|
+|Diagnostic configuration|`bb40d09f71f15af7da9f841bc653e749e1e3426377181bc08c370be253df3a2b`|
+|Diagnostic summary|`d5e67e558e3fe426a2a31f75d36ef4a565eaf71ee4897669d13a46bb727005c6`|
+|Complete outcome|`57b4cb65222093eb7f5eed09f511d473731d2dea39d4efb7dcdc333ef90508c6`|
+
+At18:22 original trainer4070782 is capturing attempt12 gradients, and
+original coordinator4071570 remains`waiting_for_training`. Sessions73654
+and86324 and both original shells remain live with unchanged start ticks.
+Root/checkpoint/scratch free bytes are
+16,506,671,104/21,399,748,608/3,676,720,541,696, preserving all18/6/50 GiB
+reserves while training consumes its admitted allowance. Continue the
+original64-attempt schedule and25/50/64 boundaries. No full-run audit,
+eligible selection, confirmation or real campaign exists for V54 yet.
+Different V53/V54 streams and accepted-update counts preclude a causal
+comparison of their early boundaries. The goal remains active and unmet;
+no registered source, paper result, commit or push is changed.
+
+### 2026-10-15 19:23 UTC — V54 step25 recovers native guards but fails skip-logic; original run continues
+
+The previous goal turn was progress: it completed the step10 saved-grid
+diagnosis and retained its three failed native guards. This turn confirms
+the same original live PID/start identities and polls sessions73654/86324
+through the scheduled step25 boundary, without interpreting timeouts as
+termination or restarting a scientific worker. Original observer/analysis
+session65343 exits0 after the published step25 report and one read-only
+column decomposition. All572 unique registered training/pipeline source
+paths remain unchanged at the final check.
+
+**Early synthetic result, not real-benchmark qualification.** The original
+first25 attempts have23 accepted updates. Step25 passes21/22 original
+development guards but fails MNAR skip-logic common NRMSE:
+candidate1.0159183242380583 versus frozen limit1.0152455648558527,
+excess0.0006727593822056. MAR passes narrowly at0.44021897258380077 against
+0.4402281015910897, margin0.0000091290072889. These are not new tolerance
+rules. Native MissBench-style/UCI-style/common NRMSE now pass their original
+limits, unlike step10. No trained checkpoint qualifies: `passed=false`,
+`best_step=0`, selected checkpoint SHA null. Step0 remains ineligible.
+
+| Synthetic metric | Actual V29 step0 | V54 step10 | V54 step25 |
+|---|---:|---:|---:|
+|Native common NRMSE|0.664331714164|0.664909240436|0.663850522582|
+|Native RMSE|0.795280925086|0.793971935002|0.795244873899|
+|Rating RMSE|0.758233126643|0.757602930024|0.757391890192|
+|Rating MAE|0.687911318438|0.686247076822|0.686246892320|
+|Structured overall common NRMSE|0.684778692952|0.682909288484|0.681776082472|
+|MCAR common NRMSE|0.516937754603|0.516425529547|0.514523417762|
+|MAR common NRMSE|0.437721600907|0.440183215580|0.440218972584|
+|MNAR common NRMSE|0.424373553832|0.418126518688|0.422555602878|
+|MNAR censoring common NRMSE|0.753835835267|0.743396497234|0.738657561511|
+|MNAR two-phase subset common NRMSE|0.339077809023|0.337188571764|0.336195381644|
+|MNAR skip-logic common NRMSE|1.012339234337|1.013585341899|1.015918324238|
+|MNAR cluster-level common NRMSE|0.428356889943|0.427120780950|0.427565661766|
+|MAR neural common NRMSE|0.820077716609|0.822410669752|0.824380140530|
+|MAR block-neural common NRMSE|0.571888723559|0.573390695903|0.573117735836|
+|MNAR latent-factor common NRMSE|0.484894296918|0.479237001119|0.479046997885|
+|MNAR polarization common NRMSE|0.910716755496|0.900866038591|0.889114634597|
+|MNAR soft-polarization common NRMSE|1.517124144926|1.522980600776|1.520018558438|
+
+Against actual V29, step25 improves native common NRMSE0.072432%, native
+RMSE0.004533%, structured common NRMSE0.438479%, rating RMSE0.110947% and
+rating MAE0.241954%. Seven structured families improve and five worsen;
+skip-logic worsens0.353546%. The minimax score decreases through
+1.0606515728673378/1.0459633612095722/1.0392956500276034, but cannot override
+the failed guard. Aggregate gains are not a success claim.
+
+The step25 CPU-only diagnostic retains all152 development cases:136
+imputation/16 ratings,22,788 columns,408 imputation case-role rows and32
+rating case-metric rows. It reproduces1,632 original imputation metrics.
+A separate read-only check verifies507 diagnostic input/source paths and
+reconstructs all22 original candidate guard values from saved CSVs. Common
+NRMSE has22,764 eligible columns; no column is query-empty. The canonical
+MissBench-style definition retains original role-specific coverage:22,764
+defined columns for general/V29,22,765 for the candidate. No normalization,
+coverage, case weight, loss, guard or selection criterion changes.
+
+Complete evidence and all22 guard values/frozen limits/0-10-25 trajectories,
+all8 native/4 structured prior means, all8 skip-logic cases, every populated
+native scale band and adverse counts are saved in:
+`/mnt/checkpoints_200/single_model_goal_20261005/standardized_teacher_huber_v54_development_step25_v1/OUTCOME.md`.
+All columns/cases/contributions/ratings CSVs remain beside it. Native cases
+split23 improved/17 worsened; structured62/34; ratings14/2 for RMSE and15/1
+for MAE. Native anchor-latent MCAR, slow-tail mixed-profile and steep-tail
+MCAR means still worsen, as does structured steep-tail. Six skip-logic cases
+worsen and two improve. None is hidden by the improving overall means.
+
+An additive saved-data-only step10 report,
+`standardized_teacher_huber_v54_development_step10_v1/NATIVE_SCALE_BREAKDOWN.md`,
+SHA`0ed55d736c78e33eee5722ad34adf231f7020ca465d352bc5d5c33da18d0914b`,
+preserves every populated native scale/support band and all12 columns with
+query-target SD in[0.01,0.1). Their adverse contribution to the whole native
+mean shrinks from+0.0017105726838331642 at step10 to
++0.00009916339716924127 at step25 without intervention. At step10 one
+14x16 anchor case/column with two queries accounts for+0.0018049110434229048;
+it remains included. This localizes a saved metric change, not causal proof
+about the teacher/loss and not permission to target a seed or remove a
+low-query column. Requested256x128 native-anchor training shape is not its
+actual geometry: the original first native-anchor retention manifest records
+46x50/452 queries. Do not infer absence of small matrices from requested
+shapes. No additional matrix or prediction is generated for this diagnosis.
+
+The first25 attempts retain750 grouped/1400 individual point slots,83
+adverse individual changes and zero undefined individual slots. Rejected
+attempts1 and18 remain intact. Attempt18's grouped MNAR-censoring RMSE/common
+NRMSE changes are+0.0028940011441946356/+0.0008827749350369674; all other
+attempts2–25 except18 are accepted. Maximum recorded training`peak_gib`is
+114.21279335021973. Original25-line training-prefix SHA:
+`6b9e8bcaead30bd3005e9f558b98d075655bfbf4472a2bb730cd201d8bef93a6`.
+The full trace/log/status remain live; saved-grid arithmetic is not the
+mandatory original full-task/component/endpoint audit or a historical
+autograd/optimizer replay.
+
+| Artifact | SHA256 |
+|---|---|
+|Original validation25|`988225f993f7d30541f7f20507d217506fc7b0cb01ca8607ef34d3cd9587656a`|
+|Diagnostic configuration|`278872e855abde5a4612a37ab73b3220d4e0557746fd13f42793857027f3cf92`|
+|Diagnostic summary|`63d3a36c24252477f24276e94614a944c13a8680eeb52c094f7dab3f937f5c08`|
+|Complete outcome|`a812224e150ead2dad2ed0214b06644ec5d82666dd35299a29e90bb82e04bdfc`|
+
+At19:22 original trainer4070782 is capturing attempt26 gradients and
+original coordinator4071570 remains`waiting_for_training`. Original shells
+4070779/4070947 and sessions73654/86324 remain live, with their registered
+start ticks unchanged. Root/checkpoint/scratch free bytes are
+16,495,513,600/21,374,517,248/3,675,866,402,816; all18/6/50 GiB reserves hold.
+Continue the original64-attempt run and50/64 boundaries; preserve sole
+selection, all22 development guards,32 fresh confirmation comparisons and
+every frozen real-suite/full-review requirement. No qualified checkpoint,
+fresh confirmation or real V54 campaign exists yet. The goal remains active
+and unmet; no registered source, paper result, commit or push changes.
+
+### 2026-10-15 21:15 UTC — V54 step50 first passes all22 development guards; qualification pending
+
+The original run reaches50 attempted/45 accepted updates. Step50 passes
+all22 unchanged development guards and becomes the first eligible selection;
+step10 and25 remain ineligible. The original64-attempt schedule continues.
+Step25's lower aggregate score does not override its failed skip-logic guard.
+This is a synthetic development milestone, not blended-reference parity,
+independent confirmation or a real-benchmark improvement.
+
+| Synthetic metric | Actual V29 initializer | Step50 | Relative change |
+|---|---:|---:|---:|
+|Native common NRMSE|0.664331714164|0.662725494288|−0.241780%|
+|Native RMSE|0.795280925086|0.795770390889|+0.061546%|
+|Rating RMSE|0.758233126643|0.756627268531|−0.211789%|
+|Rating MAE|0.687911318438|0.685584821183|−0.338197%|
+|Structured common NRMSE|0.684778692952|0.681955069179|−0.412341%|
+
+Four structured family means still worsen versus V29: MCAR+0.870709%,
+MNAR skip-logic+0.235531%, MAR-neural+1.015127% and
+MAR-block-neural+0.271894%. Native common-NRMSE cases split17 improved/23
+worsened, structured61/35, and ratings15/1 for both RMSE and MAE. Four
+native prior means worsen (low-rank mixed-profile, slow-tail MCAR,
+slow-tail mixed-profile, steep-tail MCAR), as does structured slow-tail.
+No adverse group or case is excluded. Skip-logic now passes at
+1.0147236062507732 against1.0152455648558527; MAR passes at
+0.4376489030115781 against0.4402281015910897.
+
+The provisional selected checkpoint SHA is
+`3693644e3cba0407cc69cf52581f671f5b9534a6a85583bedf5fd9789868fcd1`.
+Its metadata retains step50/45 accepted updates and
+`independent_confirmation_passed: false`. The completed CUDA-hidden typed
+inspection records254 finite model tensors/77,998,688 total elements,
+238 changed trainable tensors and16 unchanged buffers, unchanged parent
+shapes/dtypes and no optimizer payload. This is one ordinary full-network
+checkpoint, not an inference ensemble. The canonical selection can still
+change at boundary64; this identity is provisional, not promoted.
+
+The original CPU-only saved-grid analyzer session28230 exits0. Its complete
+evidence is in
+`/mnt/checkpoints_200/single_model_goal_20261005/standardized_teacher_huber_v54_development_step50_v1/`.
+It retains152 cases (136 imputation/16 ratings),22,788 imputation columns,
+408 case-role rows and32 rating case-metric rows; it reproduces1,632 stored
+imputation metrics. The separate read-only check verifies507 diagnostic
+paths and reconstructs all22 guard values. All columns remain included;
+22,764 are common-eligible, and original role-specific canonical coverage
+is preserved. No additional inference, seed or selection is used.
+
+The complete first50-attempt prefix preserves1,500 grouped/2,800 individual
+point slots,185 adverse individual changes and zero undefined slots.
+Rejected attempts1/18/32/45/47 remain recorded in the complete outcome;
+maximum recorded training peak is114.50973320007324 GiB. These diagnostics
+do not replace the original full-task/component/endpoint audit.
+
+| Artifact | SHA256 |
+|---|---|
+|Original validation50|`4e02e38b6140d0a676a5ecb3798d9602795fec53dc6fd1d820f375625311114e`|
+|Diagnostic configuration|`67043778de2b6928213a1ded6e636168df13eb785caba011464c9228ec3364d1`|
+|Diagnostic summary|`ac869bc64a8162daa8064237aef4ab8b1729d327ef41ed5328c4e7fbb2abafca`|
+|Complete outcome|`1abf8024dcb6770cd066fe2cb49cb1d36138ecb953aa2c8b9f75082f14ba15e4`|
+|First50-attempt trace prefix|`faac9bb03d27aa7ef6bb6823b1a97cb78c25ad055f1c2f46f13b1a657447e9eb`|
+
+At21:11 the original trainer4070782 is protecting attempt52, with46
+accepted updates, and original pipeline4071570 is waiting for training.
+Both original sessions73654/86324 remain live; all four original process
+start identities match. The subsequent read-only integrity check verifies
+both registered config hashes and all572 unique immutable source paths.
+Post-selection free capacity is16,235,134,976 root/21,028,470,784 checkpoint/
+3,674,475,184,128 scratch bytes; all6/18/50 GiB reserves hold.
+
+Continue the original run and original training→audit→qualification chain,
+without duplication or early confirmation. Final sole selection, complete
+original audits,284 fresh confirmation cases/all32 comparisons and then
+the frozen real campaigns/full480-comparison review (392 required/18
+primary) remain necessary. The full single-model goal stays active and
+unmet. No registered source, paper result, commit or push changes.
+
+### 2026-10-15 22:08 UTC — V54 completes64 attempts; original audit starts with step50 selected
+
+The original trainer finishes its full registered schedule with57 accepted
+and7 rejected updates. Both step50 and64 pass all22 development guards,
+but step50's minimax score1.0435312197332214 beats terminal
+step64's1.0527087158536705. The final selection therefore remains step50;
+step25's lower score remains excluded by its failed guard. No checkpoint
+substitution, additional training or scientific retry occurs.
+
+At step64, native common NRMSE is0.662076098792835 (−0.339531% versus
+actual V29), rating RMSE/MAE are0.756483804665951/0.685176200258922
+(−0.230710%/−0.397597%), and structured common NRMSE is0.682707022527823
+(−0.302531%). Native raw RMSE instead rises to0.795963785337887
+(+0.085864%). MCAR/MAR/skip-logic/MAR-neural/MAR-block-neural family
+means worsen+0.475789%/+0.466973%/+0.138073%/+0.716506%/+0.449459%.
+Native cases split19 improved/21 worsened and structured55/41; ratings
+split15/1 for RMSE and16/0 for MAE. Four native and two structured prior
+means worsen. These terminal diagnostics neither replace selected step50
+nor establish real-suite parity.
+
+The single read-only boundary64 observer (shell4095017/session3505)
+exits0 after verifying572 registered source paths. Its complete analysis
+is saved in
+`/mnt/checkpoints_200/single_model_goal_20261005/standardized_teacher_huber_v54_development_step64_v1/`.
+All152 cases/22,788 imputation columns remain included, with1,632 stored
+metric reconstructions. A separate read-only check verifies507 diagnostic
+paths and reconstructs all22 guard values from CSVs. All three roles have
+22,764 common-eligible/canonical-defined columns at step64; no post-hoc
+coverage harmonization is applied to step50's differing candidate count.
+
+The full64-attempt trace retains1,920 grouped/3,584 individual point slots,
+252 adverse individual changes and zero undefined slots; peak recorded
+memory remains114.50973320007324 GiB. Rejected attempts are
+1/18/32/45/47/57/59. New rejected proposal57 increases grouped MCAR
+RMSE by0.000050650103285254655;59 increases polarization RMSE/common
+NRMSE by0.0001070070855304639/0.0004791586054491148. Their original
+records remain intact along with every earlier rejection.
+
+| Artifact | SHA256 |
+|---|---|
+|Original validation64|`5a1830042ed2055249dc8c6eff70a720418f4728f51a7e452cfea6887b0b5a2b`|
+|Diagnostic configuration|`246f4aecc77c50ce60623292fcc5345ba1f2efcde80c7c374c8155b3038cbbd2`|
+|Diagnostic summary|`93848512f307e661dffc6b96ed982846f9ddeaf5f72ec92a1caad4076f8448ac`|
+|Complete outcome|`6d34a1d50f6556872efeab1082b7646e7e600137b1fd2b8128f13998b8c76bfb`|
+|Full64-attempt trace|`af1da67d868ddd4607b8955852b361542957d82ce1e2d5f826d8d560867a9a64`|
+|Selected step50|`3693644e3cba0407cc69cf52581f671f5b9534a6a85583bedf5fd9789868fcd1`|
+
+Original status publishes`training_complete`, step64/57 accepted, best50
+and`qualification_pending: true`. The original shell4070779 now owns
+full-audit child4103648; original coordinator4071570 remains live. Do not
+restart either chain or launch a second auditor. Endpoint metadata binds
+terminal/optimizer-attempt64,57 accepted and raw endpoint SHA
+`d30a76ddf093e0c4cf245255bf99ac0bba3843b93ba8094efb8a8561334cb0fa`.
+All original shell/coordinator start identities still match. Free root/
+checkpoint/scratch bytes are16,212,848,640/21,004,800,000/
+3,644,042,149,888; all6/18/50 GiB reserves hold.
+
+Selected checkpoint bytes remain unchanged and unconfirmed. Original
+full-task/component/endpoint audits,284 fresh confirmation cases/all32
+comparisons and then the frozen real campaigns/full review remain pending.
+The saved-grid diagnostic is not an audit substitute. Keep the goal active
+and unmet; no registered source, paper, commit or push changes.
+
+### 2026-10-15 23:14 UTC — Original V54 full training audit passes; original endpoint replay begins
+
+The previous goal turn made concrete progress: the original64-attempt run
+finished and the complete step64 saved-grid decomposition was verified.
+This turn preserves the same jobs and advances through the original full
+training audit. Original session73654 exits0 with its train→audit chain
+complete; auditor4103648/start305556752 is not restarted. Original
+qualification session86324/coordinator4071570 remains live and launches
+its registered endpoint-replay child4111303 at23:11. No duplicate worker,
+alternate checkpoint or confirmation retry is introduced.
+
+The full audit verifies all64 attempts/57 accepted updates,1792 original
+task/teacher payloads,128 rating contexts,1536 structured draws and1368
+full development/reference prediction grids. Every task is independently
+regenerated and its complete typed episode/teacher digest matches. A
+separate read-only check verifies all1792 compact artifact hashes and
+their exact ordered64×28 identities: each native, rating and twelve
+structured-family cohort contains128 tasks. All128 rating contexts retain
+their original normalization vectors. No missing task is excused.
+
+Retention replay covers1792 eligibility decisions,1664 reference grids
+and3200 raw components (1664 V29/1536 V8), preserving128 native V29
+references and1536 fixed-half structured references. Imputation teacher
+replay covers1664 targets and3328 raw teacher-component grids, with
+observed-only weights independently refitted on CPU; query truth is not
+used for routing. All original imputation targets and rating-specialist
+checks remain included. These training-time teachers do not make the
+single student an inference ensemble.
+
+The audit confirms sole selection at step50 and64 terminal optimizer
+attempts/57 accepted updates. It checks all84 saved terminal gradient
+vectors and77,998,496 parameter displacements; both uncontracted and
+fixed-half contracted displacement mismatch counts are zero. Maximum
+analytic AdamW error is2.1971097430295572e-7 under the original arithmetic
+checks. Historical autograd and the full optimizer trajectory are not
+replayed; finite point predictions still require the registered neural
+endpoint replay now running. Stale`top_block_training`metadata does not
+supersede`full_network_training`or the full parameter inventory.
+
+| Evidence | SHA256 |
+|---|---|
+|Full audit JSON|`afd123f3ecff78906b74f11a16ad008f04f472895142634ecf2ae6eaec6cddc5`|
+|Original audit RESULTS.md|`726af257d0879045f67c98e76cfce6926ff848857426fe0e2c821104d078ae29`|
+|Original task-replay result|`ed682347e12b53c10603ea47414fda771bd0c77a871ebc9e2d01864cf74c3bb7`|
+|Task-replay configuration|`848a41e254fa8bbe7b8100e0b17a3504e723b952f76098fd11cdf938862d77e4`|
+|All1792 task-replay records|`56790812d63b38f198bbf78aa19b21cd7e7648c5c08ae153d26befaea4b9870e`|
+|Retention replay summary|`f5a28adbe45f59c3849d334501ff9f31bf37950b608f95fc816c1c16eae13e17`|
+|Imputation teacher-component summary|`f0aec7a9f06a5796216dc14cf87f7ec2d020f4eda839945af53353b4e36f017a`|
+
+The read-only post-audit check verifies both registered configuration
+identities and all572 unique registered sources, and binds the component
+summaries to the original audit manifest. Root/checkpoint/scratch free
+bytes are16,201,089,024/20,980,535,296/3,639,654,457,344; all6/18/50 GiB
+reserves hold. The original audit lives in
+`/mnt/checkpoints_200/single_model_goal_20261005/standardized_teacher_huber_v54_audit/`.
+
+Continue the original coordinator through neural endpoint replay and its
+independent CPU audit, then sole-selection replay and284 fresh
+confirmation cases/all32 comparisons. Frozen real suites/full review
+remain conditional on successful confirmation. No V54 real result or
+blended parity is claimed. The full goal remains active and unmet;
+registered science, paper, commits and pushes are unchanged.
+
+### 2026-10-15 23:55 UTC — V54 closes with seven fresh-confirmation failures; frozen-parent attribution starts
+
+Original endpoint replay and its separate CPU audit complete successfully:
+56 terminal grids and152 sole-selected grids reproduce, with unchanged
+step50 checkpoint identity and all22 development guards passing. The
+original confirmation then consumes exactly284 fresh cases (60 native,
+32 ratings,192 structured). Its separate CUDA-hidden CPU audit checks
+all1136 prediction grids. Both original sessions73654/86324 exit0 and
+all original producers stop normally. The pipeline closes with
+`confirmed: false`, no published best alias, and null campaign/review.
+This is an audited negative scientific outcome, not a workflow failure.
+
+The original32 comparisons reconstruct as25 pass/7 fail. In this
+confirmation, the role named`initialization`means frozen V8, **not** the
+actual V29 training initializer. All seven adverse comparisons remain:
+
+| Reference | Synthetic metric | Reference | V54 step50 | Relative change |
+|---|---|---:|---:|---:|
+|V8|Native MissBench-style NRMSE|0.681631179039|0.700790972665|+2.810874%|
+|V8|Native UCI-style NRMSE|0.701771360045|0.715262905394|+1.922499%|
+|V8|Native RMSE|0.816676043254|0.824211240398|+0.922667%|
+|V8|Native common NRMSE|0.681631180158|0.700790976207|+2.810874%|
+|V8|MNAR latent-factor common NRMSE|0.518667214992|0.520996584934|+0.449107%|
+|General|Native MissBench-style NRMSE|0.693151690747|0.700790972665|+1.102108%|
+|General|Native common NRMSE|0.693566738132|0.700790976207|+1.041607%|
+
+Ratings RMSE/MAE improve0.305356%/0.456943% versus V8 and structured
+overall common NRMSE improves4.186657%, but those gains cannot hide the
+failed native/family checks. Rating RMSE is still0.037653% above the
+specialist synthetic reference. Extended score1.0266291211658156 does
+not override any failed guard. These are synthetic results, not measured
+MissBench/UCI/RecSys/LLM scores; no V54 real campaign is authorized.
+
+The complete32-row negative outcome is
+`/mnt/checkpoints_200/single_model_goal_20261005/standardized_teacher_huber_v54_pipeline/OUTCOME.md`,
+SHA`f0d4b7cbed3b43de701d17482235229f4da4a73e586ac64af5505356ceaf0774`.
+The original negative closure SHA is
+`d327dee4de4a35b7d6f609509754724bf685b99ff9693a4e33f51c6e5cbcfd9a`;
+confirmation audit/gate SHAs are
+`c55dc61520f69c8c1bbbfe9390f31305fab11c379b66382438aee5d980e022c5`/
+`ec03449991a3f02f96d6c158f74570ffbf355714b7b6c174e688009490a0a67d`.
+Endpoint audit/gate SHAs are
+`77e3e3015fd8c0465818ec30a755f72e2c9741bf891d13f568201cd5f645acfd`/
+`2df02bd91b9a34e8e998fe668245aaa141bb4220e762b0caab1003f1ad0915ac`.
+Fresh bank SHA is
+`9b0c6adee662424d348c23735a876d8393209ee0a17d4df94a414e33f8ab5da9`.
+
+After closure, add only
+`scripts/diagnose_single_model_standardized_huber_initializer.py` and
+`tests/test_single_model_standardized_huber_initializer_diagnosis.py`.
+They reuse the tested immutable initializer-attribution procedure with
+explicit V54 identities,64/57 counts and selected step50. The first test
+collection catches an unnecessary nonexistent literal replacement; it is
+removed before registration. The corrected new/predecessor suites pass
+153 tests. No registered prior source or scientific artifact is changed.
+
+The one-shot diagnosis shell4119136/session43378 starts registration
+child4119139, then queues exactly one frozen V29 inference and a separate
+CUDA-hidden CPU audit. It will preserve all284 consumed contexts and all32
+comparisons, not just failures; no new episode/seed, candidate/teacher
+reevaluation, reselection, training or repeated confirmation is allowed.
+At23:55 registration is still live; do not duplicate it on timeout.
+The registration log is
+`/mnt/matrixformer_scratch/standardized_huber_v54_initializer_registration_v1.log`.
+This diagnostic can attribute inherited failures, not qualify V54 or
+establish that a future change would help. The full goal remains active
+and unmet; no paper, commit, push or branch changes.
+
+### 2026-10-16 00:09 UTC — V54 initializer attribution closes: four inherited and three new failures
+
+The one-shot attribution session43378 exits0 after original registration,
+one actual-V29 inference process4119421 and a separate CUDA-hidden CPU
+audit4120169. All284 consumed contexts and all32 comparisons are retained;
+every new grid independently rescores and model parameters/buffers remain
+bitwise unchanged. All original scientific and diagnostic workers are now
+terminal. No candidate/teacher reevaluation, new episode, training,
+reselection, repeated confirmation or real campaign occurs.
+
+Of the32 comparison transitions,24 remain passing,4 remain failing,
+3 newly fail and1 is repaired. All four inherited failures are the native
+V8 comparisons and **worsen further** during V54 training. The new failures
+are native MissBench/common NRMSE against general and latent-factor common
+NRMSE against V8. MAR against V8 is repaired. Across22 distinct metrics,
+14 improve and8 worsen; V54 remains unqualified with7/32 failed checks.
+
+| Synthetic metric | Actual V29 | V54 step50 | Change vs actual parent |
+|---|---:|---:|---:|
+|Native common NRMSE|0.685403063614|0.700790976207|+2.245090%|
+|Native UCI-style NRMSE|0.705417520680|0.715262905394|+1.395682%|
+|Native raw RMSE|0.820697263159|0.824211240398|+0.428170%|
+|Rating RMSE|0.753398382658|0.752168454955|−0.163251%|
+|Rating MAE|0.678224173632|0.676207679428|−0.297320%|
+|Structured common NRMSE|0.629043326520|0.626894765182|−0.341560%|
+|MNAR latent-factor common NRMSE|0.518023587148|0.520996584934|+0.573912%|
+
+Native case-level common NRMSE splits32 improved/28 worsened and raw
+RMSE30/30. Structured common NRMSE splits108/84 and raw RMSE104/88;
+rating RMSE29/3 and MAE30/2. All252 imputation case scores are defined.
+All four structured prior means improve, but skip-logic, cluster-level,
+latent-factor and soft-polarization family means worsen. Four native prior
+means worsen, especially slow-tail mixed-profile. The complete prior table
+and every required comparison are retained in the diagnostic report.
+
+Original native case11 (80×240, slow-tail mixed-profile) rises from
+1.7220444389493452 to2.6967961877063744, contributing
++0.01624586247928382 to the overall+0.015387912593 common-NRMSE change.
+Case51 (240×80, steep-tail mixed-profile) rises from0.3817453600649579
+to0.4438147969549006. These arithmetic contributions do not establish a
+column-level mechanism or justify excluding cases, changing metrics,
+targeting seeds or reporting a trimmed success. The full failed outcome
+is unchanged. Next investigate complete saved-grid column contributions
+across all cohorts before selecting a new training hypothesis; that new
+column analysis is not implemented or launched in this turn.
+
+The complete32-row attribution report is
+`/mnt/checkpoints_200/single_model_goal_20261005/standardized_teacher_huber_v54_initializer_diagnosis_v1/RESULTS.md`.
+
+| Diagnostic evidence | SHA256 |
+|---|---|
+|Configuration|`49771e19f566b852416a4ab749595bf33a7097dd8eb574f3c27b73c993f0a2ed`|
+|Actual V29 inference report|`b842962bb3873c2150dc58b8293eda75c6476d4d4543a0133365ab012e00fe12`|
+|Independent CPU audit|`29bf6700ca0d4058679839dd8919d83e7575555c5b233075115f9ee0b469f6d8`|
+|Readable results|`7d3ef6094e0940bb7940b6fdf564dd99aa2ee116a433ce1635811d70231dd2d2`|
+
+A separate read-only check88427 exits0 after rehashing all313 unique
+diagnostic input/source/prediction paths and independently reconstructing
+all32 comparison rows, exact differences and both failure flags. The six
+registered diagnostic source/test files remain unchanged after registration;
+the preceding153-test result remains applicable. Free root/checkpoint/
+scratch bytes are16,184,979,456/20,980,510,720/3,636,615,569,408, above
+the unchanged6/18/50 GiB reserves. No new training recipe or seed is
+registered. This consumed-bank attribution is not new qualification or
+real-benchmark parity. Keep the full goal active and unmet, with no paper,
+commit, push or branch changes.
+
+### 2026-10-16 00:31 UTC — Complete V54 column diagnosis; prospective balanced native coverage
+
+The one-shot five-role column analysis (session33073) and independent read-only
+reconstruction (session55736) both exit0. They retain all284 consumed contexts,
+45,142 physical imputation columns (35,227 queried;9,915 query-empty), all5,040
+case metrics, all32 attribution comparisons and64 rating case-metric rows.
+The external check verifies1,620 unique paths and reconstructs every metric
+from the exported columns, with maximum absolute discrepancy8.881784197001252e-16.
+Role-specific defined-column coverage is preserved rather than harmonized.
+No inference, new seed, training, selection or repeated confirmation occurs.
+
+Native common NRMSE rises from0.6854030636139444 to0.7007909762068216.
+Three columns with query-target standard deviation in[.001,.01) contribute
++0.01622023162077252 to the original60-case mean; columns with2–7 queries
+contribute+0.015086084881567874. Native case11/column87 has2 queries,
+78 observations and target standard deviation0.0011157989501953125. Its
+V29/V54 common NRMSE is139.316316835855/319.496185654644, contributing
++0.01649998798706863. It remains included under the original1e-3 threshold.
+This explains arithmetic amplification, not the causal mechanism of drift;
+V54 still fails7/32 checks and does not qualify for a real campaign.
+
+Complete artifacts are in
+`/mnt/checkpoints_200/single_model_goal_20261005/standardized_teacher_huber_v54_confirmation_columns_v1/`.
+Configuration/summary/OUTCOME SHA256 are respectively
+`68388650e204293b802544132ddc3e8f3fa5b66484509b18f08d8a7a69aa451d`,
+`81c8f13b4bbb336c759f0543004cfa9fd95c357bf875ccd750ee66a171bd320a`,
+`8267615ca2625f857b71e1910cf562564003c8ce7538a97e5dcfe40bfd9c8949`.
+The analyzer and its tests are now registered immutable sources.
+
+A full task-identity join against the1792-record original teacher trace
+finds128 native draws:72 component6 anchor-MCAR and8 of every other
+component, all explicitly untransposed. Eighty draws are intrinsic anchors;
+all48 non-anchor spectral contexts are taller than wide (24 each at256×128
+and2000×1000). Intrinsic anchors can be wide, and their internal
+`support_transposed` is not the explicit transpose flag. Four directly bound
+historical paired schedules share this bias; this is not an exhaustive
+history audit. Teacher trace SHA256 is
+`c90847d95ab7411557541042bb771f9764408caef83df3b15b2a35650888fa2e`.
+
+Add prospective `single_model_balanced_native_coverage.py` and tests.
+Compose unchanged structured balancing with native component
+`(step-1+4*replicate)%8` and orientation `bool(((step-1)//8+replicate)%2)`.
+This covers all32 component/requested-shape/orientation strata every16
+scheduled attempts while preserving28 task slots, seeds, shapes, weights,
+structured/rating specifications and.5/.25/.25 masses. It does not balance
+actual latent dimensions, accepted updates or gradients. The helper rejects
+captured batches and double application. Reduced anchor exposure and wider
+spectral contexts require fresh feasibility/memory checks.
+
+The five combined helper/column/loss/training suites pass383 tests. Helper
+and test SHA256 are
+`1cdb772f30b07eec36360f4712562b453f06b17466ebb6c63f7854a9bd38180e`/
+`da6bbad1ad60ddcab0dc67ff48177ee5ea8db4dc17714bc5470ad8c663bcc07d`.
+At00:31:47 no Python/GPU scientific worker remains. All577 unique registered
+source hashes verify unchanged. No new scientific seed or probe has yet
+been registered. Next prepare a separately registered fresh feasibility
+probe, retaining the V54 loss/optimizer recipe and actual V29 initializer;
+never initialize from V54 or a feasibility endpoint. The goal remains active
+and unmet. No paper, commit, push or branch changes.
+
+### 2026-10-16 00:40 UTC — Full-context native-coverage feasibility prepared; one-shot registration starts
+
+Add a separately named native-coverage preflight, supplementary mean audit,
+read-only terminal review and tests. The new probe reuses V54's standardized
+teacher-Huber, V29 initialization, retention/teacher identities,28 task slots,
+domain masses,84 raw gradients,30 point protections and exact optimizer/
+rollback machinery. Its first native component/orientation pair is0/false
+and4/true. Both requested native shapes are2000×1000, explicitly replacing
+the old small first-probe shapes to exercise both2000×1000 and1000×2000
+spectral contexts. This resource stress test is not the64-attempt schedule
+and does not claim to cover every prior. Structured/rating tasks and losses
+remain unchanged except for the separately fresh streams.
+
+The checkpoint allowance is explicitly576 MiB rather than512 MiB, covering
+the extra31,475,712 bytes of raw teacher components; root/scratch allowances
+remain16 MiB/32 GiB and reserves remain6/18/50 GiB. Registration preserves
+both `structured_component_balance` and distinct `native_coverage` metadata,
+plus the explicit probe shape. Require V54's exact selected-step50 negative
+closure and both completed consumed-bank diagnoses; never reuse V53's
+no-selection/failed-workflow validator. One-shot replay retains all52 teacher
+components,50 retention components,26 targets and56 endpoint grids, followed
+by independent per-column mean-term and complete saved-value checks.
+
+Correct a prospective policy wording error before scientific registration:
+the actual native requested shapes are shared by both replicas and change
+in eight-attempt blocks, not fixed by replica. The existing32-stratum
+balance tests already use the actual schedule and still pass; add64 explicit
+shape-block tests. The corrected helper/test SHA256 are
+`0b08c1fa3738e2c0b592ceae0ce7c9ada557b7e225242803e293b9c878082313`/
+`85e1b2ff408d3c48bf03b983363097a942679944f06e67f674bc47ee4f34c276`.
+The first four new suites pass212 tests; all twelve new/predecessor suites
+then pass615 tests. No previously registered source is edited.
+
+Read-only seed reconnaissance finds531 historical configuration paths and
+165,609 seed values, maximum1432120001. Propose1441100901/1442100901;
+registration must still prove all56 scheduled values disjoint before any
+generation. At00:39:56 start the sole shell/session7353, whose registration
+PID4127986 is still verifying predecessor evidence at00:40. It queues one
+run, separate GPU teacher/retention replay, CPU audit, mean audit and terminal
+read-only review, each only if its predecessor exits0. Do not duplicate
+registration or a scientific stage on timeout. Logs use
+`/mnt/matrixformer_scratch/balanced_native_coverage_preflight_v1_*.log`.
+No full trial, confirmation or real campaign is authorized by this probe.
+The full goal remains active and unmet, with no paper/commit/push changes.
+
+### 2026-10-16 00:44 UTC — Pre-registration status-schema error corrected; all626 tests pass
+
+The first registration shell7353 exits1 before creating either new output
+directory or a registration/seed manifest. The completed column-analysis
+receipt intentionally contains only `state` and `summary_sha256`, not the
+`pid` expected for the other original workers. Preserve its original log;
+no episode, inference or optimization was started, so this is not a
+scientific retry. Correct only the still-unregistered preflight: require
+that exact PID-free receipt and no matching live column-analysis command;
+all other owners still require a stopped positive integer PID. Add11
+positive/negative tests, including live-worker and altered-receipt checks.
+All twelve suites now pass626 tests. The577 V54/completed-diagnostic source
+identities independently verify unchanged.
+
+At00:43:16 start corrected shell/session12858 after explicitly checking both
+prospective directories absent. Its separate corrected-registration log
+preserves the first failure log. The same pipeline queues scientific work
+only after successful first registration. Do not duplicate this session.
+The fresh56-value inventory is enforced inside registration, not assumed
+from the earlier maximum-seed reconnaissance.
+
+Read-only capacity reconnaissance finds a possible later storage remedy:
+the12 displacement-grid diagnostic checkpoints are all unselected; their
+complete original152-case/2280-grid audit and rejected decision preserve
+zero eligible candidates. Exact-byte relocation of that closed cohort could
+recover about3.74 GB without moving actual V29, teachers or selected models.
+Nothing is relocated or authorized for a full trial here; require a separate
+tested preservation procedure and original hashes before any move.
+
+### 2026-10-16 00:49 UTC — Native-coverage probe registered; original run worker starts
+
+The corrected registration completes normally at00:48:12 after verifying
+the full inherited evidence. Its immutable configuration SHA256 is
+`1b3b5fae260b205702287b5fa858b199531b82d5fee138823f6b393e24e9416b`.
+The new directory is
+`/mnt/checkpoints_200/single_model_goal_20261005/balanced_native_coverage_preflight_v1/`.
+It binds544 source paths,18,896 input identities and531 historical seed
+inventories. All544 directly registered sources independently rehash cleanly.
+Both native tasks request2000×1000, with component/orientation0/false and
+4/true; all28 tasks and the fresh56-value seed reservation are preserved.
+
+The sole original run worker is PID4129368 under session12858. At00:49:26
+it is still in pre-run byte verification (status remains `registered`, no
+CUDA allocation or gradient update yet). The inherited V54 training input
+inventory alone spans112.35 logical GiB; hash verification of compressed
+historical archives explains the startup time. Do not relaunch on silence.
+The separate original replay/CPU audit/mean audit/read-only review remain
+queued behind this one run. No confirmation or full trial has been launched.
+
+At00:52:24 the original worker has entered `capturing_gradients`, reaching
+`legacy_draw_1` (the transposed full-size native context). GPU usage is
+129,219 MiB out of143,771 MiB with55% utilization. This is an in-progress
+resource observation, not a completed memory/optimizer acceptance result.
+Checkpoint free bytes are20,810,063,872, root16,162,254,848 and
+scratch3,636,615,557,120; all reserves remain intact. Original task admission
+has produced its complete report; the audit/replay stages still await the
+single optimizer attempt. No registered source or allowance is changed.
+
+At00:55:54 PID4129368 remains live and has advanced to
+`protecting_decoder_update` (the inherited stage label; all238 parameter
+tensors are trainable). Gradient capture has advanced beyond the wide
+native task without an OOM. No `result.json` or acceptance decision exists
+yet. Keep session12858 and its already-queued original replay/audits; the
+new sources are now immutable and no scientific stage may be duplicated.
+
+### 2026-10-16 01:08 UTC — Full-context probe rejects one finite guard; original audits continue
+
+The previous goal turn made progress: a new registered synthetic probe,
+tested balanced coverage and actual large-matrix training. This turn verifies
+the same live worker rather than restarting it. Its original one-attempt
+run exits0 at00:58:46 with **zero accepted updates** and reason
+`finite_metrics_rejected`; its result SHA256 is
+`fdac95db8b02da8e0dcb964c45b7b0431cfde6a566ffba76c2dc7f4f769e1e60`.
+The computational memory result is positive: both2000×1000 and1000×2000
+native contexts complete the proposal, at113.6310682296753 GiB peak allocated
+and125.806640625 GiB reserved. This does not qualify the rejected update.
+
+| Original native metric | Before | Proposed candidate | Relative change |
+|---|---:|---:|---:|
+|Draw0 pooled RMSE|0.03910497002835744|0.037798017906814536|−3.342164%|
+|Draw0 common NRMSE|0.04077916703336422|0.039412557623089865|−3.351244%|
+|Draw1 pooled RMSE|0.23046029907578008|0.23061756135448325|+0.068238%|
+|Draw1 common NRMSE|1.0820587240581099|1.0666783501653665|−1.421399%|
+
+Twenty-nine of30 grouped point slots improve; native draw1 RMSE worsens
+by+0.000157262278703163 and the unchanged finite guard rejects the proposal.
+Fifty-three of56 individual slots improve; the other adverse slots are
+latent-factor draw1 RMSE/common NRMSE (+0.019873%/+0.021511%). Do not hide
+them behind paired or overall gains. Recorded directional protection has
+zero grouped adverse directions, with norm ratio0.5291969064293763 and
+11 adverse raw directions among84. The training report records exact
+rollback and no changed trainable tensors; the independent audit is still
+required before accepting that claim.
+
+The same shell/session12858 (owner4128490) automatically starts the original
+GPU replay4131953, which completes normally; CPU audit4133459 starts01:05:58
+and is verified live at01:08. Mean audit and independent terminal review
+remain queued. No new inference beyond the original registered stages,
+reselection, confirmation or real campaign is started.
+
+Prepare, but do not run/register, `relocate_single_model_balanced_native_capacity.py`
+and tests. Its scope is the12 completely rejected displacement-grid derived
+checkpoints,3,744,936,228 bytes, never actual V29/V54/selected/teacher files.
+All12 payloads and their exact complete negative closure pass read-only
+validation (session35993 exits0). The helper currently requires accepted,
+fully audited feasibility, so the present rejected result cannot authorize
+relocation. No storage move occurs and no full trial is authorized. Its
+new/predecessor/storage suites pass236 tests after correcting one nonexistent
+test-path invocation before collection; that invocation ran no tests.
+
+Add a separately prospective CPU-only saved-step decomposition and tests.
+After full original closure it will retain every28-task/56-point/30-guard
+entry and split the observed finite change into recorded parameter-linear
+prediction, parameter-to-output residual and output-metric remainder.
+It evaluates no new endpoint, fraction, model, seed or dataset. The middle
+term is descriptive and may include nonlinear, precision or gradient/replay
+effects; it is not a causal claim or new parameter-autograd replay. All
+negative clipped-rating remainders remain. Six combined new/predecessor
+suites pass309 tests. This diagnostic is not yet registered or run.
+The goal remains active and unmet, with no paper/commit/push changes.
+
+### 2026-10-16 01:22 UTC — Original rejection/rollback audits pass; final review and saved-step diagnosis queued
+
+The unchanged original pipeline completes its CPU audit at01:18:20 and
+supplementary mean audit at01:20:00. It preserves a false feasibility gate,
+zero accepted updates, all84 original gradient vectors, exact fixed-half
+endpoint arithmetic and the final rolled-back parameters. All16 frozen
+buffers and every trainable parameter remain unchanged after rejection.
+The complete original teacher replay verifies52 components and all28 final
+targets bitwise; retention replay verifies50 components/26 targets with
+V8/V29 counts24/26. Original probe audit SHA256 is
+`a08dc0cde6e96d0a04e59e026d9da560e9163898341cc59a9ddb125c4b8ce18b`.
+The mean audit retains6875 physical columns and reports11 adverse mean terms
+among28 tasks, without changing any gate or omitting a column.
+
+Preserve the audit's limitations: parameter autograd is not independently
+replayed, and rejected-candidate neural reconstruction/finite point-score
+neural replay remain explicitly unperformed. The stored original endpoints,
+scalars, parameters and teacher/reference components are audited; do not
+conflate this with a fresh independent candidate-forward run. The planned
+saved-step decomposition likewise does no neural or parameter-autograd replay
+and cannot causally assign its parameter-to-output residual.
+
+At01:21:55 the original terminal read-only recheck PID4135859 is verified
+live under session12858. Keep its18,896-input byte verification rather than
+restarting on silence. All544 directly registered probe sources independently
+verify unchanged. Root/checkpoint/scratch reserves remain intact.
+
+A readiness-only shell4134227/session93893 waits for exact original owner
+4128490 (including its process start identity), then verifies the diagnostic
+source hash. A single chained diagnostic shell4135260/session90993 waits
+for that readiness shell and verifies both tested diagnostic sources before
+attempting one CPU-only analysis. The analyzer itself additionally requires
+complete original negative closure, all stopped probe/audit/review workers
+and unused output paths before registering. It has not yet started at this
+entry. Its future log is
+`/mnt/matrixformer_scratch/balanced_native_coverage_probe_linearization_v1.log`.
+Do not launch another analysis or any scientific retry on a timeout.
+
+Prospective analyzer/test SHA256 are
+`d634b72c9f43405aaf7be0ba4db472d4620d7c9d1f70980ef6ee94b7c5ebdf14`/
+`65c2accfab316d7013c836beafad8f4ce848efe2b0f81682341b3ffdca6b2cbd`.
+The unregistered, unexecuted capacity helper/test SHA256 are
+`0e2e6d837a72b9ed371635f09c17843b90f834e70f73f2954ee2b1b25765603f`/
+`4c80762d1ba209108b7db69e55884aa085647a303d9a7171683c7afd2a6256fe`.
+No full trial, new scientific seed, confirmation, real campaign, paper edit,
+commit, push or branch change occurs. The full goal remains active and unmet.
+
+### 2026-10-16 01:27 UTC — Negative probe closes; complete finite-step decomposition motivates a prospective quarter step
+
+Original session12858 exits0 at01:22:10. Its independent terminal review
+preserves the rejected proposal, zero accepted updates and every adverse
+direction; no scientific stage is repeated. The original false gate remains
+false. Final mean-term weighted change is−0.15057022568596046, with11/28
+adverse tasks. Retention penalties worsen on24/26 tasks, with weighted
+before/candidate0.008180730707138819/0.1302115732932657; these are retained
+explicitly rather than hidden behind point-score improvements.
+
+| Completed probe evidence | SHA256 |
+|---|---|
+|Original audit|`a08dc0cde6e96d0a04e59e026d9da560e9163898341cc59a9ddb125c4b8ce18b`|
+|Original false gate|`5ab00d5dc954c3cb6e6533a59a46d69e2505b390136e2ad27edaf0753445b1ea`|
+|Retention audit|`c28250885fa34f5360914e1586c0cd41c6a39779a2b60cdde44ee7905895eb07`|
+|Mean audit|`1a5161fe19b9b46f458f2ac8e0d13352f2039ca2ce06dff2f72ffe2c5a9a314a`|
+|Independent terminal review|`39a8561b044399e13769939335d1bb8601e22e238d4c03acf086e4e6c158fca9`|
+|Readable probe outcome|`ad83ce70bdb6e54dd6ac62939be1448e00773b9d33eba511748b18897599a999`|
+
+Readiness session93893 exits0; the sole queued diagnosis90993 then registers
+and completes normally at01:22:30. Its immutable directory is
+`/mnt/checkpoints_200/single_model_goal_20261005/balanced_native_coverage_probe_linearization_v1/`.
+It preserves all28 tasks,56 individual point slots and30 grouped guards,
+both original endpoints, every adverse direction and all original null
+semantics. No new model inference, endpoint/fraction, seed, training,
+selection or confirmation occurs.
+
+The sole adverse grouped raw RMSE decomposes as follows:
+
+| Native draw1 raw RMSE term | Change |
+|---|---:|
+|Recorded parameter-linear prediction|−0.0016143624223607651|
+|Parameter-to-output residual|+0.00010796159669261801|
+|Output-metric remainder|+0.001663663104371199|
+|Actual saved-grid change|+0.00015726227870305198|
+
+The actual output tangent is still favorable (−0.001506400825668147), but
+the positive norm remainder exceeds it. This is an exact additive
+description of the saved step, not causal attribution to network curvature,
+precision or gradients, nor evidence for an untested smaller endpoint.
+The two adverse latent-factor individual slots already have positive
+recorded first-order changes; their paired cohort guards still improve.
+Keep these distinct mechanisms and preserve all56 rows, not just the failed
+native guard.
+
+Independent read-only session32517 exits0 after verifying642 input/source
+hash entries and separately reconstructing224 endpoint/tangent/remainder
+scalars for all56 slots using NumPy formulas, including original target-dtype
+column scales and cached rating affine transforms/clamps. Maximum absolute
+discrepancy is1.7486012637846216e-14. A second manifest-indexed check verifies
+all56 recorded parameter products/residual identities and independently
+regroups every one of the30 guard decompositions. Neither check performs
+inference, parameter autograd or a new endpoint evaluation.
+
+| Decomposition evidence | SHA256 |
+|---|---|
+|Configuration|`72fce5d54628e5e1e22696c59284575acbf6c8d47a10cbe11a5de26de42cd02d`|
+|Summary|`bf4c786ec435a9e846f1438f6bc3f0a1781bd7346af880451bbf04cc279e2c1a`|
+|All56 point rows|`fcd43369100ebae7ca0dc77c6c1a1516dcb65b8bda7fb084eb46c9f2c6b18a20`|
+|All30 grouped rows|`b38676bb0f6d7e9349de369d44e18fb8898e80b7993c0fba484ebf0ef906d0e1`|
+|Readable outcome|`63e38fdb7d8e49c30a17ab34dfc8c6a3e9cfc71add201ef55fbb66b4f344e85c`|
+
+Add only a prospective `single_model_fixed_quarter_protection.py` and tests.
+It contracts the same projected displacement once by0.25 rather than0.5,
+without changing the Adam proposal or accepted moments, priors, losses,
+margin,2x norm bound,30 finite guards or exact rollback. The new independent
+audit key is explicitly `fixed_quarter_step`, never a relabeled half-step
+record. Tests cover accepted/rejected updates, existing moments, callbacks
+that fail, infeasible projections, invalid/corrupted vectors, exact proposal
+preservation and isolation of the unchanged old half-step module. The new/
+half/point-only suites pass39 tests. This helper registers no scientific
+seed or experiment; no new seed base has been chosen.
+
+Quarter-helper/test SHA256 are
+`34c579f5f93f8e29d1f4a51e5a8db127549fe3dfc95841fa0c9a7b8e29188cf2`/
+`59ae08815f97e4999f3ec9c6e5c60882b4f13189b90d9b9458011c3c91a44797`.
+Next prepare a separately registered fresh full-context probe retaining
+V29 initialization and the balanced native/structured schedules, changing
+only fixed contraction and fresh streams. Bind this complete negative
+closure and diagnosis, update every new auditor to the quarter-step schema,
+and preserve all22/32/full-real-review requirements. Do not evaluate another
+fraction on the consumed probe or initialize from its endpoint. The capacity
+helper remains unregistered/unexecuted and currently ineligible under its
+explicit accepted-feasibility prerequisite; no storage move is performed.
+
+At01:26:05 no Python scientific worker remains. Root/checkpoint/scratch free
+bytes are16,147,951,616/20,345,147,392/3,607,287,263,232. The576 MiB fresh-probe
+allowance still fits above18 GiB checkpoint reserve; a full2432 MiB trial
+does not yet fit and will require separately verified preservation. This
+turn makes progress through complete negative evidence, independent diagnosis
+and a tested prospective optimizer change. The full goal remains active and
+unmet; no paper, commit, push or branch changes.
+
+Final combined validation passes348 tests across the nine diagnostic,
+capacity, quarter/half-protection and predecessor suites. The621 distinct
+source identities bound across V54, its completed diagnoses, the new native
+probe and its decomposition all independently rehash unchanged. The new
+quarter helper and capacity helper remain prospective rather than registered
+scientific sources. No original inference, gradient or audit stage is rerun.
+
+### 2026-10-16 01:37 UTC — Fresh quarter-step probe tested; one complete pipeline queued
+
+Continue the active, unmet single-checkpoint goal. Recover the read-only
+seed inventory from session70651:534 historical configurations contain165,665
+distinct seed values, with maximum1442103601. All56 proposed145-stream
+values are disjoint. No scientific seed was consumed by that inventory.
+
+Add separate quarter-step preflight, mean-audit and terminal-review scripts
+and their tests. They preserve actual V29 initialization, the full native
+component/orientation pair, all24 balanced structured and two rating tasks,
+priors/teachers/losses/retention,84 gradients,30 grouped guards, exact
+rollback, parameter counts and resource allowances. The only scientific
+changes from the completed negative native probe are a fixed projected
+displacement contraction0.5→0.25 and fresh data/backward streams
+1451100901/1452100901. Half-weight structured retention remains unchanged;
+the optimizer audit now explicitly uses `fixed_quarter_step`.
+
+The new prerequisite binds the complete original rejection and saved-step
+diagnosis, including their unperformed parameter-autograd and independent
+rejected-neural-replay limitations. Both prior owners must be terminal and
+stopped. Test new batch equivalence, runtime/global bindings, immutable
+half-step behavior, negative closure, metadata, independent mean formulas,
+explicit quarter fraction/schema, and source registration. The first
+test run has241 passes and one test-only error from expecting a locally
+imported review module to be global; correct that test before registration.
+The combined14-suite run then passes667 tests. All621 distinct original
+source identities rehash unchanged. No original scientific stage is rerun.
+
+New preflight/mean-audit/review source SHA256:
+`b2c57d38467c4e3ed75cb8ed8f3c6167aeb18583a074d529aa2f96853cf5abb4` /
+`339becd40ed3f8e5ba7225dd3e5311b79639676578aa43505226d0d12d35256f` /
+`f889070cff52af7c8541d62b30ead0b41cdbb531d795e102ac12d3273eb58512`.
+Their test SHA256:
+`3733b9fc6923ed0788f19cabfe982cc89e65c19efb2ce2c84af26d05b3255b38` /
+`5633db1c2a2dff82780895877e343f77faf291bd4c25cf1372c27dae7e31df70` /
+`226ab7f3f50929ffc6a71c36fd99ae5792850788b7c664d096bc419f1abd849b`.
+
+Queue exactly one registration→run→teacher/retention replay→CPU audit→
+supplementary mean audit→terminal review for
+`balanced_native_quarter_preflight_v1`. Keep separate stage logs under
+`/mnt/matrixformer_scratch/balanced_native_quarter_preflight_v1_*.log`;
+bind the generated configuration hash for the final two stages. Registration
+and audits hide CUDA; scientific run/replay enable it. Preserve24 BLAS/4
+Torch threads and the registered0.9 allocator cap. At prelaunch the free
+root/checkpoint/scratch bytes are16,143,323,136/20,345,147,392/
+3,607,287,263,232;576 MiB fits above the18 GiB checkpoint reserve.
+
+This is one feasibility proposal, not a full training trial or a benchmark
+qualification. Do not retry consumed contexts or evaluate a fraction grid.
+No capacity relocation, full trial, confirmation, real campaign, paper
+edit, commit, push or branch change is authorized by this probe. The goal
+remains active and unmet, retaining all22 development guards,32 fresh
+confirmation comparisons and the frozen480-comparison real review.
+
+### 2026-10-16 01:45 UTC — Quarter probe registered and capturing full-context gradients
+
+Pipeline session55503/shell4139357 registers exactly once at01:41:10.
+Configuration SHA256:
+`9b8418c5e0ee88fb64b9a163efa31594927fccc386419986cb0fd0e6f0c859e4`.
+At01:45:17 the original run PID4140559 is capturing `legacy_draw_1`
+gradients; GPU memory is124,341 MiB. No result or acceptance claim yet.
+Keep this exact live session and the queued original replay/audit stages;
+do not restart on silence.
+
+While the original registration/run proceeds, prepare an unregistered
+`single_model_fixed_quarter_trial.py` helper and its tests. It carries the
+explicit quarter audit schema through future training, independent raw
+optimizer checks and GPU candidate reconstruction, including rejected
+endpoints after exact rollback. It changes no existing registered module
+and authorizes no full trial. The quarter/half integration/protection suites
+pass66 tests. Both original half-step modules remain unchanged.
+
+A separate CPU-only shape/specification inventory, with no sampling,
+inference or registration, confirms the prospective64-batch native-balanced
+schedule retains64 requested256x128 and64 requested2000x1000 native draws.
+Existing retention storage accounting still conservatively covers1664
+targets/3200 components,1,962,344,448 bytes each for original and replayed
+components. Original plus replayed imputation teacher components still
+reserve4,965,466,112 array bytes. These requested-shape bounds are unchanged
+from V54; actual intrinsic shapes and acceptance remain unknown. This is
+storage planning, not evidence of learning or benchmark performance.
+
+At01:45:17 root/checkpoint/scratch free bytes remain16,141,938,688/
+20,212,269,056/3,607,287,259,136. A later full trial still needs separate
+accepted-probe closure, tested capacity preservation and fresh registration.
+The complete single-model goal remains active and unmet.
+
+### 2026-10-16 02:16 UTC — Fresh quarter-step feasibility closes accepted; preserve capacity next
+
+Original session55503 exits0 at02:15:58. The single original proposal is
+accepted, with one update,30/30 grouped improvements and56/56 individual
+improvements, no adverse or undefined point slots. Peak GPU allocation/
+reservation is113.49742460250854/125.8203125 GiB. Both full native contexts
+fit without OOM. The original training run closes01:51:59, teacher/reference
+replay01:59:15, CPU audit02:11:58, supplementary mean audit02:13:47 and
+terminal review02:15:58. No scientific stage is repeated.
+
+All28 tasks/56 endpoint grids,84 raw gradient vectors,52 teacher components,
+50 retention components/26 targets and all77,998,496 parameter coordinates
+are covered. Exact quarter contraction has zero non-bitwise elements in
+both reconstructed full and contracted vectors. All238 trainable tensors
+change and all16 buffers remain unchanged. Terminal review verifies19,719
+bound files and disjoint56 fresh seed values. The mean audit retains6870
+actual physical columns. Preserve adverse non-point terms:12/28 teacher
+mean terms worsen (weighted change−0.011133599123527045);19/26 retention
+penalties worsen (weighted before/candidate0.008169919096630746/
+0.012970891143063046). Acceptance is not improvement of every loss term.
+
+Preserve audit scope: no independent parameter-autograd replay is performed,
+and `finite_point_scores_require_neural_replay` remains true. The accepted
+final parameters and saved endpoint scalars are independently checked;
+teacher/reference components are independently replayed. Do not describe
+this as an independent candidate-neural-forward or full trajectory replay.
+A future full-trial pipeline must retain its separate GPU candidate replay.
+
+| Quarter probe evidence | SHA256 |
+|---|---|
+|Configuration|`9b8418c5e0ee88fb64b9a163efa31594927fccc386419986cb0fd0e6f0c859e4`|
+|Original result|`25ae2d701e016d3334954324c2cbd314e19163a0025aad8cd3576d9bddc63626`|
+|Original audit|`41ba96e6f6de3abd2cbbae2bb6e4bfb2fe8c4aaee359f79f0cc3f28aa82f5f3d`|
+|Feasibility-only true gate|`cd4e020d3ee80cf294161bd11eb00d7d1f11e7b9cd972049b5bccdd8422b5296`|
+|Retention audit|`6c5f938d00eda2252b82339872b003935b8fd600ba9ec4bf0b29cc789ca46163`|
+|Mean audit|`f104c7952c3081c66b6c12af32918c316da5a05c761a4c50149c63025d856f12`|
+|Terminal review|`af6847f754424aba0f108ae5f3b0599c11e88132d4153ab9c13b8241add9f6ee`|
+|Readable outcome|`453b2db16b63c26ff4e908412b5e45c9b83df46ba5983b5157ff5a50eb7c1bd3`|
+
+During the original audits, prepare a separate quarter-capacity helper,
+not a mutation of the original ineligible half-probe helper. Bind the exact
+fresh quarter configuration, its completed accepted optimizer/mean/reference
+audits and independent terminal review. Require both probe owners stopped.
+Preserve the same12 independently rejected displacement-grid checkpoints
+and all3,744,936,228 original serialized bytes through copy/fsync/hash/typed
+load/atomic canonical symlinks plus a separate CPU-process recheck. Never
+move actual V29, teachers, selected models or V54. Scratch remains local,
+not external backup. Verify the actual frozen-buffer schema before running;
+the final new/original capacity and trial-integration suites pass452 tests.
+
+Quarter-trial helper/test SHA256:
+`a0607c460609d599b8ef223127d0a9e3eab86f48a5f072e2fff43229782b94a9` /
+`5986735613b79aa9d28311116ceff386764bfe5115a4c85be7a6c66ae439195c`.
+Quarter-capacity helper/test SHA256:
+`04d589d20ff8165ea9e7e586bb281e5e95628457e65ea40dbd2715138b74d667` /
+`82f92fc1906428407f785db09315e4747115c4b25a310edaa9978c42f2100b59`.
+Queue one preservation→independent-recheck operation under
+`balanced_native_quarter_capacity_relocation_v1`, writing separate logs to
+scratch. At prelaunch free root/checkpoint/scratch bytes are16,130,740,224/
+19,747,745,792/3,577,334,919,168. Full-trial admission still requires18 GiB
+plus2432 MiB; this operation prepares capacity but authorizes no training.
+
+This is positive synthetic feasibility, not a selected model or benchmark
+parity. A separately tested and registered full trial must start from actual
+unchanged V29, not the probe endpoint, use fresh streams, preserve22 original
+development guards and sole selection, pass32 fresh confirmation comparisons
+and then complete the frozen480-comparison real review. No real benchmark,
+confirmation, full trial, paper edit, commit, push or branch change occurs.
+The goal remains active and unmet.
+
+### 2026-10-16 02:18 UTC — Correct a pre-registration capacity entry error; no artifact moved
+
+Storage session48288 exits1 before registration or any filesystem relocation.
+Its stopped-owner callback incorrectly expects `probe.closed` on the new
+quarter wrapper; the existing original closure helper is instead exposed
+through `probe.probe_blueprint.closed`. Keep the original failure log at
+`/mnt/matrixformer_scratch/balanced_native_quarter_capacity_relocation_v1_preserve.log`
+with SHA256
+`86c251f144bc5beefe953cb38e2cbcb6206af5d9ee508c3c289f089511d8fb3d`.
+The operation and destination directories remain absent, all12 canonical
+checkpoints remain regular original files, and no scientific stage or seed
+is repeated. The accepted quarter probe and all its sources remain immutable.
+
+Correct only the still-unregistered new storage wrapper's callback binding,
+and add actual-namespace tests for stopped/live/invalid process identities.
+The updated new/original capacity and trial-integration suites pass459 tests.
+An independent read-only inventory under the original arithmetic context
+then validates all12 complete original checkpoints,3,744,936,228 bytes and
+2194 bound identities, while confirming both output directories stay absent.
+Queue a corrected storage entry with a new `_entry_recovery.log`, never
+overwrite the original failed log. It remains storage-only and requires
+all completed accepted-probe evidence before registration/copying.
+Corrected source/test SHA256 are
+`1ffb42ffd9a1df76f83fec158e58405e68fe6f698a79a3e0996fa3cb39ef86b2` /
+`8b29918f7ff50378ce239f018f4056197351b0d553117c351e0a34f8dee0ba51`.
+Corrected entry session19884/shell4147615 starts02:18:34.
+
+### 2026-10-16 02:20 UTC — Capacity preserved and independently verified; full trial still unregistered
+
+Corrected storage session19884 exits0. Its first registered preservation
+operation closes02:19:21; the separate CPU-process recheck closes02:19:43.
+All12 original rejected displacement-grid checkpoints and3,744,936,228
+serialized bytes survive exactly, with their original canonical paths
+now pointing to the verified machine-local scratch copies. No selected
+checkpoint, teacher, actual V29 initializer or V54 changes. The initial
+pre-registration failure remains preserved; it is not a scientific retry.
+
+| Capacity evidence | SHA256 |
+|---|---|
+|Configuration|`7031764d31b7b357540d61c2247cc79886f79d61bd6bfd59a19f89c60e778b5d`|
+|Internal recheck|`b622d181dd771e40fc49366a46f10eb66c87b177777abee7ab44d8f4175353df`|
+|Separate-process recheck|`a17e0402d32f284b1285705e75b4036fb4b86d9f3d11cb710101f678d9abd087`|
+
+Independent post-operation inventory verifies632 bound source identities
+unchanged across V54, its completed diagnoses, both native probes, their
+mean audits, the saved-step diagnosis and this preservation operation.
+All12 canonical paths are the expected symlinks. Free root/checkpoint/
+scratch bytes are16,130,007,040/23,492,091,904/3,573,589,913,600. The full
+training admission requirement21,877,489,664 bytes now fits, with all18/6/50
+GiB reserves intact. No scientific worker remains and the GPU is empty.
+An incidental read-only report command initially asks for a nonexistent
+`receipt.json`; actual receipts are `independent_recheck.json` and
+`external_recheck.json`. Correct the read-only inventory, without rerunning
+preservation or any scientific stage.
+
+Next implement and test a separately registered full native-balanced,
+quarter-step trial from unchanged actual V29. The natural predecessor is
+`train_single_matrixformer_standardized_huber.py` and its full audit,
+pipeline and trial/storage adapters. Reuse unchanged standardized-Huber
+retention/training callbacks, but integrate the tested new
+`single_model_fixed_quarter_trial.py` throughout training, raw optimizer
+audit and independent GPU candidate reconstruction. Compose
+`single_model_balanced_native_coverage.balance` with the existing structured
+schedule, while preserving original requested shapes and64 attempted
+batches. Bind native and structured schedule metadata separately.
+
+Require the exact completed quarter-probe and capacity hashes above, fresh
+unconsumed training/backward/confirmation streams, boundaries0/10/25/50/64,
+all22 original development guards, strict sole-checkpoint selection,284 fresh
+confirmation cases/all32 comparisons, then every frozen real suite and
+full480-comparison review. The retained2432 MiB/16 MiB/48 GiB training
+allowances already cover requested-shape teacher/reference arrays. Before
+launch, test all generated namespaces bind quarter protection, not the old
+half module; keep fixed-half structured retention unchanged. No full-trial
+script/configuration or scientific seed is registered yet. Do not initialize
+from the accepted feasibility endpoint or unqualified V54 selection.
+
+Latest real campaign is still V45 (219/392 required and14/18 primary failures);
+V54 remains unqualified after7/32 synthetic confirmation failures. This
+turn makes progress through accepted full-context mixed-prior feasibility,
+complete audits, tested quarter-trial integration and verified capacity,
+not through a new held-out or real benchmark result. The full single-model
+goal remains active and unmet. No paper, commit, push or branch changes.
+
+### 2026-10-16 02:28 UTC — Native-balanced quarter-step V55 implemented and tested; registration starts
+
+Classify the previous goal turn as progress: it completed a fresh accepted
+full-context feasibility update, original teacher/reference/parameter/mean
+audits and independent terminal review, then preserved12 old rejected-grid
+checkpoints with an independent byte check. At02:21 this turn verifies all
+scientific workers stopped, GPU empty and full-training capacity available.
+
+Implement separate V55 trainer, full auditor, qualification pipeline and
+trial/storage adapters. Reuse the unchanged standardized-Huber backward and
+reference kernels; integrate the tested fixed-quarter helper through actual
+training, raw optimizer audit and independent GPU candidate reconstruction.
+Compose native component/orientation balance with the unchanged structured
+schedule. Preserve requested shapes, priors beyond that schedule, losses,
+teachers, half-weight structured retention, native V29 retention, domain
+masses, parameter counts, inference, budgets and all original guards.
+
+The new/prior lifecycle, audit, pipeline, storage, protection, native schedule,
+preflight and capacity suites pass682 tests. Before any registration, fix an
+inherited recipe expression that still expected the old half-trial test path;
+fix a test-only synthetic-source introspection error and a test fixture's
+missing digest/status arguments. These were CPU import/test failures, not
+scientific runs or registrations. No production guard is weakened. Tests
+exercise actual trainer callbacks, accepted/rejected/no-op paths, complete
+probe requirements, quarter audit schema, GPU replay bindings, every original
+qualification stop, unchanged stage budgets and all32 native strata four
+times over64 scheduled attempts. Both old half-step modules remain unchanged.
+
+A separate read-only inventory checks537 historical configurations/165,721
+seed values (maximum1452103601). All3868 proposed full-trial/confirmation
+seed values are unique and disjoint: training bases1461100901/1462100901,
+confirmation bases1471100901/1472100901. This inventory samples no matrices
+and performs no inference. All632 previously registered source identities
+rehash unchanged. Actual initializer remains V29 SHA256
+`9747c69624220de33356145c5df9baa5256bc625719868d4f0e3740bce475c32`.
+Never substitute the accepted feasibility endpoint or unqualified V54.
+
+New trainer/auditor/pipeline SHA256:
+`4309317130d9ff1d4cc16e4ad1c365c40de2c69bd65f5da51f13611516045175` /
+`aebcdcf8ff1e73628be49f7715153ad1cf82524d3c5518c614506ddd72f540d7` /
+`c0be3defdd796049efc63409de6ade94e06de9a8c6e4906875d78cd9547efe70`.
+Trial/storage adapter SHA256:
+`e406659a49fbf36bae48fd8082af6d1678592876a4844cdf7bae9bdf2bf350d1` /
+`5f04c04b80e896c5084391e2813e6463dc0d05321d0a7dc45bf52e83a0ae5458`.
+The original failed pre-registration capacity-entry log is additionally bound
+as input evidence; it is not overwritten or erased.
+
+Start exactly one CUDA-hidden V55 registration at
+`/mnt/checkpoints_200/single_model_goal_20261005/balanced_native_quarter_v55`,
+with log `/mnt/matrixformer_scratch/balanced_native_quarter_v55_registration_v1.log`.
+Freeze the tested sources from this point. At prelaunch free root/checkpoint/
+scratch bytes are16,119,197,696/23,492,091,904/3,573,589,913,600, above original
+reserves and full admission. Require64 attempts, boundaries0/10/25/50/64,
+all22 development guards/sole selection,284 fresh confirmation cases/all32
+comparisons and every frozen real suite/full480-comparison review. This
+entry records readiness and a pending registration, not training or benchmark
+success. The goal remains active and unmet; no paper or Git publication changes.
+
+### 2026-10-16 02:42 UTC — V55 is registered and training; first update accepted, qualification attached
+
+Original registrar session77155 exits0 at02:35:57. The V55 configuration
+SHA256 is
+`25609392201d6c3c8df698bddbd60257c5e53e147d4f3c6604b5a93cc80004ef`.
+It binds588 source/test paths,20,936 inputs and537 historical configurations,
+64 batches/1792 tasks and284 fresh confirmation cases. A separate JSON-only
+check verifies every historical configuration hash and every directly bound
+source. All new trainer/auditor/coordinator/storage/trial helpers and tests
+are bound by the original registration. The recorded actual V29 parent has98
+inherited updates. Learning rate stays5e-6, inward margin0.1, displacement
+fraction0.25 and native/structured/rating masses0.5/0.25/0.25. All32 scheduled
+native component/requested-shape/orientation strata appear four times.
+
+Start exactly one original GPU train→complete task-audit chain as
+session23900, shell4153233 (start ticks307164484), trainer4153239, at02:36:11.
+The shell preserves separate `train.log` and eventual `full_audit.log` in
+the V55 output directory. No source changes occur after registration begins.
+While the trainer verifies inputs, its status initially still names the
+completed registrar. Do not mistake that stale status for a stopped trainer.
+
+Original CUDA-hidden qualification session38855/shell4153365 starts02:36:41.
+Its read-only readiness loop binds the exact live trainer PID/start identity
+and parent chain before waiting for the trainer-owned status. It registers
+once at02:39:58, then its original coordinator PID4153877 waits for the
+existing run/auditor. Qualification configuration SHA256:
+`479945a561952c3087ebd7ebb0ce3369625fe55783a3b5ae9d5c30ebed3ced02`.
+Its475 directly registered source identities independently rehash unchanged.
+The chain retains independent GPU terminal/selected endpoint replay, CPU
+saved-grid audit, sole selection and fresh confirmation before any real suite.
+
+At02:42:20 the exact trainer4153239 is live capturing native gradients for
+step2. Original step1 completes in148.50598939694464 seconds and is accepted,
+giving one accepted update. Boundary0 reports score1.0606515728673378 and
+zero failed development guards, but step0 remains deliberately ineligible;
+there is no selected eligible trained checkpoint yet. Do not confuse a
+training-batch acceptance or unchanged-parent development result with held-out
+or benchmark parity. Preserve the original NumPy degrees-of-freedom warning
+in the training log; no queries/nulls or guards are altered in response.
+
+Live GPU memory is106,647 MiB with38 percent utilization at that observation.
+Root/checkpoint/scratch free bytes are16,117,284,864/23,173,021,696/
+3,573,390,458,880; reserves remain intact. Do not relaunch either live chain
+on an observation timeout. Continue the registered64 attempts and original
+10/25/50/64 development boundaries, then the complete original audit and
+qualification chain, retaining all failures and the same sole selection.
+
+Paths:
+-Training:`/mnt/checkpoints_200/single_model_goal_20261005/balanced_native_quarter_v55/`.
+-Qualification:`/mnt/checkpoints_200/single_model_goal_20261005/balanced_native_quarter_v55_pipeline/`.
+-Scratch:`/mnt/matrixformer_scratch/balanced_native_quarter_v55`(local, not external backup).
+-Registrar log:`/mnt/matrixformer_scratch/balanced_native_quarter_v55_registration_v1.log`.
+-Pipeline registrar log:`/mnt/matrixformer_scratch/balanced_native_quarter_v55_pipeline_registration_v1.log`.
+
+This turn makes concrete progress through full implementation,682 passing
+tests, byte-bound registration and actual original training/qualification
+launch. The full single-model goal remains active and unmet. No confirmation
+or real benchmark result exists for V55; V45 remains the latest real campaign.
+No paper, commit, push or branch changes occur.
+
+### 2026-10-16 03:25 UTC — V55 step10 passes all22 development guards; complete mixed-result breakdown retained
+
+The previous goal turn was progress: it registered V55 and launched the
+original training/audit and qualification chains. This turn revalidates
+their exact live owners and polls the original handles through boundary10.
+All observation timeouts leave those workers live; no scientific stage is
+restarted. The first ten attempts contain eight accepted updates. Attempts5
+and8 are rejected by the unchanged finite point guards; their adverse
+directions and original rejection records remain intact.
+
+**Early synthetic development result only.** All22 original guards pass on
+the complete152-case step10 boundary. The score improves from
+1.0606515728673378 to1.056895484806103. Step10 is currently eligible and
+selected, with original recorded checkpoint SHA256
+`5110fc07750590ab7488210f678393451a151173f98ed12009783efb6583cca9`.
+This is not final sole selection, fresh confirmation, a completed independent
+full-run audit, real-suite performance or blended parity. Step0 remains
+ineligible, and the original25/50/64 boundaries still determine final choice.
+
+| Synthetic metric | Actual V29 step0 | V55 step10 | Relative change |
+|---|---:|---:|---:|
+|Native common NRMSE|0.664331714164|0.664324983876|-0.001013%|
+|Native raw RMSE|0.795280925086|0.795742945164|+0.058095%|
+|Rating RMSE|0.758233126643|0.757762885481|-0.062018%|
+|Rating MAE|0.687911318438|0.686886747573|-0.148939%|
+|Structured overall common NRMSE|0.684778692952|0.683782298217|-0.145506%|
+
+Passing the frozen limits does not mean every metric improves against actual
+V29. Five structured family means worsen:MAR+0.161167%,skip-logic+0.035493%,
+MAR-neural+0.021137%,polarization+0.071738%,soft-polarization+0.047977%.
+Three of eight native prior means worsen (anchor-latent MCAR, low-rank
+profile-mixed and slow-tail profile-mixed), as does the structured steep-tail
+prior mean. All improved and adverse groups remain in the complete report.
+Native common NRMSE is only slightly better than V29 and narrowly below its
+frozen0.6643513056134889 limit. These are synthetic native metrics, not
+results on the real MissBench or UCI suites.
+
+Ten existing diagnostic tests pass. The single readiness/analysis observer
+session45347 (shell4155214) binds the exact original trainer and waits for
+the complete step10 report and original ten-record trace before running the
+unchanged CPU-only saved-grid analyzer once. It exits0 at03:22:01. No new
+matrix, model inference, seed, checkpoint decision, confirmation or real
+evaluation is introduced.
+
+The completed analysis retains136 imputation and16 rating cases,22,788
+physical imputation columns,408 case-role rows,1,632 reconstructed stored
+imputation metrics and32 stored rating case-metric rows. Common coverage is
+22,764 columns for all three roles. Canonical MissBench-style coverage is
+22,764 for general/V29 and22,766 for the candidate; UCI-style coverage is
+22,764 for all roles. Preserve these original differences rather than
+harmonizing coverage after observing errors. Ratings remain the original
+stored user-macro/original-unit errors, not column NRMSE or a new replay.
+
+An additional read-only recheck verifies507 source/input identities, every
+saved case metric, all22 guard values regrouped from CSVs and all300 grouped/
+560 individual training-prefix point slots. Native cases split24 improved/
+16 worsened; structured59/37; rating RMSE14/2 and MAE15/1. There are37 adverse
+individual training changes and no undefined individual slot. Attempt5
+fails both MCAR guards; attempt8 fails two-phase RMSE and skip-logic common
+NRMSE. This is saved-scalar regrouping, not independent parameter autograd
+or a full original training-trajectory replay. Prefix SHA256 for3,473,057
+bytes is`7491ef5fb3c105769fa83ff71e818f7809e28546c7989951f631ef3b91d4d539`.
+
+Complete22-guard/eight-native/four-structured tables and limitations are in
+`/mnt/checkpoints_200/single_model_goal_20261005/balanced_native_quarter_v55_development_step10_v1/OUTCOME.md`.
+All columns/cases/contributions/ratings CSVs and the independent read-only
+receipt are retained alongside it.
+
+| Development evidence | SHA256 |
+|---|---|
+|Configuration|`2c94d478ba1dab1de0635d59c7210858b0b2bac6405c904a5a56189b4704bf30`|
+|Analysis summary|`e8d5c9d9d7ca230d3f9414d667f4bee210b0867d01bb3995bd120c93291a1c92`|
+|Readable complete tables|`487b96fa280f120e50cdf0796d20252017fc28f65befeb69ca9d918737b3715f`|
+|Read-only recheck|`c3bb84b274191c45c5bad77197b0c51758eaf3714c1d17de3a893a2b6bfee80e`|
+
+At03:25:41 trainer4153239/session23900 remains live protecting step11;
+coordinator4153877/session38855 remains attached and waiting. All594 unique
+registered training/pipeline source identities rehash unchanged. GPU memory
+is128,585 MiB at100 percent utilization; root/checkpoint/scratch free bytes
+are16,106,610,688/22,214,766,592/3,572,713,066,496, with reserves intact.
+Continue the original64 attempts and mandatory full audit/sole selection/
+fresh-confirmation/frozen-real-review chain unchanged. The full goal remains
+active and unmet; no paper, commit, push or branch changes occur.
+
+### 2026-10-16 03:38 UTC — Verified wait on original V55; step25 read-only observer queued
+
+The previous goal turn made progress through the original step10 boundary
+and complete saved-grid diagnosis. This turn is a verified wait on the same
+live original training/qualification chain, not a restart or a new trial.
+Trainer4153239 remains under original shell4153233/session23900; coordinator
+4153877 remains under shell4153365/session38855. Repeated observation
+timeouts leave those exact owners alive. No scientific source is changed.
+
+At03:38:38,13 attempts are complete, with11 accepted updates. Only attempts5
+and8 are rejected so far; steps11–13 are accepted. The trainer is capturing
+step14 gradients. Step10 remains the current eligible selection, not a final
+qualified model; no step25 report, fresh confirmation or real-suite result
+exists yet. Continue the original64 attempts and remaining25/50/64 boundaries.
+
+Queue one CPU-only step25 readiness/analysis observer as session1838,
+shell4160278, started03:27:39. It binds the original trainer PID/parent/start
+identity and exact V55 registration hash, waits for the complete152-case
+boundary plus original25-record prefix, then runs the unchanged saved-grid
+column analyzer once. It checks the previously tested analyzer/test source
+hashes before executing and introduces no sampling, inference, selection or
+scientific seed. Its future output is
+`/mnt/checkpoints_200/single_model_goal_20261005/balanced_native_quarter_v55_development_step25_v1/`,
+with log`/mnt/matrixformer_scratch/balanced_native_quarter_v55_development_step25_v1.log`.
+The observer is still waiting, not completed. Do not queue a duplicate or
+restart the original trainer if a tool observation expires.
+
+At03:38:38 GPU memory is127,589 MiB and utilization42 percent. Free root/
+checkpoint/scratch bytes are16,106,176,512/22,212,927,488/3,572,513,714,176;
+all reserves remain intact. No confirmation or real benchmark stage is
+started early, and no guard, prior, loss, optimizer or inference setting is
+retuned from the partial development results. The full goal remains active
+and unmet; no paper, commit, push or branch changes occur.
+
+### 2026-10-16 04:33 UTC — Original V55 step25 and complete saved-grid diagnosis
+
+The original training chain reaches step25 with20 accepted updates out of25
+attempts. All22 development guards pass. The unchanged strict minimax rule
+selects step25 with score1.0564310272101016, improving on step10's
+1.056895484806103 and actual V29's1.06065157286734. Step0 remains ineligible;
+sole final selection still awaits the50/64 boundaries. The recorded and
+independently hashed current selected checkpoint is
+`fee3c27e141ec4ed4c4df1345d3c4df83ff306b0e271e2baad2d67e2852ab430`.
+This is a time-specific selected-path identity, not a final qualified model.
+
+| Synthetic development metric | Actual V29 | Step10 | Step25 | Step25 versus V29 |
+|---|---:|---:|---:|---:|
+|Native common NRMSE|0.664331714164|0.664324983876|0.663333679380|-0.150231%|
+|Native raw RMSE|0.795280925086|0.795742945164|0.795921634774|+0.080564%|
+|Rating RMSE|0.758233126643|0.757762885481|0.757543926881|-0.090895%|
+|Rating MAE|0.687911318438|0.686886747573|0.686621505449|-0.187497%|
+|Structured common NRMSE|0.684778692952|0.683782298217|0.684304203032|-0.069291%|
+
+These are synthetic development results, not actual MissBench, UCI or RecSys
+scores and not parity with the blended reference. Native raw RMSE worsens
+against actual V29; structured overall worsens against step10. Six structured
+families worsen versus V29: MCAR+0.202351%, MAR+0.313664%, MNAR+0.156294%,
+skip-logic+0.106679%, MAR-neural+0.122756% and polarization+0.027761%.
+Passing frozen limits does not mean improvement over actual initialization.
+
+The single previously queued observer, session1838, exits0 at04:29:25 after
+the original complete report and25-record trace become available. The
+unchanged CPU-only saved-grid analyzer runs once. Its complete output is
+`/mnt/checkpoints_200/single_model_goal_20261005/balanced_native_quarter_v55_development_step25_v1/`.
+The independent report-generation/recheck session34363 also exits0; its
+completion is fetched without rerunning the analyzer or a scientific stage.
+
+All152 cases remain:40 native,96 structured and16 ratings. The diagnosis
+retains22,788 physical imputation columns,408 case-role rows,1,632 original
+imputation metrics and32 original rating case-metric rows. Common coverage
+is22,764 for all roles. Canonical MissBench-style coverage is22,765 for the
+candidate and22,764 for general/V29; UCI-style coverage is22,764 for all.
+Preserve those original differences and undefined cells. Ratings remain
+stored user-macro/original-unit metrics, not independent neural replay.
+
+The read-only recheck verifies507 bound source/input identities, every saved
+case metric, all22 regrouped guard values and strict selection at0/10/25.
+Native cases split26 improved/14 worsened; structured56/40; rating RMSE14/2
+and MAE15/1. Native low-rank/profile and slow-tail/profile prior means worsen
+by0.518181% and0.165195%; structured slow-tail and steep-tail means worsen
+by0.016307% and0.228432%. All prior groups and case contributions are retained.
+
+The exact rejected attempts are5,8,15,23,25. The25-record trace retains750
+grouped and1,400 individual point slots, including130 adverse individual
+changes and no undefined slots. Its8,688,813-byte prefix SHA256 is
+`7b34f9579e56e0f00b7af1ba1a9e13cca7299403813c2188dd5cf96a91afc92a`.
+This scalar regrouping is not a new parameter-autograd/trajectory audit.
+All238 trainable tensors change and16 buffers remain unchanged according
+to original boundary metadata; the mandatory independent full audit is pending.
+
+| Development evidence | SHA256 |
+|---|---|
+|Configuration|`6e695f6f4f53bb663874a0f6f5fcb4ed35dcd58b69d40852221cd37f3638b162`|
+|Analysis summary|`9fe10513c9d2ebc2ee95a3299dd83f094bd8f01b8c4c8d4ecfcb92f604c44e98`|
+|Readable complete tables|`2573a0ec660bfcf39ed778d215821b62377c76d0f995b235d2e75193780bd5f6`|
+|Read-only recheck|`c9eccafe5ceb94e54f3e891b48776fce718788869f569858644ff31fff40b5e6`|
+
+At04:33:19 original trainer4153239/session23900 remains live capturing
+step26; coordinator4153877/session38855 remains attached, awaiting training.
+GPU memory is127,011 MiB at100 percent utilization. Free root/checkpoint/
+scratch bytes are16,097,832,960/22,189,096,960/3,571,695,165,440; all reserves
+remain intact. Continue the original64 attempts, full audit, sole selection,
+284 fresh confirmation cases/all32 comparisons and conditional full frozen
+real-suite review unchanged. No confirmation or real campaign is started
+early. The full goal remains active and unmet; no paper, commit, push or
+branch changes occur.
+
+At04:34:46 queue one read-only step50 observer as session10137,
+shell4167497. It binds original training shell4153233/start307164484 and
+trainer4153239/start307164488, exact command/parent identities, V55 config
+hash and the unchanged analyzer/test hashes. It waits for all152 original
+step50 cases and the ordered50-record training prefix, then runs the same
+CPU-only analyzer once. No scientific code or training state is modified;
+no sampling, inference, selection or new scientific seed occurs. A source
+or process identity change stops this observer rather than restarting work.
+The output, not yet created, is
+`/mnt/checkpoints_200/single_model_goal_20261005/balanced_native_quarter_v55_development_step50_v1/`;
+the exclusive log is
+`/mnt/matrixformer_scratch/balanced_native_quarter_v55_development_step50_v1.log`.
+Do not queue another observer or duplicate this analysis while it waits.
+
+### 2026-10-16 05:01 UTC — Verified wait; original V55 reaches attempt32
+
+The preceding goal turn completed the original step25 recheck/report and
+queued the single step50 observer. This turn is a verified wait: repeated
+five-minute observations of original sessions23900/10137 return live, and
+process inspection confirms trainer4153239, coordinator4153877 and observer
+4167501 under their original parents. Observation timeouts are not failures.
+At05:01:32,31 attempts are complete with23 accepted updates; the trainer is
+capturing step32. Attempts27,30,31 are rejected after the earlier five
+rejections. Step25 remains the current selection, not a qualified checkpoint.
+No step50, fresh confirmation or real-suite result exists yet. The original
+pipeline and single read-only step50 observer continue unchanged. Free root/
+checkpoint/scratch bytes are16,094,625,792/22,185,091,072/3,571,312,734,208;
+all reserves remain intact. No source, prior, optimizer, gate, selection or
+benchmark protocol is changed. The full goal remains active and unmet.
+
+### 2026-10-16 06:32 UTC — Original V55 step50 passes; complete adverse-case review retained
+
+The preceding turn was a verified wait. This turn continues observing the
+same original training and single step50 observer, without restarting either
+on observation timeouts. The original step50 validation completes with33
+accepted updates out of50 attempts and all22 development guards passing.
+The unchanged strict minimax rule replaces step25 with step50: score
+1.0561476252524313 versus1.0564310272101016. Sole final selection still awaits
+step64; this is synthetic development, not qualification or real benchmarks.
+The original report and independently hashed currently selected checkpoint
+agree on`edf318d9666d5654a3dbd2e239c1a9b04f8a786a407acf2b2209346faad9529a`.
+This is a time-specific identity of the mutable selected path.
+
+| Synthetic development metric | Actual V29 | Step25 | Step50 | Step50 versus V29 |
+|---|---:|---:|---:|---:|
+|Native common NRMSE|0.664331714164|0.663333679380|0.662501386232|-0.275514%|
+|Native raw RMSE|0.795280925086|0.795921634774|0.795141447257|-0.017538%|
+|Rating RMSE|0.758233126643|0.757543926881|0.757324308063|-0.119860%|
+|Rating MAE|0.687911318438|0.686621505449|0.686727514681|-0.172087%|
+|Structured common NRMSE|0.684778692952|0.684304203032|0.684474224734|-0.044462%|
+
+Native raw RMSE now improves versus actual V29, but structured overall and
+rating MAE worsen versus step25. Seven structured family means worsen versus
+V29: MCAR+0.563009%, MAR+0.206168%, MNAR+0.051990%, skip-logic+0.064928%,
+MAR-neural+0.576997%, polarization+0.000927% and soft-polarization+0.014307%.
+All frozen guards pass because their limits differ from actual V29. These
+changes do not establish blended-model parity or actual MissBench/UCI gains.
+
+The sole queued observer session10137/shell4167497 exits0 at06:28:04 after
+running the unchanged CPU-only saved-grid analyzer once. Complete output:
+`/mnt/checkpoints_200/single_model_goal_20261005/balanced_native_quarter_v55_development_step50_v1/`.
+It retains all152 cases,22,788 physical imputation columns,408 case-role rows,
+1,632 reconstructed stored imputation metrics and32 stored rating rows.
+Common coverage is22,764 for all roles. Canonical MissBench-style coverage
+is22,765 for the candidate and22,764 for general/V29; UCI-style coverage is
+22,764 for all roles. Preserve those differences, undefined cells, original
+weights and all16 stored user-macro/original-unit rating cases. Ratings are
+not independently neural-replayed by this diagnosis.
+
+Independent report generation verifies507 saved-grid source/input identities
+before and after, rehashes all594 unique registered training/pipeline sources,
+checks every saved case metric and all22 regrouped guards, and reconstructs
+the unchanged strict0/10/25/50 selection trace. Native cases split26 improved/
+14 worsened; structured56/40; rating RMSE15/1 and MAE15/1. All prior groups
+are retained. Native low-rank/profile and slow-tail/profile means worsen
+by0.083702% and0.278678%; structured slow-tail and steep-tail means worsen
+by0.051412% and0.319240%.
+
+All1,500 grouped and2,800 individual training-prefix point slots remain,
+including317 adverse individual changes and no undefined slots. Exact
+rejected attempts through50 are5,8,15,23,25,27,30,31,35,36,39,42,44,45,47,48,50.
+The17,384,178-byte original50-record prefix has SHA256
+`d8b7365014126c355a3f231868f9d79a4c90da3cb79aa2dd1cf5f2dad14e9b8f`.
+This is saved-scalar regrouping, not parameter-autograd/trajectory replay.
+Original boundary metadata records238 changed trainable tensors and16
+unchanged buffers; the mandatory independent full-run audit is still pending.
+
+The first report-writing command, session23008, passes the read-only checks
+but fails before creating either report because its large apply_patch argument
+exceeds the OS argument-size limit. No scientific stage is repeated and no
+source or training state is modified. Recovery uses apply_patch over stdin
+in the external CPU-only report generator
+`/mnt/matrixformer_scratch/report_v55_step50_read_only_v1.py`
+(SHA`cfebc372613bdb01ff57e75a3d75ede04dced23cdb5c3a7265277734d2067242`).
+Recovery session62861 exits0, repeats only the read-only checks, and creates
+the full tables and receipt once, refusing overwrite. Do not rerun the
+completed analyzer or overwrite its evidence.
+
+| Development evidence | SHA256 |
+|---|---|
+|Configuration|`8be654af9161e2fbbfea42c525fd6d2d359c8fdd8c6d25142b28d00a7a330a2c`|
+|Analysis summary|`e974e2af112a965e50322d94fc7ec8f21ba59da712774b56a7c238c116ce839b`|
+|Readable complete tables|`81ae612c8fabbd806683d02bd12e19f10dd0094979782a795da8de8f44caeb9b`|
+|Read-only recheck|`71a053c6c1d18facd701671cb31d051f13321256f358b742adf699f8678a18c4`|
+
+At06:32:37 original trainer4153239/session23900 is live capturing step52;
+coordinator4153877/session38855 remains attached under original shell4153365.
+GPU memory is122,637 MiB at100 percent utilization. Free root/checkpoint/
+scratch bytes are16,064,339,968/22,155,419,648/3,570,051,358,720; all reserves
+remain intact. No step64 observer is queued. Continue the original64
+attempts, full audit, sole selection,284 fresh confirmation cases/all32
+comparisons and conditional complete frozen real-suite review. No early
+confirmation, real campaign, retuned guard or benchmark-protocol change
+occurs. The full goal remains active and unmet; no paper, commit, push or
+branch changes occur.
+
+### 2026-10-16 07:38 UTC — V55 completes64/40; step64 selected and original full audit starts
+
+The preceding turn completed step50 and its saved-grid review. This turn
+observes the same original training chain through the final boundary, without
+restarting on timeouts. All64 attempts complete with40 accepted updates.
+Step64's proposal is rejected, but its validation of the accumulated accepted
+updates passes all22 original development guards and wins the unchanged
+strict minimax selection:1.0557873155733402 versus step50's1.0561476252524313.
+The sole selected checkpoint is
+`/mnt/checkpoints_200/single_model_goal_20261005/balanced_native_quarter_v55/selected_checkpoint.pth`,
+SHA`7282100044e413e12240c58ae48298625e3988f810d47c806154a1f17d954e51`.
+The independent full audit, endpoint replay, confirmation and real review
+are still pending; selection does not establish qualification or goal success.
+
+| Synthetic development metric | Actual V29 | Step50 | Step64 | Step64 versus V29 |
+|---|---:|---:|---:|---:|
+|Native common NRMSE|0.664331714164|0.662501386232|0.662356466176|-0.297329%|
+|Native raw RMSE|0.795280925086|0.795141447257|0.794944353343|-0.042321%|
+|Rating RMSE|0.758233126643|0.757324308063|0.757506063048|-0.095889%|
+|Rating MAE|0.687911318438|0.686727514681|0.686932668488|-0.142264%|
+|Structured common NRMSE|0.684778692952|0.684474224734|0.684445265707|-0.048691%|
+
+Both rating metrics worsen versus step50 despite remaining better than actual
+V29. Five structured family means worsen versus V29: MCAR+0.313965%,
+MAR+0.421821%, skip-logic+0.029031%, MAR-neural+0.618071% and
+soft-polarization+0.122261%. Frozen guard limits are distinct from actual V29;
+passing them does not erase these regressions. These are synthetic development
+values, not real MissBench/UCI/RecSys results or evidence of blended parity.
+
+After verifying all64 ordered original records, all152 boundary cases and
+the unchanged config/analyzer/test hashes, CPU-only session5200 runs the
+existing saved-grid analyzer once and exits0. Independent read-only report
+generation session16884 also exits0. Complete evidence is retained at
+`/mnt/checkpoints_200/single_model_goal_20261005/balanced_native_quarter_v55_development_step64_v1/`.
+The external report generator is
+`/mnt/matrixformer_scratch/report_v55_step64_read_only_v1.py`, SHA
+`6da8ff4cc418d989ecfcae921c40f26166ebad46a35761621a3965f6457fc14a`.
+No scientific source, seed, inference setting, checkpoint decision or
+qualification stage is changed or repeated by this analysis.
+
+The diagnosis retains all136 imputation and16 rating cases,22,788 physical
+imputation columns,408 case-role rows,1,632 reconstructed stored imputation
+metrics and32 stored rating rows. At step64 all roles have22,764 defined
+columns for each common/MissBench/UCI-style metric; the earlier boundaries'
+different canonical coverage is preserved, not retrospectively harmonized.
+Ratings remain stored original-unit/user-macro metrics, not independent
+neural replay. Native cases split27 improved/13 worsened; structured54/42;
+rating RMSE15/1 and MAE16/0. All eight native and four structured priors remain:
+native slow-tail/profile worsens0.083282%, structured steep-tail0.422107%.
+
+The recheck verifies507 source/input identities before and after, every
+saved case metric, all22 regrouped guards and strict selection over0/10/25/
+50/64. It reconstructs all1,920 grouped and3,584 individual original training
+point slots, including399 adverse individual changes and no undefined slot.
+The24 rejected attempts are5,8,15,23,25,27,30,31,35,36,39,42,44,45,47,48,50,
+52,53,55,57,58,60,64. The complete22,254,115-byte original training trace has
+SHA`814409acd525bdca885dedd3f8fd3324a23e6305fff4b04365433f9cd975b0f9`.
+This saved-scalar regrouping is not full parameter-autograd/trajectory replay.
+Original boundary metadata reports238 changed trainable tensors and16
+unchanged buffers, pending the mandatory independent full audit.
+
+| Development evidence | SHA256 |
+|---|---|
+|Configuration|`9ed4579fa170707c98e7421e2155d713b9a17085e357e45f51b136125e33bbb7`|
+|Analysis summary|`542501a085b0f87e6807015c6a0d9f9cb5fe8c8898d22aa7d6466f56edfbe934`|
+|Readable complete tables|`d9daf1d94703fbfc9452e174d9c891fccc2d2c7a5748cebb074ec5047f5d00c2`|
+|Read-only recheck|`415bb22831ad3462f01fed48aa7cadb301794d6e244b6864df61975cf5804b38`|
+
+The trainer records`training_complete` at07:38:19 with qualification pending,
+then exits normally. Original shell4153233/session23900 starts its already
+registered full audit as PID8329 at07:38:21; this is the original automatic
+handoff, not a replacement run. Coordinator4153877/session38855 remains live
+and records`waiting_for_existing_training_audit`, bound to that original
+shell. At07:38:49 all three capacity reserves remain intact: free root/
+checkpoint/scratch bytes16,046,628,864/22,130,831,360/3,539,455,692,800.
+Continue that exact audit/endpoint/CPU-audit/284-case fresh-confirmation
+chain and conditional full frozen real-suite review. No early real evaluation
+or trial redesign occurs. The full goal remains active and unmet; no paper,
+commit, push or branch changes occur.
+
+### 2026-10-16 08:53 UTC — Original V55 full-task audit passes; independent endpoint replay is live
+
+Original audit PID8329 finishes normally; original train/audit session23900
+exits0 at08:46:45. The authoritative audit at
+`/mnt/checkpoints_200/single_model_goal_20261005/balanced_native_quarter_v55_audit/audit.json`
+confirms64 attempts,40 accepted updates, all1,792 independently regenerated
+tasks and teacher identities,1,536 structured draws,128 rating contexts and
+1,368 full prediction grids. It retains actual V29 initialization, full-network
+training, all22 guards, strict minimax selection and selected step64. The
+task-replay result binds its audit hash, and the complete original training
+trace independently matches the recorded hash. Audit SHA is
+`acd1c19314ca6124d6e657561a5ac6cfedd6782ff24efd7d77c33c552e23e8bd`;
+task-replay result SHA is
+`ce546a87d140b75134345db3d191554b2e8073a87cbd43a6c1e05e8cb4b632d7`.
+This full-task audit explicitly does not replay historical full parameter
+autograd or the entire optimizer trajectory; do not describe it as such.
+No confirmation or real data is consumed by it, and goal success is unassessed.
+
+The original coordinator4153877/session38855 remains attached. After the
+completed audit and its normal registration/hash work, it launches its original
+independent endpoint-replay child13163 at08:50:35; at08:53:21 that exact child
+is live and the coordinator state is`replay`. Earlier observation timeouts
+and stale phase labels during hash work cause no restart. Follow this original
+replay, CPU audit and fresh284-case/all32-comparison confirmation before any
+conditional real campaign. The full goal remains active and unmet.
+
+### 2026-10-16 09:40 UTC — V55 closes negative on five fresh-confirmation checks; initializer attribution launched
+
+Original endpoint replay child13163 completes, reproducing the rejected
+terminal step64 proposal rather than silently substituting an accepted step.
+Its original CPU-audit child15215 completes at09:10:42, checking56 endpoint
+and152 selected prediction grids with CUDA hidden and zero selection tolerance.
+The endpoint is reproduced and selected development validation passes; this
+does not establish fresh confirmation or historical full-autograd replay.
+
+The original coordinator launches confirmation child16392 at09:10:43. It
+builds and evaluates all284 registered fresh cases:60 native,192 structured
+and32 ratings. Original independent confirmation audit18912 checks all1,136
+prediction grids and finishes with`passed:false`. Original qualification
+session38855 exits0 at09:36:47 with`complete:true, confirmed:false`. This is
+a completed negative scientific result, not a crashed or stalled job.
+
+The unchanged sole step64 checkpoint fails five of32 strict confirmation
+comparisons. A separate scalar reconstruction from all original saved reports
+recovers the32 comparisons and all three stored retention flags. The failing
+values below use original full precision, with rounded display only. V8 is
+the frozen retention baseline, not the actual V29 training initializer.
+
+| Reference | Cohort | Metric | Reference value | V55 step64 | Relative change |
+|---|---|---|---:|---:|---:|
+|V8|Native|MissBench-style NRMSE|0.615567385137|0.617978822292|+0.391742%|
+|V8|Native|UCI-style NRMSE|0.615878647624|0.618011353942|+0.346287%|
+|V8|Native|Common NRMSE|0.615878648256|0.618011351951|+0.346286%|
+|V8|MAR|Common NRMSE|0.619958649162|0.622674269786|+0.438033%|
+|General|Structured overall|Raw RMSE|0.576003125523|0.576098386290|+0.016538%|
+
+Confirmation minimax is1.0157288675640377 versus frozen-initialization
+score1.1033690918700407; that aggregate improvement cannot override any failed
+comparison. General-native retention passes; V8 retention and structured-
+general retention fail. Different fresh banks preclude treating a changed
+failure count versus V54 as a controlled improvement. No MissBench, UCI,
+RecSys or matched-LLM campaign or full real review is run: original closure
+retains`campaign:null, review:null`, no model publication and no success claim.
+
+| Closed evidence | SHA256 |
+|---|---|
+|Original pipeline result|`ee6632ca8febd150295f73c529f121bb36a64cd86eb5c454437489ea2c3256c8`|
+|Endpoint replay gate|`7a43ce1f8c3c09ba90786b541f1f0c54fca1468a5716f81dd122f0d550e9c3b6`|
+|Independent endpoint audit|`7ae73bf88f8f7ebe18278297b6e3d7f4f5c620b9ba40cc726758e8e856c3a941`|
+|Fresh confirmation gate|`b84427602511bfc0dc24d462af92e7783e33bae6ff2109015fe9d8c8c1b9e1d1`|
+|Independent confirmation audit|`50c87410944013c63e6bda5558388ef45047a7400edfa1b3c89167652b69e102`|
+|Consumed confirmation bank|`ba06935a549f23ba6af05deda7ab9c5ad9c6bafd60b9dd842f2bcadd653cde61`|
+
+To distinguish inherited deficits from training-induced changes, add a
+bounded adapter`diagnose_single_model_balanced_native_quarter_initializer.py`
+and its matching test module. They bind this exact closed result, step64,
+40 accepted updates, actual V29 and all original audit hashes. They reuse
+unchanged full-context initializer inference and CPU rescoring, retaining
+all284 consumed cases and all32 comparisons. This is post-hoc attribution,
+not fresh qualification or a candidate/teacher rerun. No training, seed,
+selection, guard relaxation, new recipe or real data is authorized.
+
+All202 combined initializer/trial/pipeline tests pass in26.96s, including
+rejection of a stale step50 selection when step64 is the only selected model.
+Existing registered scientific files remain unchanged. At09:40:55 start
+one register/infer/audit chain as session93882, shell20428. It uses CUDA-hidden
+registration and independent audit, and a separate GPU-visible initializer
+inference process. Registration is initially pending, not yet claimed complete.
+Logs are`/mnt/matrixformer_scratch/balanced_native_quarter_v55_initializer_diagnosis_v1_{registration,run,audit}.log`;
+planned canonical output is
+`/mnt/checkpoints_200/single_model_goal_20261005/balanced_native_quarter_v55_initializer_diagnosis_v1/`.
+Poll this exact chain; do not duplicate or restart a consumed-bank stage on an
+observation timeout. The full goal remains active and unmet; no paper, commit,
+push or branch changes occur.
+
+### 2026-10-16 09:58 UTC — V55 attribution closes: all five failures inherited and reduced
+
+Original attribution session93882 completes all three stages without a
+scientific retry: registration09:42:55, frozen-initializer inference09:49:49,
+independent CPU audit09:53:58. It evaluates only unchanged actual V29 on all284
+consumed confirmation contexts, then independently rescores all284 new full
+prediction grids. No candidate, teacher, training batch or confirmation stage
+is repeated; no real data or checkpoint selection is introduced.
+
+Actual V29 fails exactly the same five of32 comparisons as V55. Every one of
+those five deficits shrinks under training; none is closed, and no new failed
+comparison is introduced. This distinguishes inherited deficits from newly
+crossed guards without redefining the negative outcome.
+
+| Failing comparison | Reference | Actual V29 | V55 step64 |
+|---|---:|---:|---:|
+|V8/native MissBench-style NRMSE|0.615567385137|0.618989194038|0.617978822292|
+|V8/native UCI-style NRMSE|0.615878647624|0.618989194038|0.618011353942|
+|V8/native common NRMSE|0.615878648256|0.618989193114|0.618011351951|
+|V8/MAR common NRMSE|0.619958649162|0.625516695603|0.622674269786|
+|General/structured raw RMSE|0.576003125523|0.577026673070|0.576098386290|
+
+Across the22 unique original metrics,19 improve and3 worsen against actual
+V29. Preserve the adverse means even though their frozen limits still pass:
+skip-logic common NRMSE+0.012904%, polarization+0.472693% and
+soft-polarization+0.312945%. Native common NRMSE improves0.157974%, rating
+RMSE0.069830%, rating MAE0.107990%, structured common NRMSE0.148872% and
+structured raw RMSE0.160874%. These are consumed synthetic contexts, not real
+benchmark results, a new confirmation or a causal estimate of the recipe.
+
+All32 comparisons, full precision CSV and a scalar/closure recheck are saved
+alongside the independently audited grids in
+`/mnt/checkpoints_200/single_model_goal_20261005/balanced_native_quarter_v55_initializer_diagnosis_v1/`.
+The recheck validates all32 unique reference/group/metric identities, original
+failure flags, differences, sole candidate and actual initializer hashes and
+the unchanged complete negative closure. An initial report command catches a
+mistyped expected initializer SHA before writing any report. The registered
+initializer and neural/audit stages are correct and unchanged; correcting
+only that reporting assertion produces the three new report files once.
+
+| Attribution evidence | SHA256 |
+|---|---|
+|Configuration|`df5acb749cf4734f0edaa55cef990e54473284f666030e9807788e275bb76320`|
+|Independent284-grid audit|`eb0b703984ac6c23fbda1e4588a7dcc84c23f53f4a0a238ad3055c27f080e6e8`|
+|All32 comparisons CSV|`fd516b79f370ec01ab9aae7873eb3cc43c9ff76bd489560c5c30c8b9a54ddb97`|
+|Readable complete tables|`5642bb98887c8403ef200790cc583b9dd6b6eac16767c027c08580e63b219f58`|
+|Scalar/closure recheck|`20234b899868044d67f640d74a13ba8ccc5055745a4eb812dc01fefed8cd9bf4`|
+|Diagnostic source|`db7b41ff1f9442b7d18a25061d9fd0e67e80f0cb2b434af0fa0e9a84f4bda4d8`|
+|Diagnostic test|`61ba263bcf9ef4b82db8b0a723680a578802be1672cf37d615a14de094e54688`|
+
+The next research hypothesis is a larger prospectively fixed training budget
+with the V55 mixed-prior/standardized-loss/quarter-displacement recipe, rather
+than immediately changing priors or targeting failed cases. The evidence is
+consistent with insufficient optimization progress but does not prove that
+more updates will generalize or close the deficits. Before executing, define
+the budget and full validation schedule, preserve original V29 initialization
+and every original guard/protocol, allocate new disjoint training/confirmation
+seeds, check storage and complete the required tests/registration. Do not
+silently resume the closed run, initialize from an unregistered alternative,
+relax a guard or treat the consumed bank as fresh. No next training budget,
+seed or recipe has yet been registered or launched.
+
+At09:58:06 all original V55 training/qualification/attribution owners have
+exited, and GPU allocation is zero. Free root/checkpoint/scratch bytes are
+16,021,344,256/22,106,484,736/3,531,000,864,768, with all reserves intact.
+The202 relevant tests and journal whitespace check pass. The full goal remains
+active and unmet; the latest actual real campaign remains V45, not V55. No
+paper, commit, push or branch changes occur.
+
+### 2026-10-16 10:25 UTC — Prepare the fixed longer-budget V56 hypothesis
+
+Continue the active single-checkpoint goal after the complete negative V55
+closure. Prospectively specify256 attempts from actual V29 with a fresh
+optimizer, not a V55 warm start. Repeat the original64-step specification
+cycle four times using new data/backward streams1481100901/1482100901 and
+confirmation streams1491100901/1492100901. These streams are proposed only,
+not yet reserved. Boundaries are0/10/25/50/64/128/192/256; rejection consumes
+budget, with no adaptive stopping or replacement. Keep all original priors,
+teacher/reference identities, standardized teacher Huber and remaining losses,
+quarter displacement,22 development guards,284-case/32-comparison confirmation
+and frozen real benchmark review. The five shrinking inherited deficits
+motivate this duration test but do not establish likely success.
+
+Implement bounded long-budget schedule, retention/replay/storage adapters and
+training/audit/coordinator wrappers. The complete schedule retains7,168 tasks,
+14,336 training seeds,32 native strata with16 occurrences each,6,656 potential
+reference targets and12,800 potential retention components. Including fresh
+confirmation requires14,620 distinct historically unused seeds. Requested-area
+budgets are4 GiB checkpoint/64 MiB root/192 GiB scratch, keeping18/6/50 GiB
+reserves and unchanged later-stage allowances. Full development/reference audit
+coverage grows from1,368 to1,824 grids with the three added boundaries.
+
+The first91 schedule/predecessor/storage tests pass. Initial expanded integration
+tests catch stale64-step mock expectations and fixed registration/audit counts;
+correct these before registration rather than weakening the coverage checks.
+All files for the prospective V56 run are still unregistered and editable.
+No scientific run, seed reservation, selection or benchmark has started.
+
+Prepare, but do not yet execute, exact byte-preserving relocation of the closed
+V54/V55 latest optimizer tails only (1,872,586,582 bytes combined) to UUID-bound
+machine-local scratch. Actual V29, selected models, teachers and mounted archives
+remain untouched. V54's tail differs from its step50 selection; V55's tail has
+the same model as its step64 selection but retains separate full optimizer/RNG
+state. Require stopped owners/locks, original negative closures, complete typed
+payloads, copy/fsync/hash and canonical-path preservation, followed by a separate
+CPU recheck before accepting a capacity receipt. The read-only inventory is in
+progress. No file has been moved or removed. The goal remains active and unmet.
+
+### 2026-10-16 10:31 UTC — Long-budget integration passes; capacity preservation underway
+
+All197 long-budget/predecessor integration tests and396 unchanged-loss,
+quarter-protection, native-coverage, admission and storage tests pass. Corrected
+before registration: the14,620-seed admission cardinality, all256 attempted
+batches,1,824 reference/development grids, all6,144 structured admission draws,
+extended test fixtures, and registration's exact original loss-test path.
+No predecessor scientific source was edited. Training, audit and coordinator
+callbacks have resolved globals, and directly referenced source/test files
+exist. A read-only scan of547 historical configurations finds169,589 prior
+seed values and zero collisions among the14,620 proposed values. None of
+these checks reserves or consumes a scientific stream.
+
+The read-only capacity inventory completes successfully. Both original tails
+are936,293,291 bytes, with V54 SHA256
+`40cec84c591aeb4ed81bb67165e9c5a8cc9dfceb37c195d468a986983583a7b8`
+and V55 SHA256
+`9f0e57607b42d96af17085f358c82741d9963db423d6408bc04fd088f1690d4c`.
+It validates35 closure/selection identities, complete optimizer/RNG payloads,
+stopped producers, unlocked locks and no open artifact readers. At10:28:36,
+start exactly one preservation→separate CPU recheck chain, session1003,
+shell29954. Logs are
+`/mnt/matrixformer_scratch/balanced_native_long_capacity_relocation_v1_preserve.log`
+and its`_recheck.log` companion. At this entry the original preservation
+process29958 is still checking the complete negative closures; a successful
+receipt or actual file relocation is not yet claimed. V56 remains unregistered
+and unstarted. Continue this original chain rather than relaunching on an
+observation timeout. No change to guards, evidence, checkpoint selection or
+real-benchmark protocols is permitted.
+
+### 2026-10-16 10:33 UTC — Capacity verified and V56 registration launched
+
+Original capacity session1003 completes normally at10:32:52, including the
+separate CPU recheck. It preserves both complete optimizer-tail files and all
+1,872,586,582 original bytes behind their unchanged canonical paths. All three
+protected selected checkpoints remain unchanged. Checkpoint free space is
+23,978,983,424 bytes, exceeding the23,622,320,128-byte admission requirement.
+Scratch remains machine-local storage, not an external backup. Capacity config
+SHA256 is`b5d30b36c952936beeb7c26c6ff734e0807d176c1c6147c697d50dabdad31e66`;
+the independent external receipt is
+`69e8fb865c10e8a17327a295b62a96f68db90058d1fd568bea3deb0bc889d7ad`.
+
+Bind that receipt into the still-unregistered V56 training wrapper. All109
+long-budget tests pass again in33.81s after this final binding; log:
+`/mnt/matrixformer_scratch/balanced_native_long_v56_preregistration_tests.log`.
+The capacity registration binds only the new capacity source/test, not the
+previously unregistered trainer, so this final binding changes no already
+registered artifact. No scientific source changes are planned after this point.
+
+At10:33:53 launch exactly one CUDA-hidden V56 registrar, session22802,
+shell31010, with output at
+`/mnt/matrixformer_scratch/balanced_native_long_v56_registration_v1.log`.
+It is currently verifying complete evidence and must finish before training.
+Registration success, seed reservation, gradient updates and qualification
+are not yet claimed. Preserve this original registrar handle; no timeout-based
+restart. The next steps are the original GPU training→full task-audit chain
+and one attached CPU-only qualification coordinator, after verifying the
+actual registration. The goal remains active and unmet.
+
+### 2026-10-16 10:51 UTC — V56 is training; first update accepted and qualification attached
+
+Original registrar session22802 exits normally at10:41:48. V56 configuration
+SHA256 is`ebd96a62be81a2f9737042fa49686390ed941ab0c8c9f2425d5899e9594002cf`.
+It binds603 source/test files,19,100 input identities and548 historical
+configurations,256 batches/7,168 tasks and284 fresh confirmation cases. A
+separate JSON-only check rehashes every registered source and historical config
+and confirms the original V29 parent,98 inherited updates,5e-6 learning rate,
+0.25 displacement and0.5/0.25/0.25 prior masses. Its first reporting command
+uses an unavailable Python3.10 hashlib helper and exits before reporting;
+the corrected streamed-hash report succeeds without any artifact modification,
+registration repeat or scientific computation.
+
+At10:42:37 start exactly one original GPU train→complete task-audit chain:
+session68000, shell32840 (start ticks310083035), trainer32844 (310083036).
+Separate`train.log`and eventual`full_audit.log`remain in the registered output.
+At10:43:10 launch one CUDA-hidden qualification chain, session13811,
+shell33029. Its read-only readiness loop pins the exact trainer/parent identity
+and waits for trainer-owned status; the preceding registrar status is not a
+training failure. The coordinator registers once at10:46:49 and then runs as
+PID33029, attached to the original training/audit chain. Qualification config
+SHA256 is`2fc9d8e7d4ced743aa20a4f7fa4d3a6c5348719831ee538b37b4da49d19159a5`.
+All485 directly bound pipeline sources independently rehash unchanged.
+
+At10:50:48 original trainer32844 is capturing step2 gradients; the original
+coordinator33029 is waiting for training. Step1 finishes in145.99947503814474
+seconds and is accepted, giving one accepted update. Initial boundary0 has
+score1.0606515728673378 and zero failed development guards, but remains
+deliberately ineligible. Neither an accepted update nor the unchanged-parent
+development result demonstrates fresh confirmation or real benchmark parity.
+No eligible trained boundary, confirmation or new real campaign exists yet.
+
+Observed GPU usage is128,983 MiB with100 percent utilization. Free
+root/checkpoint/scratch bytes are15,993,286,656/23,656,980,480/
+3,528,909,033,472; all reserves remain intact. Preserve both original live
+handles and do not relaunch on observation timeouts. Continue the registered
+256 attempts and fixed boundaries, complete task/endpoint/selected-grid audits,
+sole selection and fresh confirmation before the unchanged full real suite.
+
+Paths:
+-Training:`/mnt/checkpoints_200/single_model_goal_20261005/balanced_native_long_v56/`.
+-Qualification:`/mnt/checkpoints_200/single_model_goal_20261005/balanced_native_long_v56_pipeline/`.
+-Scratch:`/mnt/matrixformer_scratch/balanced_native_long_v56`(machine-local, not external backup).
+-Readiness/registration/run logs:
+`/mnt/matrixformer_scratch/balanced_native_long_v56_pipeline_{readiness,registration,run}_v1.log`.
+
+This turn completes the longer-budget implementation,593 relevant passing
+tests plus the final109-test receipt-bound recheck, independent capacity
+preservation, original registration and actual training/qualification launch.
+The goal remains active and unmet. V55 remains a failed qualification and V45
+the latest actual real benchmark campaign. No paper, commit, push or branch
+changes occur, and no registered scientific source was changed after launch.
+
+### 2026-10-16 11:32 UTC — V56 step10 improves selection score but fails four development guards
+
+The previous goal turn was progress: it implemented, registered and launched
+the fixed longer-budget experiment. This turn repeatedly verifies the original
+live sessions68000/13811 and actual processes32844/33029, waits for their
+scheduled work without restarting either, and records the first trained
+development boundary. Both original chains remain live; this is not a blocker.
+
+All first10 attempts are accepted. The original step10 validation covers all152
+development cases and22 comparisons. Its minimax selection score decreases
+from actual-V29 boundary0's1.0606515728673378 to1.0591104370157216, but four
+original guards fail. Therefore`best_step`remains0, deliberately ineligible,
+and`selected_checkpoint_sha256`is null. A better summary score is not a
+qualified checkpoint or evidence of parity with blended MatrixFormer.
+
+| Failed synthetic-development comparison | Frozen V8 guard | Actual V29 boundary0 | V56 step10 |
+|---|---:|---:|---:|
+|Native/MissBench-style NRMSE|0.664351306907806|0.6643317164038061|0.664425611706422|
+|Native/UCI-style NRMSE|0.664351306907806|0.6643317164038061|0.664425611706422|
+|Native/common NRMSE|0.6643513056134889|0.664331714163799|0.6644256104574401|
+|MAR/common NRMSE|0.4402281015910897|0.43772160090738577|0.44026991670323645|
+
+These are synthetic development metrics, not real MissBench, UCI or RecSys
+benchmark results, and not the fresh confirmation bank. Against actual V29,
+10 of22 scalar metrics improve and12 worsen. Preserve every adverse change,
+not only crossed guards: native three NRMSEs approximately+0.014134%, native
+raw RMSE+0.080952%, structured UCI/common NRMSE approximately+0.000256%,
+MCAR+0.332112%, MAR+0.582177%, skip-logic+0.068240%, neural-MAR+0.218597%,
+polarization+0.281459% and soft-polarization+0.264387%. Synthetic rating RMSE
+improves0.067902% and MAE0.149843%, but these gains do not override any guard.
+The original buffer check reports16 unchanged frozen tensors and238 changed
+trainable tensors; full independent task/endpoint audits remain pending.
+
+Save a read-only report of all22 original comparisons, source identities and
+all adverse changes in
+`/mnt/checkpoints_200/single_model_goal_20261005/balanced_native_long_v56_monitoring/boundary_010/`.
+A separate scalar recheck compares every CSV value and failure flag against
+the original saved reports. It performs no inference, training, checkpoint
+selection, gate change or grid replay, and explicitly makes no independent
+training/full-grid audit claim.
+
+| Evidence | SHA256 |
+|---|---|
+|Original boundary10 validation|`81f0dbdcc7c36833256b0a175b2e4cf83941ea9ddf9a2f051dc775462efa8ab2`|
+|Full22-comparison CSV|`d1560961ad189710386571b83ccdcc752dc8c6d30837429c0fc318d683b99f04`|
+|Saved-boundary summary|`0c46e13daad2188b788938b65112567f1599b10e0a0398d8f1e984ee7e84fa3f`|
+|Separate scalar recheck|`0dbc41aef6bd48fb680aa7ca2cbd9afe0758797d91709b55b042bb1feeef1bcb`|
+
+At11:32:11 original trainer32844 is capturing step11 rating gradients, and
+original coordinator33029 waits for training. The next predeclared validation
+is25; all256 attempts and original later boundaries remain fixed. Do not stop,
+extend, replace seeds, change references/losses or relax guards in response to
+this interim result. Preserve the logged NumPy degrees-of-freedom warning;
+no query, column or case is removed in response. At11:30:39 GPU usage is128,403
+MiB and all reserves remain intact, with free root/checkpoint/scratch bytes
+15,976,534,016/23,026,339,840/3,528,266,854,400.
+
+No fresh confirmation or real benchmark campaign has run for V56. The goal
+remains active and unmet; V45 is still the latest actual real campaign. No
+registered scientific source, paper, commit, push or branch changes occur.
+
+### 2026-10-16 12:41 UTC — V56 step25 recovers native guards but retains a worse MAR failure
+
+The previous goal turn was progress through the first trained validation and
+its complete saved-metric report. This turn verifies the original trainer,
+parent shell and qualification process, including the original start ticks;
+all609 unique training/pipeline source identities independently rehash unchanged.
+Repeated waits on original sessions68000/13811 confirm both remain live. No
+timeout is treated as a stopped run or justification for a restart.
+
+The first25 attempts produce20 accepted updates. Attempts16/19/20/22/25 are
+rejected with`finite_metrics_rejected`, consume their registered budget slots
+and are not replaced or retried. The original coordinator continues waiting
+for the original trainer/auditor chain. GPU process inspection shows only
+trainer32844 holding GPU memory; the persistent coordinator remains CPU-only.
+
+At the original step25 boundary, all152 cases and22 development comparisons
+are present. The selection score improves from1.0591104370157216 at10 to
+1.058040279694884 at25 (actual-V29 boundary0:1.0606515728673378). Failed guards
+fall from four to one: the three native NRMSE checks recover, with no newly
+failed comparison, but MAR becomes worse. No model is selected: `best_step`
+remains0/ineligible and`selected_checkpoint_sha256`remains null. Better summary
+score or fewer failed guards is not qualification or parity with the blend.
+
+| Synthetic development metric | Frozen V8 guard | Actual V29 | V56 step10 | V56 step25 |
+|---|---:|---:|---:|---:|
+|Native/MissBench-style NRMSE|0.664351306907806|0.6643317164038061|0.664425611706422|0.6642247520763106|
+|Native/UCI-style NRMSE|0.664351306907806|0.6643317164038061|0.664425611706422|0.6642247520763106|
+|Native/common NRMSE|0.6643513056134889|0.664331714163799|0.6644256104574401|0.664224751468994|
+|MAR/common NRMSE (still fails)|0.4402281015910897|0.43772160090738577|0.44026991670323645|0.4410174581378031|
+
+MAR is+0.752957% worse than actual V29 and+0.169792% worse than step10.
+Across all22 original scalar metrics,15 improve and7 worsen against actual
+V29;12 improve and10 worsen against step10. Preserve all seven adverse
+actual-V29 changes, including those still within their guards: native raw
+RMSE+0.124601%, MCAR+0.477192%, MAR+0.752957%, skip-logic+0.212048%,
+neural-MAR+0.222653%, polarization+0.180132% and soft-polarization+0.494279%.
+Synthetic rating RMSE/MAE improve0.089201%/0.148754% against actual V29, but
+MAE is slightly worse than step10. Do not aggregate these trade-offs away.
+These are saved synthetic-development metrics, not real benchmark results
+or fresh confirmation. The full training/grid audits are still pending.
+
+The complete22-comparison CSV, summary and separate scalar recheck are saved
+at`/mnt/checkpoints_200/single_model_goal_20261005/balanced_native_long_v56_monitoring/boundary_025/`.
+The recheck verifies every field against the original0/10/25 reports, all
+failure transitions, every adverse delta, the ineligible selection and the
+complete25-row training-log prefix. It makes no independent prediction-grid,
+autograd or full-training-audit claim and performs no inference or selection.
+
+| Evidence | SHA256 |
+|---|---|
+|Original boundary25 validation|`431f490c5a7a615977d56938edf66edb98d7270a616627125244da7caa282c07`|
+|Original first25 log rows (8,678,959 bytes)|`db3e46206347d8e75d0ae1b6bfc959c42613e54cdd31320139fa2b78d8dccb2c`|
+|Full22-comparison CSV|`392a109fdb17a395d4a07a8ee21ed8e1af3bff38e0c1773c1f63c0ca62518d92`|
+|Saved-boundary summary|`c347ba726a5430fd2fa239190ace42e447c13f8d1e30dfaa54f19ab1a49b064b`|
+|Separate scalar recheck|`b97a72564fd8638a6b455801efedc2bc8676bc9700a484b3861c08e1defa1fb7`|
+
+At12:40:38 original trainer32844 is capturing step26 gradients under original
+shell32840; coordinator33029 remains attached and waiting. GPU usage is126,703
+MiB with100 percent utilization. Free root/checkpoint/scratch bytes are
+15,962,996,736/23,015,612,416/3,527,233,449,984, preserving every reserve.
+The next registered validation is50; all256 attempts and later boundaries
+remain fixed. No interim-driven stopping, seed replacement, objective/reference
+change or guard relaxation occurs. Preserve the original live handles.
+
+The goal remains active and unmet. No V56 fresh confirmation or real benchmark
+campaign exists; V45 remains the latest actual real campaign. The complete
+frozen MissBench/UCI, four-RecSys and matched-LLM scope remains required. No
+registered scientific source, paper, commit, push or branch changes occur.
+
+### 2026-10-16 14:37 UTC — V56 step50 lowers the score but native guards fail again
+
+The previous goal turn was progress through the original step25 boundary and
+its complete saved-metric report. This turn verifies and waits on the same
+live training/audit session68000 and qualification session13811, never
+restarting either after an observation timeout. It follows the registered
+schedule to step50 and preserves the complete adverse result. All609 unique
+registered source identities rehash unchanged at the final scalar recheck.
+
+Fifty attempts produce30 accepted updates and20 finite-metric rejections.
+Rejected attempts are16/19/20/22/25/26/27/28/30/32/33/35/37/42/44/45/47/48/
+49/50. Every recorded rejection has finite, positive changes in at least one
+protected group; it is not a NaN, crash or a reason to rerun the batch. The
+log's last accepted attempt before this boundary is46, not50. The reporter
+checks all50 logged30-group decision records without replaying neural outputs
+or claiming an independent historical optimizer/rollback audit.
+
+The original50-boundary validation covers all152 cases and22 comparisons.
+The minimax selection score decreases from1.058040279694884 at25 to
+1.0521835884669104 at50, but failed guards rise from one to four. All three
+native NRMSE comparisons that recovered at25 fail again, and MAR remains
+failed and becomes slightly worse. There are no recovered guards versus25.
+The best eligible step remains0/ineligible, with a null selected-checkpoint
+identity. Lower aggregate selection score does not override these failures.
+
+| Failed synthetic-development comparison | Frozen V8 guard | Actual V29 | V56 step25 | V56 step50 |
+|---|---:|---:|---:|---:|
+|Native/MissBench-style NRMSE|0.664351306907806|0.6643317164038061|0.6642247520763106|0.6645965516491399|
+|Native/UCI-style NRMSE|0.664351306907806|0.6643317164038061|0.6642247520763106|0.6645965516491399|
+|Native/common NRMSE|0.6643513056134889|0.664331714163799|0.664224751468994|0.664596551335333|
+|MAR/common NRMSE|0.4402281015910897|0.43772160090738577|0.4410174581378031|0.4410527017228644|
+
+Against actual V29,13 of22 metrics improve and9 worsen. Preserve all nine
+adverse changes: the three native NRMSEs approximately+0.039865%, native raw
+RMSE+0.117899%, MCAR+0.535657%, MAR+0.761009%, skip-logic+0.203653%,
+neural-MAR+0.149465% and soft-polarization+0.624459%. Against25,14 metrics
+improve and8 worsen. In particular, synthetic rating RMSE/MAE are still
+0.071831%/0.111215% better than actual V29, but0.017386%/0.037595% worse
+than25. These are synthetic-development trade-offs, not real MissBench, UCI,
+RecSys or LLM benchmark results, and not fresh confirmation.
+
+Save the full22-comparison CSV, summary, all20 rejection identities and
+reported positive-group counts in
+`/mnt/checkpoints_200/single_model_goal_20261005/balanced_native_long_v56_monitoring/boundary_050/`.
+A separate scalar recheck verifies every value and failure transition against
+the original0/10/25/50 reports, all adverse deltas and the complete first50
+training-log rows. It checks the reported finite-decision fields and positive
+changes, not historical neural predictions or autograd. No inference, training,
+checkpoint selection, guard change or independent full-grid audit is performed.
+
+| Evidence | SHA256 |
+|---|---|
+|Original boundary50 validation|`e04134265d22c7dc536083aa2511772270bfadd37f4bc6a21cdbc0124568a19f`|
+|Original first50 log rows (17,366,367 bytes)|`3431d5da926224ccecf88de500c00ff57b16763f3c96ee4a2fa77e6c1e67abb8`|
+|Full22-comparison CSV|`573fe160945f84747aee5e15bfd651368f32a624f36b5b5493fd8081778a6024`|
+|Saved-boundary summary|`472facfda88c8c1a8603de2a1e4e19491cd9f196224907c34d60ad569d5b3ece`|
+|Separate scalar recheck|`881a83993be41f15d35f5012235730699004f47f622658c29f91ada1c9fa0c43`|
+
+At14:36:58 original trainer32844 is capturing step52 gradients under original
+shell32840. Original coordinator33029 remains attached and waiting. GPU usage
+is129,415 MiB with100 percent utilization. Free root/checkpoint/scratch bytes
+are15,929,520,128/22,997,479,424/3,525,613,391,872, preserving all reserves.
+The next registered validation is64, followed by128/192/256. Keep all256
+attempts, the original streams and the original protections unchanged; do not
+select an unqualified boundary or adapt the recipe in response to this result.
+
+The full goal remains active and unmet. No V56 fresh confirmation or real
+benchmark campaign exists; V45 is still the latest actual real campaign. The
+complete frozen benchmark scope and every required comparison remain required.
+No paper, commit, push, branch or registered scientific source changes occur.
+
+### 2026-10-16 15:47 UTC — V56 step64 recovers native guards; original run continues beyond64
+
+Resume the existing goal and verify original training/audit session68000 and
+qualification session13811 are both live. The original shell32840 and
+trainer32844 retain start ticks310083035 and310083036; coordinator33029
+retains start ticks310086333. Do not relaunch or change the registered recipe.
+All609 unique registered source identities rehash unchanged. The training and
+pipeline config hashes remain
+`ebd96a62be81a2f9737042fa49686390ed941ab0c8c9f2425d5899e9594002cf` and
+`2fc9d8e7d4ced743aa20a4f7fa4d3a6c5348719831ee538b37b4da49d19159a5`.
+
+The complete first64 attempts contain34 accepted updates and30 rejected
+attempts, all reported as finite-metric rejections, not NaNs or crashes.
+The original64-boundary validation includes152 synthetic-development cases
+and22 comparisons. Its score improves to1.0518885506005542 from
+1.0521835884669104 at50. Three native NRMSE guards recover, leaving one
+failed guard: MAR. The MAR value worsens despite the lower selection score.
+The best eligible step remains0/ineligible and selected checkpoint identity
+remains null. No trained boundary qualifies for fresh confirmation yet.
+
+| Synthetic-development comparison | Frozen V8 guard | Actual V29 | V56 step50 | V56 step64 |
+|---|---:|---:|---:|---:|
+|Native/MissBench-style NRMSE|0.664351306907806|0.6643317164038061|0.6645965516491399|0.6643274620102932|
+|Native/UCI-style NRMSE|0.664351306907806|0.6643317164038061|0.6645965516491399|0.6643274620102932|
+|Native/common NRMSE|0.6643513056134889|0.664331714163799|0.664596551335333|0.6643274636743085|
+|MAR/common NRMSE (failed)|0.4402281015910897|0.43772160090738577|0.4410527017228644|0.441822355382681|
+
+Against actual V29,16 metrics improve and6 worsen. Preserve all six adverse
+changes: native raw RMSE+0.113183%, MCAR+0.284059%, MAR+0.936841%,
+skip-logic+0.216558%, neural-MAR+0.070478% and soft-polarization+0.648075%.
+Against50,15 metrics improve and7 worsen; MAR increases0.174504%.
+Synthetic rating RMSE/MAE remain0.063232%/0.094596% better than actual V29,
+but0.008605%/0.016637% worse than50. These values are synthetic-development
+metrics only, not real benchmark scores or fresh confirmation.
+
+The complete22-comparison CSV, summary and separate scalar recheck are saved
+at`/mnt/checkpoints_200/single_model_goal_20261005/balanced_native_long_v56_monitoring/boundary_064/`.
+They retain every adverse delta, all30 rejected-attempt identities and their
+reported positive-group counts. The scalar recheck verifies all original
+comparison values/flags, the complete first64 log rows and registered source
+hashes. It does not perform inference, training, selection, independent
+prediction-grid auditing or historical autograd/optimizer-trajectory replay;
+`independently_audited=false` remains explicit. Full original audits are pending.
+
+| Evidence | SHA256 |
+|---|---|
+|Original boundary64 validation|`ea09194f0df4a0dc0130f006cfa3872c078dd584d136a034eca6ca883832989f`|
+|Original first64 log rows (22,227,480 bytes)|`85b441d1089c04471deeaa770aceb9b31059bc776ca0ae58013e1b9d394a347f`|
+|Full22-comparison CSV|`19cbc9df31252702b823d8a081d36a23f54dece95020f7bafc46454e8275ab5b`|
+|Saved-boundary summary|`a8950d5a682e3911f30a0e8da2d8e0374c0e1056391aaf908f5f1eb3b3bc5c98`|
+|Separate scalar recheck|`46ff0574f29e421afda4f519d419e619022c2cd14c74e81b6717925ec6b0ae58`|
+|Original completed step65 log row, including newline|`b615dd55329ec1f11d023fbd5f04b7869e680ac71013ee5577d850b938efc8c4`|
+
+The original process has completed and accepted step65, reaching35 accepted
+updates, and is capturing step66. This verifies actual continuation beyond the
+old64-attempt limit, not merely an extended configuration. At15:46:09 GPU
+usage is128,303 MiB with95 percent utilization; free root/checkpoint/scratch
+bytes are15,897,423,872/22,987,456,512/3,524,577,013,760, above all reserves.
+Coordinator33029 remains attached in waiting_for_training state.
+
+Continue the fixed256-attempt run; next validation is128, followed by192/256.
+No extra96 boundary, adaptive stopping, replacement draw, changed objective or
+relaxed guard is introduced. Preserve the original training-to-full-audit
+chain and qualification coordinator. Only a qualified sole selection may
+receive fresh confirmation, and only its complete pass may reach the frozen
+real benchmark campaign and full review. The goal remains active and unmet;
+V45 remains the latest actual real campaign. No paper, commit, push, branch
+or registered scientific source changes occur.
+
+### 2026-10-16 20:29 UTC — V56 step128 improves native errors but MAR and the minimax score worsen
+
+The intervening goal turns are verified waits on original training/audit
+session68000 and qualification session13811, with the original process
+identities checked against their start ticks. This turn follows that same
+uninterrupted run from step93 through the scheduled128 validation; no extra96
+validation, restart, replacement seed or live recipe change occurs. Original
+trainer32844 remains under shell32840, with coordinator33029 attached.
+All609 unique registered scientific source identities rehash unchanged.
+
+The first128 attempts produce59 accepted updates and69 rejected attempts.
+Of the rejections,68 are reported finite-metric rejections and one is the
+registered data-admission rejection at84. The latter is not a NaN or optimizer
+failure: mnar_polarization_draw_0, anchor_latent_mcar seed1481334401, produces
+an actual13x34 episode with442 observations and zero queries. The complete
+24 structured draws are inspected, while native/rating indices0/13/14/27
+remain deferred and ungenerated. The entire attempt is consumed without
+teacher/student inference, optimizer proposal, mask repair or replacement
+draw. Preserve its original admission manifest and hash
+`d730dad9ae4de2a973865d3124551bd239814fa0bde5aac89f4100f60ab1a4e3`.
+There are127 recorded finite30-group decisions, not128.
+
+The original128-boundary report covers152 synthetic-development cases and22
+comparisons. The selection score worsens from1.0518885506005542 at64 to
+1.0651521686638237, also worse than the actual V29 boundary0 score
+1.0606515728673378. All three native NRMSE guards still pass, but MAR remains
+the sole failed guard and worsens. Best eligible step remains0/ineligible and
+selected checkpoint identity remains null; no trained V56 boundary qualifies.
+
+| Synthetic-development comparison | Frozen V8 guard | Actual V29 | V56 step64 | V56 step128 |
+|---|---:|---:|---:|---:|
+|Native/MissBench-style NRMSE|0.664351306907806|0.6643317164038061|0.6643274620102932|0.6636436632893121|
+|Native/UCI-style NRMSE|0.664351306907806|0.6643317164038061|0.6643274620102932|0.6636436632893121|
+|Native/common NRMSE|0.6643513056134889|0.664331714163799|0.6643274636743085|0.6636436673620436|
+|MAR/common NRMSE (failed)|0.4402281015910897|0.43772160090738577|0.441822355382681|0.4429393244214254|
+|Synthetic rating RMSE|0.759707415076408|0.7582331266429733|0.7577536782486723|0.7576463168376718|
+|Synthetic rating MAE|0.6893536360978326|0.6879113184383161|0.6872605813480672|0.6871373686932873|
+
+Against actual V29,16 of22 metrics improve and6 worsen. Preserve all six
+adverse changes: MAR+1.192019%, skip-logic+0.088942%, neural-MAR+0.322844%,
+block-neural-MAR+0.030101%, polarization+0.853518% and soft-polarization
++0.642706%. Against64,17 improve and5 worsen: structured MissBench-style
+NRMSE+0.002238%, MAR+0.252810%, neural-MAR+0.252188%, block-neural-MAR
++0.104065% and polarization+1.260934%. Native raw RMSE and MCAR now improve
+versus V29, but the additional adverse families must not be hidden by these
+gains. Synthetic rating RMSE/MAE improve0.077392%/0.112507% versus actual V29
+and0.014168%/0.017928% versus64. These are synthetic-development measurements,
+not real MissBench/UCI/RecSys/LLM results or fresh confirmation.
+
+Save the complete22-comparison CSV, summary and separate scalar recheck at
+`/mnt/checkpoints_200/single_model_goal_20261005/balanced_native_long_v56_monitoring/boundary_128/`.
+The new reporting-only helper at the monitoring directory's`report_boundary.py`
+checks previous10/25/50/64 computations and refuses to overwrite their reports
+or accept unscheduled96. Its initial assumption that every attempt had finite
+optimizer diagnostics was corrected to preserve the original84 admission
+rejection separately; no registered training source or artifact changed.
+An independent scalar calculation checks every CSV value/flag/delta, all128
+training-log rows,127 reported finite30-group decisions, the admission no-op,
+all rejection identities and reported positive-group counts. This performs no
+neural inference, selection or historical autograd/optimizer-trajectory replay;
+`independently_audited=false` remains explicit. Full original audits are pending.
+
+| Evidence | SHA256 |
+|---|---|
+|Original boundary128 validation|`1ca741f7140badd12cbc7537fb7143d63f4a20dc43e86e44b6e2fe9aa399c26d`|
+|Original first128 log rows (44,133,790 bytes)|`31b8b0c06c014a9f6c5ff36f362e3c305679b1f2ede131f894499172acb9116b`|
+|Full22-comparison CSV|`0b73087ed87ae6eaef47abd570401767d9aae0bf128879fb19cb89c1c8b4cd6a`|
+|Saved-boundary summary|`38b52eb094814cf8a01eb7fe4ddb96faf3a3bfe08955044c3a380e9d8de4e384`|
+|Separate scalar recheck|`e0a45b5ccd6b6f0e46ffe5d829b2fec18c3beb6ac959daa4fffea852c786abd3`|
+|Reporting-only helper|`7aefe8caac89ab4eeba7bf0eff8769f35129c314d6d13b8d536d4027c41fc36c`|
+
+At20:28:57 the original trainer is capturing step129 and the original
+coordinator remains in waiting_for_training. Free root/checkpoint/scratch
+bytes are15,820,787,712/22,944,473,088/3,520,887,799,808, preserving all reserves.
+Continue the same fixed256-attempt trial; next validation is192, then256.
+No interim-driven stopping, new recipe, guard relaxation or unqualified
+selection is authorized by these results. Fresh confirmation and the complete
+frozen real campaign still require the original qualification chain to pass.
+The goal remains active and unmet; V45 remains the latest actual real campaign.
+No paper, commit, push, branch or registered scientific source changes occur.
+
+### 2026-10-17 01:18 UTC — V56 step192 keeps improving native/rating errors but MAR worsens again
+
+The preceding goal turns are verified waits on the original live processes.
+This turn follows original training/audit session68000 and qualification
+session13811 through the scheduled192 boundary. Shell32840, trainer32844
+and coordinator33029 retain their original process identities and start ticks;
+no restart follows any observation timeout. All609 registered scientific
+source identities rehash unchanged. The fixed recipe and budget remain intact.
+
+The first192 attempts contain85 accepted updates and107 rejected attempts:
+106 reported finite-metric rejections and the single data-admission no-op
+at84. There are191 reported finite30-group decisions. The zero-query84
+episode, all24 inspected structured draws and four ungenerated deferred
+native/rating tasks remain preserved without mask repair or replacement.
+The second extended64-attempt block adds26 accepted updates after128.
+
+The192 validation again covers152 synthetic-development cases and22
+comparisons. Its score improves slightly from1.0651521686638237 at128 to
+1.0647555309084833, but remains worse than1.0518885506005542 at64 and
+1.0606515728673378 for actual V29 at0. All three native NRMSE guards pass;
+MAR remains the only failed guard and deteriorates further. There are no
+recovered or newly failed guards versus128. Best eligible step remains
+0/ineligible and selected checkpoint identity is null. No trained V56
+boundary qualifies for fresh confirmation.
+
+| Synthetic-development comparison | Frozen V8 guard | Actual V29 | V56 step128 | V56 step192 |
+|---|---:|---:|---:|---:|
+|Native/MissBench-style NRMSE|0.664351306907806|0.6643317164038061|0.6636436632893121|0.6633429213931927|
+|Native/UCI-style NRMSE|0.664351306907806|0.6643317164038061|0.6636436632893121|0.6633429213931927|
+|Native/common NRMSE|0.6643513056134889|0.664331714163799|0.6636436673620436|0.6633429217168543|
+|MAR/common NRMSE (failed)|0.4402281015910897|0.43772160090738577|0.4429393244214254|0.4438280221080818|
+|Synthetic rating RMSE|0.759707415076408|0.7582331266429733|0.7576463168376718|0.7576128535182682|
+|Synthetic rating MAE|0.6893536360978326|0.6879113184383161|0.6871373686932873|0.6869351059829732|
+
+Against actual V29,16 metrics improve and6 worsen. Preserve every adverse
+change: MAR+1.395047%, skip-logic+0.054063%, neural-MAR+0.203330%,
+block-neural-MAR+0.146960%, polarization+0.815963% and soft-polarization
++0.439625%. Against128,16 metrics improve and6 worsen: native raw RMSE
++0.008204%, MAR+0.200636%, MNAR+0.374104%, two-phase-subset+0.898269%,
+block-neural-MAR+0.116824% and latent-factor+0.276376%. Native NRMSE improves
+approximately0.148841% versus actual V29 and0.045317% versus128. Synthetic
+rating RMSE/MAE improve0.081805%/0.141910% versus V29, and0.004417%/0.029436%
+versus128. These are synthetic-development measurements only, not actual
+MissBench/UCI/RecSys/LLM benchmark results or fresh confirmation.
+
+Save the full22-comparison CSV, summary and separate scalar recheck at
+`/mnt/checkpoints_200/single_model_goal_20261005/balanced_native_long_v56_monitoring/boundary_192/`.
+The unchanged reporting-only helper preserves every comparison and all107
+rejection identities. A separate scalar calculation verifies every CSV
+value/flag/delta, all192 training-log rows,191 finite30-group decision records,
+the original84 admission no-op and all reported positive-group counts. It
+rehashes the original configuration/validation inputs and all609 registered
+source identities. No neural inference, selection, qualification change,
+independent prediction-grid audit or historical autograd/optimizer-trajectory
+replay occurs. Full original audits remain pending and
+`independently_audited=false` remains explicit.
+
+| Evidence | SHA256 |
+|---|---|
+|Original boundary192 validation|`dd8af7fe855232c7fab3efc3f7fe20a5a467844f0c432a937248ac1e112523a9`|
+|Original first192 log rows (66,398,783 bytes)|`6b64b47b1ec7e74f11ec34ddd43fe3b0273b25fb1737321f85abd99daeb1f11e`|
+|Full22-comparison CSV|`c479752c3468eeed2020f43ec75ac75674fb2428c631f159dae3d6025d67a0c9`|
+|Saved-boundary summary|`f55266bab33549e9236eafd6ebc9de0d104db89d650269d24c83fc550505eb1d`|
+|Separate scalar recheck|`a467a779e0b20f055ef7524d21643acc36b0ede01674ff52558753a550257470`|
+
+At01:17:57 the original trainer is capturing step194 and the original
+coordinator remains attached in waiting_for_training. Free root/checkpoint/
+scratch bytes are15,746,297,856/22,899,515,392/3,517,087,297,536, above all
+reserves. Continue the original256-attempt run to its final scheduled256
+validation; no interim-driven adaptation, additional validation boundary,
+guard relaxation or unqualified selection occurs. Preserve the original
+training-to-full-audit chain and qualification coordinator. The full goal
+remains active and unmet; no V56 fresh confirmation or real benchmark campaign
+exists, and V45 remains the latest actual real campaign. No paper, commit,
+push, branch or registered scientific source changes occur.
+
+### 2026-10-17 06:03 UTC — V56 finishes256 attempts without a qualifying checkpoint; original full audit starts
+
+The intervening goal turns are verified waits on the original trainer and
+coordinator. This turn follows the same run through its fixed final256
+boundary and verifies the original training-to-audit handoff. Trainer32844
+finishes normally; original shell32840 execs
+`audit_single_model_balanced_native_long.py`, retaining its original process
+identity. Coordinator33029 remains live and waits for that exact audit chain.
+No observation timeout causes a restart, and the256-attempt budget is not
+extended. All609 registered scientific source identities rehash unchanged.
+
+The complete256-row log contains111 accepted updates,144 finite-metric
+rejections and the original84 data-admission rejection. The last64 attempts
+add26 accepted updates. There are255 reported finite decision records, each
+retaining all30 grouped slots, but only254 have30 defined metrics. Accepted
+attempt223 has29 defined metrics: legacy_draw_0/common_nrmse is null both
+before and after, while its raw RMSE is0.9165601975799818 before and
+0.915260971985728 after. The original registered`metric_decision` explicitly
+retains matching undefined slots, requires unchanged coverage and applies
+acceptance only to defined metrics. Preserve that missing metric as null;
+do not count it as a measured pass, fill zero, drop its slot or claim all30
+metrics were defined. Full task/grid replay must still audit the underlying
+episode and recorded coverage. The84 no-query batch is unchanged and remains
+a consumed no-op, not an optimizer proposal or replacement draw.
+
+Final development validation covers152 cases and22 comparisons. MAR remains
+failed, and two-phase-subset newly fails, giving two failed guards. The score
+worsens from1.0647555309084833 at192 to1.0753292277126987, worse than the
+initial1.0606515728673378 and the64-boundary1.0518885506005542. Every trained
+scheduled boundary fails at least one guard. Best eligible step remains
+0/ineligible and selected checkpoint identity is null. The completed training
+result is negative; independent full-audit closure is still pending.
+
+| Synthetic-development comparison | Frozen V8 guard | Actual V29 | V56 step192 | V56 step256 |
+|---|---:|---:|---:|---:|
+|Native/MissBench-style NRMSE|0.664351306907806|0.6643317164038061|0.6633429213931927|0.6627960064331347|
+|Native/UCI-style NRMSE|0.664351306907806|0.6643317164038061|0.6633429213931927|0.6627960064331347|
+|MAR/common NRMSE (failed)|0.4402281015910897|0.43772160090738577|0.4438280221080818|0.4432621942729185|
+|Two-phase-subset/common NRMSE (failed)|0.3393578065773808|0.3390778090228713|0.3385294573553568|0.34095505579477703|
+|Synthetic rating RMSE|0.759707415076408|0.7582331266429733|0.7576128535182682|0.757124078659605|
+|Synthetic rating MAE|0.6893536360978326|0.6879113184383161|0.6869351059829732|0.6863256632421452|
+
+Against actual V29,11 metrics improve and11 worsen. Preserve all adverse
+changes: structured MissBench-style NRMSE+0.168088%, structured UCI/common
+NRMSE+0.176887% each, structured raw RMSE+0.023567%, MAR+1.265780%,
+two-phase-subset+0.553633%, skip-logic+0.091733%, neural-MAR+0.954176%,
+block-neural-MAR+0.354333%, polarization+1.817129% and soft-polarization
++0.180712%. Native NRMSE improves approximately0.231166%, and synthetic
+rating RMSE/MAE improve0.146267%/0.230503%, but these gains do not override
+the failed guards or adverse families.
+
+Against192,9 metrics improve and13 worsen. Preserve structured MissBench
+NRMSE+0.390652%, structured UCI/common NRMSE+0.395858% each, structured raw
+RMSE+0.287967%, MCAR+0.446671%, censoring+1.018466%, two-phase-subset
++0.716510%, skip-logic+0.037650%, cluster-level+1.076579%, neural-MAR
++0.749322%, block-neural-MAR+0.207069%, latent-factor+0.718186% and
+polarization+0.993063%. MAR improves0.127488% versus192 but still fails.
+These remain synthetic-development values, not real benchmark results or
+fresh confirmation. No inference-time ensemble or changed protocol is used.
+
+Save all22 comparisons, summary and a separate scalar recheck at
+`/mnt/checkpoints_200/single_model_goal_20261005/balanced_native_long_v56_monitoring/boundary_256/`.
+The original reporting helper's30-defined-slot assertion detects223 and
+refuses to emit a misleading final report. Preserve that helper unchanged
+for the128/192 report hashes. Add reporting-only`report_boundary_v2.py` to
+retain undefined slots and explicitly report254x30 plus1x29 defined counts;
+no scientific source or existing report is modified. Its computations and
+no-overwrite protection pass against all seven trained-boundary reports.
+A separate scalar calculation verifies all22 values/flags/deltas, the complete
+256-row log and its end-of-file,255 reported finite decision records, the
+223 null-before/null-after slot, the84 admission no-op, all145 rejection
+identities and reported positive-group counts. It also rehashes all609
+registered sources. This is not an independent neural-grid, historical
+autograd or optimizer-trajectory audit;`independently_audited=false` remains.
+
+| Evidence | SHA256 |
+|---|---|
+|Original boundary256 validation|`c947df817c41c9aa0dcfe0043deaefb8c8c5dab258fe2d2c31e5ef73d74c6e3c`|
+|Complete256 log rows (88,656,451 bytes)|`33a200b4446bf278d91e9bc8fef403206ce804856c8d90f6feca85992797fdaa`|
+|Full22-comparison CSV|`76912a850e060cfd91d4f9a0f5b6fa2d246e050f633637bb34ec367f55c36778`|
+|Saved-boundary summary|`c7e26cf785a304886e4814431b77de2db4b44474fd074344c406a177556f664c`|
+|Separate scalar recheck|`9a7dde8f42f49782ff83cf2bdec8ef5c88a7c820682f3b4970eede28289653dd`|
+|Reporting-only v2 helper|`666938320bc84d4811f3906772a303b1ac405fe720a790352fa86cc20474ae2d`|
+
+The original endpoint receipt reports raw endpoint hash
+`b1b1587ca0df5eea15490e67b5be07b2fe8efb4af311d3ad910ca528813d91f6`,
+terminal/optimizer attempt256 and111 accepted updates. This is an unqualified
+endpoint, not a selected checkpoint. At06:03:21 auditor32840 is live with
+increasing CPU time, and coordinator33029 reports
+waiting_for_existing_training_audit. Free root/checkpoint/scratch bytes are
+15,660,691,456/22,855,938,048/3,483,723,747,328, preserving all reserves.
+Let the original full task/grid audit and qualification coordinator finish;
+do not run confirmation or real benchmarks for an unqualified boundary.
+The complete goal remains active and unmet, with V45 still the latest actual
+real campaign. No paper, commit, push, branch or registered scientific source
+changes occur.
+
+### 2026-10-17 10:10 UTC — Original V56 full-task audit passes; endpoint replay remains live
+
+The preceding goal turns are verified waits. This turn follows original
+auditor32840 through its complete replay rather than restarting it when
+observations time out. Intermediate archive counts advance from step122 to
+256. Original training/audit handle68000 exits0 at09:53; the complete original
+audit is saved at
+`/mnt/checkpoints_200/single_model_goal_20261005/balanced_native_long_v56_audit/`.
+All609 registered scientific source identities still rehash unchanged.
+
+The complete audit verifies256 scheduled attempts,255 optimizer attempts,
+111 accepted updates, the84 admission no-op,7,140 actual training tasks and
+their exact complete payload/teacher identities,510 rating contexts,6,144
+structured admission draws, and1,824 original/reference/development prediction
+grids. The distinction is important:7,168 is the scheduled task-slot count,
+not the number of cached training episodes. The generated RESULTS.md says
+"all7168 cached tasks"; retain that original artifact, but use the authoritative
+audit.json count7,140 and its explicit admission accounting. The24 structured
+draws at84 were inspected for admission, while its four native/rating tasks
+were never generated and none of that rejected batch entered training.
+
+The independent observed-only teacher replay verifies all6,630 imputation
+targets,13,260 raw component grids and every observed blend-weight refit on
+CPU. No query truth is used for routing. Reference replay verifies6,630
+retention targets and12,750 component grids. The255 finite decision records
+and the223 undefined native NRMSE slot remain preserved; do not relabel that
+missing measurement as a pass. Final raw geometry checks cover77,998,496
+parameters and84 vectors, including the fixed quarter displacement and the
+rejected256 proposal. The audit explicitly requires separate neural replay
+of that rejected proposal and its actual finite-point scores. It does not
+claim historical full-autograd or full optimizer-trajectory replay.
+
+| Completed audit evidence | SHA256 |
+|---|---|
+|Original full training audit|`1fa9a8b41eb7520f2d6acb1fe92182017828204c55078ddd409f030fe72c8eed`|
+|Complete observed-blend teacher replay summary|`d6b7b3c395e1ccc57ceb3170ea26e5253f2447c6bffba80d8583d1050ea33f5f`|
+|Complete reference replay summary|`22bfcebc3cce3da4d2bb3da1ac7005c3bba5032bd5b17bc21847649f1ce717f1`|
+|Original complete training-log prefix|`33a200b4446bf278d91e9bc8fef403206ce804856c8d90f6feca85992797fdaa`|
+|Original complete validation-log prefix|`ebcfd270ae1f2c2941f1f596a7f3da9530267d2e3d4ad72b768c40660790915f`|
+
+After its own saved-evidence checks, original coordinator33029 launches
+endpoint replay child240266 at10:00:08 under the unchanged registered command.
+At10:10:16 both remain live: coordinator start ticks310086333 and child start
+ticks318468142. Handle13811 is still the original live qualification chain.
+The replay stage has not emitted a completed endpoint result yet; do not
+claim terminal trial closure or start another scientific run. Free root/
+checkpoint/scratch bytes are15,592,898,560/22,760,308,736/3,462,189,928,448,
+preserving all reserves. No source, data, checkpoint or experiment is retried.
+
+This audit success validates the recorded negative training result; it is not
+model success. Every trained boundary still fails at least one development
+guard, final256 fails MAR and two-phase-subset, and no selected checkpoint
+exists. All original adverse comparisons remain required. No fresh
+confirmation or real benchmark campaign has started. The full single-model
+goal stays active and unmet; V45 remains the latest actual real campaign.
+No paper, commit, push, branch or registered scientific source changes occur.
+
+### 2026-10-17 10:45 UTC — V56 closure and prospective four-draw batching
+
+The original V56 qualification coordinator exits normally at approximately
+10:38 UTC. No training, audit or replay process remains live; the GPU has no
+allocation. The complete training audit, endpoint replay and independent
+saved-grid audit all pass, validating the negative outcome rather than model
+success. Endpoint replay covers56 before/candidate grids and reproduces the
+rejected256 proposal. There are zero selected grids, no qualifying trained
+checkpoint, no fresh confirmation evaluation and no real campaign/review.
+The pipeline explicitly rejects promotion because no trained boundary retains
+all22 original guards and strictly improves minimax. Preserve the111 accepted
+updates,144 finite-metric rejections, one whole-attempt admission rejection,
+7,140 actual training tasks and7,168 scheduled slots. The undefined step223
+native NRMSE slot remains null, not a measured pass.
+
+| Final evidence | SHA256 |
+|---|---|
+|Pipeline result|`9261d45c59d420cbc901af8f22a234747de7142e4faa422dbbaabf1de5088f96`|
+|Full training audit|`1fa9a8b41eb7520f2d6acb1fe92182017828204c55078ddd409f030fe72c8eed`|
+|Endpoint audit|`4a4160166c0dc327fe2166d5e692809f4f20035076dfc09bffcb5d71eee9b8e7`|
+|Endpoint gate|`c11fef4cc7e3262a0bda167ff3bf340446dbaae17b876fd97c8b26c70b6a27d7`|
+|Unevaluated-confirmation gate|`3016c6c32e38311fecae4a0c250e409167d7eb92827c715d1efecbc80ca71a94`|
+
+All609 source identities across the original registration/qualification
+configs rehash unchanged. Free root/checkpoint/scratch bytes are
+15,569,035,264/22,760,304,640/3,461,763,661,824, preserving18/6/50 GiB
+checkpoint/root/scratch reserves.
+
+The next unregistered hypothesis pairs adjacent uncaptured specification
+batches into128 attempts of56 tasks, keeping the same7,168 scheduled tasks.
+Each update includes four native draws, four draws from each of12 structured
+families with all four original components, and four rating contexts. Halving
+task weights preserves.5/.25/.25 domain mass and all32 equally represented
+native component/requested-shape/orientation strata. This may reduce mixture
+noise, but fewer updates may underfit and more protected directions may hurt
+feasibility/memory. Admission must reject the entire56-task batch if any of
+its48 structured draws is unusable; all eight native/rating tasks remain
+deferred. No partial salvage, replacement or mask repair is allowed.
+
+The new metadata-only `scripts/single_model_four_draw_batching.py` and its
+tests validate identities, weights, component completeness and exact
+one-to-one task preservation. All326 targeted/adjacent CPU tests pass in
+28.65 seconds, including the updated boolean-source-step and native-balance
+checks. Historical V56-style seeds are used only as metadata fixtures, never
+for a new scientific execution. No new seeds, sampling, GPU probe, training
+or checkpoint selection is authorized or performed. Gradient, retention,
+admission, storage and full audit integration still require prospective work
+before a separately registered fresh feasibility test. Actual V29 remains
+the initializer; all22 development guards,32 fresh confirmation comparisons
+and the full frozen real review remain required. The goal stays active and
+unmet; V45 remains the latest actual real campaign.
+
+### 2026-10-17 10:55 UTC — Four-draw optimizer/loss integration and lossless gradient staging
+
+Continue the prospective larger-within-update-batch hypothesis without
+registering or running another scientific experiment. The new additive
+`single_model_four_draw_protection.py` keeps56 composite gradients and every
+defined point gradient, up to168 rows, with34 finite metric slots. Each of
+the four native draws remains individually protected; each structured/rating
+objective uses its four-draw mean. All112 individual metric slots and their
+regressions remain explicit. Matching undefined NRMSE stays null, contributes
+neither a fabricated gradient nor a measured pass, and redistributes only
+that task's point proposal mass to its defined RMSE. Preserve the original
+half-composite/half-point proposal, clipping, AdamW,0.1 margin,2x norm cap,
+fixed-quarter displacement and exact parameter/moment/rate rollback.
+
+`single_model_four_draw_retention.py` halves both the supervised and effective
+retention per-task masses. Their ratio and therefore every scale1 raw loss
+gradient are unchanged. The actual streamed toy-model test compares all
+parameter gradients bitwise against the original standardized-Huber callback
+for native and all12 structured cohorts, in both orientations. References,
+teacher-mean geometry and rating callback remain unchanged. The planned full
+batch requires52 imputation retention targets and100 reference components
+(48 V8/52 V29),104 observed-blend teacher components and four rating tasks;
+these are prospective counts, not new generated artifacts.
+
+The generic existing admission/capture/storage routines need no modification
+to support56 tasks. New integration tests verify that a bad structured draw
+in either original half rejects the whole paired attempt: all48 structured
+draws are inspected once, all eight native/rating tasks stay deferred, and
+neither half is salvaged. Admitted fake-data cases consume every slot once.
+Actual toy-model capture preserves all56 composite rows, every defined point
+row and the full112-slot metric dictionary. The captured gradients then pass
+the new optimizer, lossless full-row storage aliasing, serialization roundtrip
+and independent endpoint arithmetic audit. An undefined native slot exercises
+167 rather than168 measured gradients. Fake teachers/samplers and intercepted
+backward-seed calls ensure this does not resample any historical scientific
+draw. These are implementation tests, not a V29 checkpoint feasibility result.
+
+Memory requires additional care:168 full raw FP32 vectors contain
+52,414,989,312 bytes (48.8153 GiB), twice the previous24.4076 GiB bank. The
+original full-context quarter probe reached113.4974 GiB allocated and
+125.8203 GiB reserved, with result hash
+`25ae2d701e016d3334954324c2cbd314e19163a0025aad8cd3576d9bddc63626`.
+Simply adding another24.4 GiB would be unsafe under the unchanged0.9 allocator
+cap. This addition is a warning, not a measured new peak or proof of OOM.
+
+The new `single_model_four_draw_gradient_staging.py` instead supports a
+complete CPU FP32 capture bank, then a late copy of every defined row to the
+explicit update device. Every copied FP32 byte is checked in bounded chunks,
+including signed zero; unused undefined-slot capacity is not transferred.
+The future scientific caller must release the CPU capture bank before the
+original CUDA optimizer/projection and must still admit CPU, GPU and complete
+serialization/disk capacity. No arithmetic moves to CPU, no quantization or
+aggregation is introduced, and no allocator cap is raised. A deterministic
+tiny CUDA transfer test passes, but does not establish full-model memory fit.
+
+Verification:
+- The complete targeted/adjacent CUDA-hidden suite passes589 tests in43.74s;
+  one CUDA-only transfer test is explicitly skipped there.
+- The separately invoked tiny deterministic CUDA transfer test passes in3.77s,
+  without any pretrained model, scientific prior draw, training or selection.
+- Earlier four existing-moment test failures were an incorrect toy audit
+  update-count fixture; correcting its prior accepted-update count resolves
+  them without changing optimizer behavior or weakening the auditor.
+- New tests also cover corrupted vectors/transfer bytes, infeasible projection,
+  forward failure, exact rollback, missing tasks, unequal cohort weights,
+  preserved original callbacks and bitwise loss/gradient equivalence.
+- All609 registered V56 source identities rehash unchanged. Root/checkpoint/
+  scratch free bytes at10:54 are15,562,948,608/22,760,304,640/3,461,763,661,824.
+
+Reproduce with the established CUDA-hidden CPU environment and pytest over
+`test_single_model_four_draw_{batching,protection,retention,integration,gradient_staging}.py`,
+plus the original balanced-native-long-budget, balanced-native-coverage,
+balanced-structured-components, fixed-quarter-protection, standardized-teacher-
+Huber, training-admission, replicated-decoder-batch and point-gradient-storage
+tests. The CUDA-only check is
+`CUDA_VISIBLE_DEVICES=0 pytest -q tests/test_single_model_four_draw_gradient_staging.py::test_small_deterministic_cuda_transfer_preserves_bits_without_scientific_sampling`
+with the same PYTHONPATH/TMPDIR/thread environment.
+
+Next requires a separate56-task feasibility driver and its complete audits,
+binding these new callback modules as well as unchanged generated source
+hashes. Update all inherited28/84/30/26/50/56-grid assumptions, register fresh
+disjoint data/backward streams only after complete capacity admission and
+closed-V56 evidence checks, and measure the staged full-context peak on the
+H200. Keep actual V29 initialization, not V55/V56 or a probe endpoint. No
+fresh scientific seeds, model checkpoint, held-out selection, confirmation,
+real campaign or paper change occurs in this turn. The goal remains active
+and unmet; successful engineering tests do not close it.
+
+### 2026-10-17 11:08 UTC — Fresh56-task four-draw feasibility probe registered and live
+
+The preceding turn is progress: it implements and tests the larger-batch
+optimizer/loss/staging components. This turn integrates a complete separate
+feasibility driver, independent audits and a non-retrying coordinator. No
+registered predecessor is edited or restarted. The V56 negative closure is
+rechecked before registration and launch; every original owner is terminal.
+
+`scripts/preflight_single_model_four_draw.py` binds the unchanged actual V29
+initializer, new four-draw protection/retention callbacks, original teacher
+policy and full238-tensor training inventory. The first two fresh balanced
+batches are paired with all56 tasks and halved weights. All four native
+requested shapes are set to2000x1000 for the declared stress test; their
+components/orientations are0/false,4/true,1/false,5/true. Every structured family
+has all four components, and all four rating contexts remain. This is one
+attempt, not the proposed128-attempt full training schedule.
+
+The driver captures a complete168-row raw FP32 bank on CPU, verifies every
+defined transferred byte, frees that bank and keeps original CUDA optimizer/
+projection arithmetic. It records capture/overall GPU peaks, update-start
+allocation and peak host RSS. No allocator-cap increase or arithmetic change
+is made. Complete conservative budgets are1536 MiB checkpoint,32 MiB root and
+128 GiB scratch, including atomic full-raw evidence, beyond18/6/50 GiB reserves.
+Host admission reserves176 GiB working memory plus32 GiB free; the prospective
+check observes243,393,839,104 available bytes. A host-memory check is not a
+measured full-probe peak.
+
+All inherited task/grid/component assumptions are prospectively updated:
+56 tasks/112 metric slots, up to168 raw rows,34 finite metric slots,
+104 observed-blend teacher components,52 retention targets and100 retention
+components (48 V8/52 V29). The new mean auditor reconstructs all52 imputation
+terms and four rating terms on every physical column. Negative infeasible or
+rounded proposals retain before-only evidence instead of fabricating a
+candidate; if a candidate was measured, neither the candidate grids nor their
+audit may be omitted. Data-only rejection consumes the entire attempt without
+model work. The coordinator preserves every negative outcome and authorizes
+no full trial or model nomination, even if engineering feasibility passes.
+
+The new driver/auditor/coordinator and their targeted/adjacent tests pass388
+CPU tests in35.82s; the CUDA-only transfer check is explicitly skipped in this
+CUDA-hidden run (its prior deterministic CUDA test passed). The initial34
+driver/audit/coordinator tests also pass. No scientific draw is used in these
+tests. The complete registration then reserves112 disjoint data/backward
+identities against553 prior configuration inventories;575 directly registered
+source identities plus closed-V56 evidence bind all callbacks and tests.
+
+| Registration | SHA256 |
+|---|---|
+|`four_draw_preflight_v1/config.json`|`bdc978f5b69a70106721447f3072ed34025b21e6f5e38d35ed1ee487b3996993`|
+|`four_draw_preflight_v1/registration.json`|`1bd53ef8d4363c0da78b12797364caca7a544b961fb2b05e6a06fac37ee4fc84`|
+
+Original registration handle50605 exits0. Original pipeline handle36514 is
+live with coordinator PID255579 and run child255654, both verified in `/proc`.
+It runs exactly once through run, independent teacher/reference replay,
+CPU raw/endpoint/retention/transfer audit and, when an actual candidate exists,
+the independent teacher-mean audit. Commands/logs are preserved in
+`/mnt/checkpoints_200/single_model_goal_20261005/four_draw_preflight_v1_pipeline/`;
+canonical artifacts are under `four_draw_preflight_v1/` and raw diagnostics
+under `/mnt/matrixformer_scratch/four_draw_preflight_v1/`.
+
+At the first live check, all48 structured draws pass the original admission
+rule, all eight native/rating draws were correctly deferred until admission,
+and child255654 is capturing `legacy_draw_0`. No optimizer result, memory-fit
+verdict or model qualification exists yet. Do not restart this process when
+an observation times out. Preserve every now-registered new source as well as
+the predecessors. Root/checkpoint/scratch free bytes immediately after launch
+are15,559,864,320/22,759,587,840/3,461,763,657,728, preserving all reserves.
+The full single-model goal remains active and unmet; no held-out confirmation,
+real benchmark campaign, paper, branch, commit or push is performed.
+
+### 2026-10-17 11:34 UTC — Four-draw step accepted and memory measured; replay wiring recovered separately
+
+The preceding turn is progress (registration and launch). This turn follows
+the original live handle36514 without restarting training. Capture advances
+through all56 tasks and the original run child255654 exits0 after one
+accepted update. All34 defined grouped training guards retain, with at least
+one improvement. These are sampled training guards, not the22 held-out
+development guards or real benchmark results. All112 individual slots remain;
+`mnar_draw_2/common_nrmse` is null at both endpoints. Thus111 individual metrics
+and167 actual raw gradients are measured, not168. Every one of the
+13,025,748,832 defined FP32 gradient elements passes the exact transfer check.
+
+Measured resource peaks are88.724315 GiB allocated CUDA,125.777344 GiB reserved
+CUDA and151.192486 GiB host RSS. The.9 allocator fraction is unchanged and the
+176 GiB host working allowance is not exceeded. The CPU capture capacity is
+52,414,989,312 bytes; the167-row CUDA transfer is52,102,995,328 bytes. This is
+successful measured capture/update/serialization on the declared full native
+contexts, not a counterfactual comparison with a GPU-resident168-row bank or
+proof of full-trial/held-out success. Independent audits are still required.
+
+All seven adverse individual training metrics remain recorded despite their
+cohort means retaining:
+
+| Individual metric | Candidate minus before |
+|---|---:|
+|`mar_neural_draw_0/common_nrmse`|0.00021240513925901983|
+|`mnar_soft_polarization_draw_1/rmse`|0.000004306232444850622|
+|`mnar_draw_2/rmse`|0.00001202210624612907|
+|`mcar_draw_3/rmse`|0.0003339562838228227|
+|`mcar_draw_3/common_nrmse`|0.00020876238465949992|
+|`mar_neural_draw_3/rmse`|0.0000920573148197601|
+|`mar_neural_draw_3/common_nrmse`|0.00017480800561164855|
+
+The original replay worker257967 encounters an entry-point wiring defect:
+the registered source correctly declares `replay_admitted`, but the subsequent
+alias `replay_admitted = replay_targets` replaces it with the outer wrapper.
+Inspection confirms the cycle `replay_cohort_targets -> replay_original_teachers
+-> replay_admitted -> replay_cohort_targets`. It repeatedly verifies the config
+before ever entering the neural primitive. Neither replay directory exists and
+no CUDA allocation is present for that process. Preserve this implementation
+failure; tests previously checked namespace binding but missed callable routing.
+
+After recording the original PID/start identity, exact command, source/config/
+training-result hashes and absent replay artifacts, send SIGTERM only to that
+verified worker. Original coordinator255579 exits1 with replay returncode-15;
+handle36514 is terminal. Its failed status and both logs remain immutable.
+The accepted training attempt is not repeated and no original source changes.
+
+The separately registered `recover_single_model_four_draw_replay.py` recompiles
+the already registered teacher-replay source into a separate namespace, keeps
+its actual primitive name and rebinds only the two outer replay wrappers.
+Its functional routing test reaches `replay_admitted`, not another wrapper;
+scope tests reject prior replay artifacts, live original owners, altered
+training or a new scientific seed. Its CLI has no training stage and its
+coordinator holds an exclusive lock. The corrected entry point starts the
+previously unentered independent replay once, followed by the unchanged CPU
+audits and mean audit. Original575 source identities rehash unchanged.
+
+| Evidence | SHA256 |
+|---|---|
+|Original training result|`739d75071025d62a05e38d75db181f6af6d119b0885729d69429c6c563e14c32`|
+|Original exact transfer report|`fa9f77aee95bf5283e81dcc2467872da341e1ffb4e3f69d7d0274911151f7040`|
+|Preserved wiring diagnosis|`6df60866aef9f28b5c776dcd3af69c249bbd720ff3c6770585c31fbbfb3c4449`|
+|Recovery configuration|`5201b869a2d4c9ea1f61cb1bac57078b78a7957543b2b5247d92783b29f6b9b2`|
+|Recovery registration|`e9d254cb6dddf47b386bcdef449d4679ecb5defbfb8e8ced13589c5470d1b2db`|
+
+The prospective full-trial metadata plan is also added separately, without
+registering or sampling its streams:128 attempts/7,168 scheduled tasks, original
+requested shapes (no propagation of the probe stress override), and eight
+fixed boundaries0/5/13/25/32/64/96/128. The one non-even original boundary25
+rounds up to source26, explicitly; no additional validation boundary is added.
+All22 guards, sole strict-minimax selection, ineligible0,284 fresh confirmation
+cases/all32 comparisons and full frozen480-comparison review remain required.
+Fresh full-trial streams, capacity and trainer/audit integration are still
+pending. A metadata-test lookup error is fixed by direct seed extraction, not
+by changing any scientific behavior. The combined recovery/routing/locking/
+pipeline/schedule/adjacent suite passes81 CPU tests in23.31s.
+
+Recovery registration handle44098 exits0. Original recovery handle59194 is
+live with coordinator258545 and replay child258604, both verified in `/proc`.
+At11:33:44 the corrected primitive has actually entered
+`replaying_teacher_targets`, created its first replay directory and allocated
+9,166 MiB on the GPU. Do not restart this chain on observation timeout.
+Root/checkpoint/scratch free bytes are15,549,644,800/22,022,221,824/
+3,405,914,836,992. No independent audit or final feasibility verdict exists
+yet. The goal remains active and unmet, with no new real campaign, paper,
+branch, commit or push.
+
+### 2026-10-17 11:43 UTC — neural replay complete; separate CPU count recovery
+
+The original replay-recovery chain is now terminal, not live. Replay child258604
+exits0: `teacher_replay/result.json` reports all56 bitwise-equal full grids,
+52 blend tasks/104 component grids, and no student or validation evaluation.
+`retention_replay/manifest.json` reports all52 reference grids/100 component
+grids, with roles v8:48 and v29:52. Do not repeat this completed inference.
+
+The following original CPU audit child258735 exits1 at the inherited
+`audit_admission` check. Its original helper still requires28 tasks,
+24 structured draws and deferred indices0/13/14/27, whereas the registered
+four-draw schedule requires56/48 and0/13/14/27/28/41/42/55. The audit also
+requires exact regenerated admission equality, the original hash, a distinct
+PID and captured-episode digests; these remain mandatory. The stale constants
+explain a necessary failure but do not independently establish the remaining
+identity checks. No audit pass is inferred from this diagnosis.
+
+Recovery handle59194 and coordinator258545 exit1. Preserve their failed status
+and audit log SHA256
+`3a775f1148c562af5cb416eb2457fc00c5a33f9117233c75d03f11cb2aaed45f`.
+No original registered file or scientific artifact changes. The read-only
+introspection handle85225 exits0 and confirms the other inherited top-level
+audit cardinalities are already four-draw counts.
+
+Add `recover_single_model_four_draw_audit.py` and its dedicated tests as a
+separate CPU-only recovery. It changes exactly the three admission cardinality
+expressions in an isolated namespace and rebinds the complete four-wrapper
+audit chain. It snapshots the failed original status byte-for-byte before an
+explicit registered status transition, retains both prior pipeline failures
+and forbids training or neural-replay CLI stages. The independent arithmetic,
+captured identity, full prediction, raw optimizer, retention and transfer
+checks remain unchanged. Completed or partly completed audit outputs prevent
+reuse; an exclusive lock protects the coordinator.
+
+The initial routing test correctly revealed that the outer wrapper reads
+admission metadata before invoking the helper; its sentinel is narrowed to
+the actual helper rather than that preliminary read. The corrected functional
+routing, exact-source-diff, admission identity/hash/PID/episode fault injection,
+replay-evidence, CLI and locking tests plus adjacent suites pass80 tests
+in12.21s. Registration is initiated once under handle26101. The CPU audit has
+not yet passed; no diagnostic checkpoint is promoted, no full trial is
+authorized and the scientific goal remains active/unmet.
+
+### 2026-10-17 11:46 UTC — preserve count-recovery failure; restore original arithmetic
+
+The first CPU count-recovery registration succeeds (handle26101 exits0), but
+its coordinator259814/audit259936 then fail at the retained exact-admission
+identity check. Handle74841 is terminal. This was not a passing audit; retain
+the failure and do not reuse its registration.
+
+| First CPU recovery evidence | SHA256 |
+|---|---|
+|Configuration|`f8255f8aaf0d64704c52e2f1309aa4748a5735b54b6879b60b69ae52a935dec1`|
+|Registration|`07d8ea2b3af682556afd2d0e96be521719ae59fd64c211a21f0d747e36192e8f`|
+|Byte-identical original failed-status snapshot|`b2cef2ffcf7f5a8dd055c629706b9da47440cd5de004e4ba9e7c64433f4e6248`|
+|Failed count-recovery audit log|`617435810924b84b29359befa3b5fd774efafebbb9cc10f368bfc2c193c2c22e`|
+
+Read-only diagnostic handle29313 isolates the missing wrapper: the original
+preflight `main` enters `original_arithmetic`, setting four Torch threads and
+both OpenBLAS pools to24. The new count-recovery entry omitted that context.
+Import-time Torch configuration is24 despite the external OMP setting of4.
+Under24 Torch threads, tasks18/24/40 differ only in normalized metadata and
+episode-content digests; every raw-array digest and all other task fields are
+identical. Restoring the exact original four-Torch/24-BLAS context reproduces
+the complete admission record exactly. No tolerance change is needed.
+
+Add a separate `recover_single_model_four_draw_audit_arithmetic.py`, preserving
+all frozen predecessors. Its entry wraps registration, coordinator and audit
+in the original arithmetic context. It preserves the first count-recovery
+failure/status transition and adds no training or neural replay entry. Tests
+assert the context surrounds every actual recovery callback, check isolated
+callback binding and forbid diagnosis overwrite. The combined arithmetic,
+count, replay, pipeline, integration, mean and original-BLAS suites pass106
+tests in12.63s. These tests extend, rather than conceal, the earlier missing
+runtime-context coverage.
+
+The separately persisted diagnosis (handle65298 exits0) invokes the actual
+corrected admission verifier under original arithmetic, not a weaker comparison:
+exact regenerated identity, original hash, distinct PID and all48 captured
+structured-episode digests pass. Its report is
+`four_draw_preflight_v1_audit_thread_diagnosis.json` under the experiment root.
+No neural teacher/reference replay or optimizer attempt is repeated. The
+second CPU-only recovery is registered and launched once under handle49874;
+the remaining optimizer/endpoint/retention/transfer/mean audits have not yet
+passed. The accepted training attempt remains non-promotable and the goal
+remains unmet.
+
+### 2026-10-17 11:50 UTC — exact-entry audit active; complete full-trial storage plan
+
+The second CPU-only recovery is registered once and running under handle49874,
+coordinator261672/audit261791. Its config/registration SHA256 values are
+`1b04771fcb9393460b51e05655aac24af2212a4bd07d81abb93a6a78b4490079` /
+`5685d543d60735a7536007e14448e6b8d490d460f8410b8ff5c0d9363c4ac781`.
+The exact-admission/thread diagnosis SHA256 is
+`b6178ad3a82f1f4278c43cf459591e01ea0370fb4ca8026e0e49bc5cff8bcc85`.
+The audit has passed the prior admission failure point and reached the raw
+optimizer evidence, with measured live RSS54,053,308 KiB at3m36s; this is
+progress, not a final audit verdict. Do not restart on observation timeout.
+
+The complete then-existing four-draw suite passes209 tests with one CUDA-only
+skip in52.35s. Separately add an unregistered metadata-only
+`single_model_four_draw_trial_storage.py`: it retains all128/56 scheduled
+attempts/tasks and every original requested area,6656 targets,13312 teacher
+components and12800 reference components. Independent tests compare the
+reference/component/teacher storage dictionaries exactly to the original
+256-attempt schedule, and reject missing/reordered/invalid requests. The new
+storage plus schedule tests pass13 tests in14.51s. No task is sampled and no
+training seed is reserved by this planning helper.
+
+| Full-trial volume | Explicit accounting bytes | Allowance bytes | Reserve bytes |
+|---|---:|---:|---:|
+|Checkpoint|3,257,699,712|4,294,967,296|19,327,352,832|
+|Root|67,108,864|67,108,864|6,442,450,944|
+|Scratch|175,730,530,944|206,158,430,208|53,687,091,200|
+
+Scratch explicitly includes52,414,989,312 bytes of168-row FP32 gradients plus
+56,158,917,120 bytes for simultaneous atomic raw replacement, twelve snapshot
+vectors, eight ordinary-model vector allowances and all target/replay caches.
+This is conservative disk accounting, not a measured full-training memory
+claim or launch authorization. Keep176+32 GiB host admission and the.9 CUDA
+allocator cap.
+
+Full-trial trainer, replay/audit adapters and capacity admission remain pending.
+All inherited28/26/50/64/256 assumptions must be adapted explicitly for56/52/
+100/128, including actual callable routing and original arithmetic contexts.
+Preserve all22 development guards/eight fixed boundaries/sole selection,
+284 fresh confirmation cases/all32 comparisons and full frozen480-comparison
+review. Initialize from actual V29, never the probe checkpoint.
+
+Checkpoint free space is approximately21.77 GB, below4 GiB allowance plus18
+GiB reserve; no files are moved. Bounded `find -xdev` identifies possible
+closed, nonselected relocation inputs: V56 latest936,293,291 bytes, V28
+latest534,289,035 bytes and three old diagnostic candidate vectors of
+311,995,561 bytes each (standardized-Huber, balanced-native-quarter and
+balanced-native-coverage probes). These are only candidates, not approved
+inputs: a separate byte-preserving plan must prove closure, exact identities,
+canonical links, reserves and independent verification before any relocation.
+Never move a selected/teacher checkpoint, mounted archive or active probe
+artifact as an unplanned workaround. Goal remains active/unmet; no new real
+campaign, paper edits, commits or pushes.
+
+### 2026-10-17 12:05 UTC — full optimizer audit passed; supplementary count recovery
+
+The preceding goal turn made concrete progress: it preserved both failed audit
+entries, established exact admission/48 captured-episode equality under original
+arithmetic, launched the corrected CPU chain once, and completed the prospective
+storage ledger. The current turn revalidates live coordinator261672/audit261791
+through the existing handle49874 and `/proc`; no observation timeout causes a
+restart.
+
+Audit261791 now exits0. The completed independent audit covers56 training tasks,
+112 original before/candidate prediction grids,167 raw gradient vectors and the
+actual saved quarter-step Adam/projection endpoint. `autograd_replayed=false`
+and `cuda_initialized=false`: this is an independent raw/endpoint/grid audit,
+not a claim to have replayed the complete historical neural backward pass.
+The52 reference targets/100 component grids and complete13,025,748,832-element
+FP32 transfer audit also pass. The original finite gate is accepted and remains
+explicitly `real_benchmark_success=false`. Its audit SHA256 is
+`59650949c38365e489f4d50c37bbcf77fe2790e121073f006ff08cb7d4f97f6a`.
+The sole training attempt, its one undefined NRMSE slot and seven adverse
+individual point metrics remain unchanged. No checkpoint is promoted.
+
+The following supplementary mean-audit child264111 exits1 before creating its
+output directory: the original mean source still requires50 retention component
+grids, even though its other counts correctly require56 tasks/52 targets and
+48 V8/52 V29 components. Preserve the now-terminal handle49874/coordinator261672
+failure and both logs:
+
+| Completed chain stage | Exit | Log SHA256 |
+|---|---:|---|
+|Independent optimizer/endpoint audit|0|`e949007fe9354d907e605fc3d6d9c8906dcfae15b7634407ff58af4fd3eab8ac`|
+|Original supplementary entry|1|`acf0179eac9a8c67d1e553cdd61c92c2dcdc3e9fb09094e6d29dba6ff7ab46e4`|
+
+Add `recover_single_model_four_draw_mean_audit.py` as a separately registered,
+CPU-only one-shot entry. It changes exactly the prerequisite component count
+50 to100 in an isolated namespace; all original mean arithmetic and columns
+remain. Functional routing tests enter the actual corrected prerequisite and
+reject50/99/101 incomplete or changed counts, rather than only searching source
+strings. Completed raw, endpoint,
+retention and transfer evidence is checked without pretending a mean report
+already exists. It reuses the completed audits, never training or neural replay.
+Registration and launch are initiated once under handle49349. A final complete
+feasibility verdict still awaits this supplementary result.
+
+Separately prepare unregistered full-trial integrations:
+
+- `single_model_four_draw_trial_retention.py` binds all56 decisions,52 reference
+  targets/100 components per admitted batch and128 attempts to the unchanged
+  four-draw loss. The original qualification's overlooked `range(28)` is also
+  adapted to56 before scientific registration.
+- `single_model_four_draw_trial_blend_replay.py` preserves all7168 scheduled
+  tasks, every admitted52-target/104-component teacher replay, original full
+  payload checks and specialist-rating tasks.
+- `single_model_four_draw_trial_recipe.py` adapts the original trainer's capture
+  lifecycle: CPU168-row bank only after admission, byte-checked defined-prefix
+  CUDA transfer, CPU-bank release before original quarter-protected update,
+  and retention of the latest actual CUDA bank across data-only rejections.
+  Each optimizer attempt gets a transfer receipt and measured memory fields.
+  Original validation, strict sole selection, checkpoint and confirmation
+  functions are AST-identical; original optimizer/failure-evidence calls remain.
+
+Tests execute the actual adapted loop with tiny mocked inference/update
+boundaries: admitted-then-rejected, admitted/rejected/admitted and all-rejected
+cases verify CPU-buffer release, old GPU-buffer release before new capture,
+no fabricated transfer on rejected batches and exact last-bank preservation.
+This is control-flow testing, not another scientific optimizer attempt. The
+supplementary recovery, probe-audit/pipeline and full-trial schedule/storage/
+replay/recipe suites pass75 tests in20.99s. Fixture mistakes in the new saved-grid
+test (missing original synthetic metadata and an incorrect read callback) are
+corrected using complete original specifications and the actual training reader;
+no production guard is weakened.
+
+The complete full-trial entry point, full-task/endpoint auditors, qualification
+coordinator and byte-preserving capacity procedure remain unimplemented. No
+fresh training/confirmation streams are registered or sampled. V28's candidate
+capacity input proves to be a failed interrupted trajectory, not a completed
+audit, so it is not admitted for relocation. Once this current probe is entirely
+closed, its candidate vector may instead be considered with the three older
+completed diagnostic vectors and V56's unselected optimizer tail; nothing is
+moved now. Keep original V29 initialization, all22 development guards,284 fresh
+confirmation cases/all32 comparisons and every frozen real benchmark/full
+480-comparison review. Goal remains active/unmet.
+
+### 2026-10-17 12:13 UTC — complete positive feasibility closure and verified capacity
+
+Supplementary handle49349 exits0. Coordinator265631 and mean-audit child265729
+are terminal. The corrected entry audits all56 tasks and14,945 physical columns:
+52 reweighted imputation tasks (four native/48 structured), four unchanged
+rating tasks and16 adverse teacher-mean task contributions. These adverse terms
+remain in the saved CSV/JSON; no favorable subset or new gate is introduced.
+No model inference, full composite-loss replay or neural backward replay is
+claimed by this descriptive calculation.
+
+The independently completed final feasibility summary now passes:
+
+| Probe quantity | Verified result |
+|---|---:|
+|Accepted optimizer updates|1|
+|Original before/candidate prediction grids|112|
+|Defined raw gradients|167 of168 capacity rows|
+|Peak CUDA allocated|88.7243151665 GiB|
+|Peak CUDA reserved|125.77734375 GiB|
+|Peak host RSS|162,341,695,488 bytes (151.192486 GiB)|
+|Registered GPU/host allowances retained|Yes|
+|Held-out or real-benchmark improvement established|No|
+
+| Completed feasibility evidence | SHA256 |
+|---|---|
+|Mean-recovery configuration|`6e5a8ad6d72dee71967b7d48598628212400eb246585b0fd683d04820b7fb5a4`|
+|Mean-recovery registration|`ed84da753798cdab55d6b46c1184662fddd64032c756704587abfc0ad4f3718e`|
+|Final complete feasibility report|`a6923bb5cd25758545fbf3124a9f3ccd4792c9b13c133fc3fec305a715e3a6c0`|
+|All-column supplementary audit|`bcc8fbc602a28391fec084ffe7e800501ecd32b98def457470b26ebb1947072a`|
+|Reference/component audit|`eb44ab4adf19042d879c823b85bc1f81f6c17b1c31e3fa8b8ab10afca58b8a2f`|
+|Exact transfer audit|`b1d7ede20158c9e088e20a039d388f6ff39aa378c954ad5ef2f6eb652ad7bef2`|
+
+The result is stored in
+`four_draw_preflight_v1_mean_recovery_v1/result.json`; all original failed
+pipeline statuses/logs remain unchanged. This closes the one registered
+feasibility attempt, not the model goal. Its diagnostic checkpoint remains
+non-promotable; the future trial must start from actual V29.
+
+After closure, separately prepare and execute
+`relocate_single_model_four_draw_capacity.py`. Exactly five closed, nonselected
+artifacts move to UUID-bound machine-local scratch: V56's936,293,291-byte
+unqualified optimizer tail and four311,995,561-byte candidate vectors from the
+standardized-Huber, balanced-native-quarter, balanced-native-coverage and now
+closed four-draw probes. Preserve both accepted and rejected outcomes. V28 is
+explicitly excluded; selected checkpoints, teachers, actual V29, mounted archives
+and ordinary probe checkpoints do not move.
+
+The capacity operation requires stopped producers, unlocked original locks,
+no open readers, full original audit identities, finite typed tensor/optimizer/
+RNG validation, copy/fsync/hash before atomic canonical links, and a separate
+CPU-process recheck. Dedicated and adjacent capacity suites pass81 tests
+in11.62s. Handle90074 completes preservation and the separate recheck with exit0.
+Every original path resolves to its exact bytes, total2,184,275,535 bytes; no
+scientific artifact is deleted or regenerated. Scratch is not external backup.
+
+| Capacity evidence | SHA256 |
+|---|---|
+|Configuration|`6ab40bd7b9eff4b60cc2412234845bc28334ff6bb34d74db69303f09f537e004`|
+|Registration|`486c7abeae4a273b7efd15ee7d328ea3f0b121dc3d597b9a17e639c0e5c2ed4e`|
+|Independent external receipt|`26e5449dbf823059a5331197fbb0b586fa1df331ca2f01bac2a15f25ec538f24`|
+
+The external receipt checks all five canonical artifacts. Checkpoint free bytes
+are23,953,076,224 at recheck, above the23,622,320,128-byte requirement (18 GiB
+reserve plus4 GiB full-trial allowance). Root and scratch reserves also pass.
+At12:12, free bytes are15,533,797,376 root/23,953,072,128 checkpoint/
+3,403,730,522,112 scratch. Capacity sources are now frozen; no `four_draw_trial`
+planning/integration files are frozen by that operation and they remain
+unregistered. Do not repeat preservation or use the now-linked inputs as new
+relocation candidates.
+
+Next work is the complete full-trial trainer entry point, full-task/endpoint
+auditors and qualification coordinator, using the tested final-source recipe,
+retention and blend-replay adapters. Bind the final feasibility report and
+external capacity receipt before separately reserving fresh streams. Keep128
+attempts/7,168 scheduled tasks, original requested shapes (not the probe's
+native stress override), eight fixed boundaries0/5/13/25/32/64/96/128, all22
+development guards and sole strict-minimax checkpoint selection. Preserve284
+fresh confirmation cases/all32 comparisons and every frozen real benchmark/
+480-comparison review. No full training registration or scientific launch has
+occurred. Broad final four-draw handle40246 exits0:276 tests pass and one
+CUDA-only test is skipped in40.15s. No scientific process remains live. Goal
+remains active/unmet.
+
+### 2026-10-17 12:34 UTC — complete unregistered V57 trainer/audit integration
+
+Continue the active single-checkpoint goal from the completed four-draw
+feasibility and independent capacity preservation, without repeating either
+scientific probe or relocation. Pending read-only handle72077 exits0: the new
+trainer accepts the complete original feasibility evidence and resolves its
+128-attempt/56-task schedule. No real-benchmark improvement is established;
+V45 remains the last actual real campaign and V56 remains closed negative.
+
+Complete the separate flat V57 entry points and helpers:
+`train_single_matrixformer_four_draw.py`,
+`audit_single_model_four_draw.py`,
+`run_single_model_four_draw_pipeline.py`, and the new
+`single_model_four_draw_full_{integration,storage,trial}.py`, fixed-quarter and
+transfer-audit helpers. The trainer retains original V29 initialization,
+128 attempts/7,168 scheduled slots, original requested shapes (not the probe
+stress override), eight boundaries0/5/13/25/32/64/96/128, all22 development
+guards and the original strict-minimax selection. Preserve all individual
+adverse/undefined metrics, every task's original loss gradient, four native
+guards and four-draw structured/rating means. The blended imputation teachers
+and rating specialist remain training-only; the candidate is one ordinary
+network, never a router or inference ensemble.
+
+The full auditor independently regenerates48 structured admission draws per
+scheduled attempt and all56 tasks per admitted attempt, with every teacher
+and retention component. It checks one exact168-capacity/defined-prefix FP32
+transfer receipt per optimizer attempt and the recorded original GPU/host
+allowances; data-only rejection must not invent a receipt. Retain all original
+endpoint, parameter, reference and validation checks. No historical neural
+backward or full optimizer-trajectory replay is claimed.
+
+The qualification pipeline keeps the decorated no-grad endpoint/confirmation
+cores and the distinct entirely-data-rejected wrappers. Correct all task/grid
+counts to56/112, preserving full-network scope flags in the final inherited
+callbacks. Bind the exact same-PID/start trainer-to-auditor handoff. Keep284
+fresh confirmation cases/all32 comparisons and every frozen real benchmark/
+480-comparison review,392 required/18 primary. Registration will freeze every
+four-draw script and test, including helpers imported only during later audits.
+
+Validation: the first new focused run has58 passes and two test-fixture naming
+failures (`validation` instead of actual `validate`); correct the test names,
+not production selection. The broader four-draw and V56 compatibility suites
+then pass384 tests, with one CUDA-only skip, in128.47s. After the final source
+inventory/policy and additional count-coverage tests, the focused integration
+suite passes69 tests in18.08s. Tests execute the adapted loop, materialize all56
+endpoint tasks, exercise accepted/rejected/empty endpoints, exact quarter
+reconstruction, replay namespace layers, all48-draw requirements, malformed
+transfer/memory evidence and unchanged confirmation/benchmark functions.
+
+Read-only handle34754 validates888 prerequisite identities and all current
+capacity allowances under four Torch/24 BLAS threads. Across561 existing
+configurations, the prospective14,620 training/backward/confirmation seeds
+have zero overlap with184,321 recorded seeds. An auxiliary read-only layout
+check initially omits its required phase argument; the corrected check and
+CLI/run-path identity check pass without sampling, CUDA or registration.
+
+| Final compiled source | SHA256 |
+|---|---|
+|Trainer|`f5268972ca90833c533d036474127f85453df18de709dde89f127cbc53631017`|
+|Full auditor|`fee89a419eaab2d1e37823d8d4271af7afb245182fe8eb37095801f8ab4e181f`|
+|Qualification pipeline|`bd348db3128d2e2eef22eea317cd389b6bd7233a36ebb6acc0deee5d18832a58`|
+
+At this entry, neither V57 directory exists and no fresh stream is registered
+or sampled. Next, separately register the completed recipe, launch its single
+train-then-audit chain, bind the qualification coordinator while that exact
+chain is live and retain every outcome. Goal remains active/unmet.
+
+### 2026-10-17 12:39 UTC — V57 registered and its one-shot chains are live
+
+Registration handle44977 exits0. At12:35:43 UTC, reserve all14,620 fresh
+training/backward/confirmation seeds and freeze653 source/test files for
+`four_draw_v57`. Complete host admission records243,466,063,872 available
+bytes versus188,978,561,024 working plus34,359,738,368 reserve bytes. Retain
+the original4 GiB/64 MiB/192 GiB training allowances and18/6/50 GiB storage
+reserves. Both complete original feasibility and independent capacity
+identities pass again during registration; no registered source may now change.
+
+| Registered artifact | SHA256 |
+|---|---|
+|Training configuration|`bbf0d361f6a9492ec3cc2c4e8ce0ff80c40eb56aeffdde511ef4d8a8e41ba6d3`|
+|Training registration|`f276082a6629a9f55ed8df8caf239bbc9c9dc2c46928378c9e15d39d07eb4a89`|
+|Qualification configuration|`09c5d7ebb9a400b91b4f915a8c8a2abbac0481f96b01203da6443ca230c2dfad`|
+
+Launch exactly one `set -e` train-then-audit chain, shell PID274183,
+start_ticks319411325, with trainer PID274184. It enters
+`initializing_training` at12:37:39 UTC and owns the H200 allocation. Preserve
+`four_draw_v57/training_audit_chain.log`, `chain_launch.json` and the separate
+top-level `four_draw_v57_registration.log`.
+
+After verifying the trainer's live status/command, handle75462 launches exactly
+one qualification register/run chain. Registration completes at12:38:09 UTC
+and binds the original training shell's exact PID/start/command, rather than
+launching another trainer or auditor. Coordinator PID274312 is
+`waiting_for_training` at12:38:30 UTC, active_step0. Its persistent process is
+CPU-only; later registered workers retain the unchanged device/arithmetic
+rules. Preserve `four_draw_v57_pipeline_chain.log` and
+`four_draw_v57/pipeline_launch.json`.
+
+The training and qualification sources, configurations and seeds are now
+immutable. Allow the original128-attempt schedule and eight development
+boundaries to run; do not restart a failed stage, replace rejected batches,
+reselect a checkpoint or narrow confirmation/benchmark coverage. At this
+entry, no completed optimizer attempt, held-out gain or real-benchmark parity
+is reported. The goal remains active/unmet while the original chains run.
+
+At12:41:57 UTC the original training process is capturing step1 gradients
+(`mnar_two_phase_subset_draw_2`), with34 of56 original task capsules saved and
+no optimizer/transfer record yet. Initial development evaluation reports
+score1.0606515728673378, zero failed guards and best_step0; this is the unchanged,
+ineligible initializer, not a trained improvement or a completed independent
+audit. The coordinator is still waiting on the original trainer. Read-only
+handle23333 watches for the first actual optimizer record; it does not alter,
+retry or terminate either scientific chain.
+
+### 2026-10-17 12:54 UTC — first full-trial update accepted, with adverse draws retained
+
+The preceding goal turn made progress by completing integration, validation,
+registration and the one-shot launches. This turn verifies the live original
+trainer/coordinator through `/proc`, process commands and the H200 allocation,
+then obtains new runtime evidence rather than restarting either chain.
+Read-only watcher23333 completes successfully after the first actual optimizer
+attempt. Step1 is admitted and accepted; it takes456.9420108329505 seconds.
+At12:53:25 UTC, trainer274184 remains live, capturing step2's
+`recsys_draw_3`; coordinator274312 remains live and waits on that same trainer.
+
+| Step1 recorded quantity | Value |
+|---|---:|
+|Scheduled/captured tasks|56|
+|Structured admission draws|48|
+|Individual point-metric slots/defined slots|112/112|
+|Defined raw gradient rows/capacity|168/168|
+|Grouped finite guards retained|34/34|
+|Accepted updates so far|1|
+|FP32 capture/transferred bytes|52,414,989,312|
+|FP32 elements checked by the original transfer routine|13,103,747,328|
+|Peak CUDA allocated|86.99323844909668 GiB|
+|Peak CUDA reserved|122.365234375 GiB|
+|Peak host RSS|109,661,093,888 bytes (102.12985229492188 GiB)|
+
+Read-only handle39780 verifies the recorded transfer schema/hash, memory
+allowances, original56-task/48-draw admission, complete ordered task manifest
+and112 before/after metric keys. Receipt SHA256 is
+`49cf510c4580b336662ddd94fca3055f86dab23a528088bc1a2a0ea7c0c57d89`.
+This checks saved first-step evidence; it is not another transfer, neural
+replay, independent historical gradient replay or completed full-trial audit.
+The separate recorded CUDA/host measurements remain distinct from the
+transfer receipt's unchanged `peak_memory_measured: false` disclaimer.
+
+The grouped guard accepts, but four individual training metrics worsen:
+
+| Individual training metric | Before | Candidate |
+|---|---:|---:|
+|`mcar_draw_1/common_nrmse`|0.22646506470894|0.22796357791572452|
+|`mcar_draw_1/rmse`|0.23347055783564197|0.23473006759600598|
+|`mnar_draw_1/rmse`|0.16522546111302208|0.16535303234879878|
+|`mnar_skip_logic_draw_3/common_nrmse`|1.010747937589037|1.0107530139690095|
+
+All remain in the original `training.jsonl` record; do not present grouped
+retention as universal individual improvement. Candidate norm is
+0.011435046737536076 versus Adam norm0.04233221940734454. No post-training
+development boundary has completed yet; the next fixed boundary is5. No
+held-out or real-benchmark improvement is established. Handle4938 confirms all
+653 registered source/test hashes remain unchanged and the original finite
+report has34 defined groups, `all_retained`, `some_improved` and `accepted`.
+
+An additional read-only late-stage storage check identifies a planning caveat
+to resolve before qualification: the unchanged endpoint-replay scratch
+admission is805,306,368 bytes (768 MiB). The largest requested56-task endpoint
+has20,604,416 cells, and the original152-case development bank has48,939,610
+cells. At13 bytes per materialized source/target/mask/teacher cell,8 bytes per
+two endpoint prediction grids, one311,993,984-byte FP32 parameter vector and
+4 bytes per selected prediction cell, arrays alone total940,445,160 bytes
+before metadata/scaling allowances. This is a conservative uncompressed
+planning estimate, not actual replay usage; replay has not run. Do not assume
+compression or favorable terminal shapes to dismiss the difference.
+
+Scratch free space is3,403,446,251,520 bytes, so this is not an actual capacity
+failure or a reason to stop/restart training. The registered192 GiB training
+allowance and all frozen sources remain untouched. Before the later replay,
+separately document/admit conservative additional headroom and retain its
+actual footprint alongside the original estimate; do not silently amend
+registered artifacts or change any scientific gate. The goal remains
+active/unmet, with the original full trial and qualification chain live.
+
+### 2026-10-17 13:05 UTC — supplemental lifecycle headroom admitted; three updates accepted
+
+The previous goal turn made progress: the original first optimizer update
+completed, its saved evidence passed read-only checks and a concrete late-stage
+storage underestimate was identified. Revalidate the actual original PIDs and
+GPU owner, without replacing or restarting the trial. Training now completes
+three accepted updates and continues into step4; only boundary0 has evaluated.
+
+Add the separate CPU-only
+`scripts/check_single_model_four_draw_lifecycle_capacity.py` and
+`tests/test_single_model_four_draw_lifecycle_capacity.py`. Do not edit any of
+the653 frozen training sources or the registered coordinator. The new helper
+binds both original configurations/registrations, checks their source hashes,
+and reopens the exact152-case FP32/bool bank only for shape/dtype metadata.
+It examines every requested shape of every possible actual endpoint among all
+128 attempts/all56 tasks, rather than assuming the final scheduled batch or
+an intrinsically smaller matrix. No new statistical stream, sample, model
+inference, optimizer step, checkpoint or qualification decision occurs.
+
+Keep the original768 MiB replay declaration visible as an incomplete size
+estimate. The supplemental calculation includes full materialized task arrays,
+the four FP32 normalization vectors, all112 potential endpoint grids and152
+selected grids, a full FP32 candidate vector, conservative64-bit prediction
+arrays, explicit atomic-write overlap and64 MiB metadata/serialization
+allowance. Inspection of the frozen materialization/teacher callbacks confirms
+that teacher regeneration does not invoke the separate `ComponentReplay`
+archive writer; that full component audit is already budgeted independently.
+No compression, shared-storage saving, rejected-batch saving or favorable
+terminal shape is assumed.
+
+The resulting conservative replay estimate is1,723,074,128 bytes, below the
+separately checked2,147,483,648-byte headroom. Add the complete original
+training accounting and every later stage, with this supplemental replay
+accounting and256 KiB receipt allowance. Credit no already-written bytes or
+future deletions. All original18/6/50 GiB reserves still fit:
+
+| Volume | Conservative additional lifecycle bytes | Free bytes at check | Surplus after bound and reserve |
+|---|---:|---:|---:|
+|Checkpoint|4,281,372,032|23,631,196,160|22,471,296|
+|Root|167,772,160|15,507,345,408|8,897,122,304|
+|Scratch|180,629,478,016|3,403,345,539,072|3,169,028,969,856|
+
+The20 dedicated tests pass in0.26s. Handle45500 exits0 and writes the separate
+immutable receipt:
+`/mnt/checkpoints_200/single_model_goal_20261005/four_draw_v57_lifecycle_capacity_v1.json`,
+SHA256 `9676790af2cf4c07fad78ef60901f22cf40b09c8b1ae121f4487c5d5468654d0`.
+It binds the new checker/test sources; keep those bytes unchanged as well.
+Separate read-only handle5947 exits0 after reopening every receipt-bound
+source/input and independently checking the saved sums. This is supplemental
+capacity admission, not a hard filesystem reservation, a measurement of actual
+replay use or a guarantee against unrelated future writers. Keep the original
+per-stage checks, check actual phase headroom and retain the eventual footprint.
+Do not silently rewrite either original budget declaration. Late reruns of a
+zero-credit whole-lifecycle estimate can double-count already-created files;
+use the actual remaining phase requirements when monitoring subsequent stages.
+
+Step2 takes460.48625089926645 seconds and accepts. It preserves the undefined
+`legacy_draw_3/common_nrmse`:111 defined individual slots,167 transferred raw
+gradients and33 defined grouped guards, not a fabricated34th finite guard.
+Twenty-two individual training metrics worsen and remain in the original
+record. Peak host RSS is165,257,097,216 bytes (153.90766525268555 GiB); CUDA
+reserved peak is125.810546875 GiB. Saved transfer schema/hash and unchanged
+memory allowances pass the read-only recheck.
+
+Step3 takes509.46821260498837 seconds and accepts, with168 defined gradients,
+34 retained finite groups and10 adverse individual training metrics. Its
+recorded host peak is166,452,068,352 bytes (155.02056884765625 GiB), CUDA
+allocated peak87.5721583366394 GiB and reserved peak124.353515625 GiB.
+At13:04:53 UTC trainer274184 and coordinator274312 are both confirmed live;
+the trainer is capturing step4 and the coordinator waits on it. Full audits
+remain pending; neither within-batch acceptance nor these capacity checks
+establish held-out improvement. The next fixed development boundary is5.
+The complete single-model goal remains active/unmet.
+
+### 2026-10-17 13:27 UTC — V57 boundary5 improves synthetic minimax; all22 guards retained
+
+Continue the original training/audit shell274183, trainer274184 and CPU-only
+coordinator274312; do not restart any scientific job. Read-only observer79431
+finishes normally after fixed development boundary5 is written. At13:26 UTC
+the trainer is already capturing step6 and the coordinator remains live.
+Five attempts have completed, all accepted, of the unchanged128-attempt budget.
+
+Step4 takes503.98041545506567 seconds and has168 defined raw gradients,
+34 retained grouped guards and27 adverse individual metrics among112 defined
+individual slots. Step5 takes752.1364095420577 seconds and has168 gradients,
+34 retained grouped guards and11 adverse individual metrics among112 slots.
+Step5 records peak host RSS156.1520004272461 GiB and peak reserved CUDA
+125.7890625 GiB. Read-only handle54ffb3 verifies the original configuration
+hash, all653 registered source hashes and saved step3–5 transfer-receipt
+hashes/counts, exact-transfer declarations and recorded176 GiB host/.9 GPU
+allocator limits. The identical full168 receipt hash describes schema/count
+metadata, not raw-gradient content. This is not historical backward replay,
+optimizer-trajectory replay or the independent full-trial audit.
+
+The152-case synthetic development bank completes boundary5 with all22 frozen
+V8 retention comparisons passing. Its strict-minimax score is
+1.0576492293662496, versus1.0606515728673378 for the actual V29 warm start at
+boundary0. The decision field `initialization_score` remains the historical
+V8 value1.1461158965860874; do not describe that as the actual warm-start
+score. The worst target ratio changes from `structured_mnar_censoring` to
+`structured_mnar_polarization` and is still above1. The frozen rule selects
+boundary5 provisionally; step0 remains ineligible and later prescribed
+boundaries must still run.
+
+| Synthetic development metric | Actual V29 warm start | V57 boundary5 | Relative change |
+|---|---:|---:|---:|
+|Native imputation common NRMSE|0.664331714164|0.663827733575|-0.075863%|
+|Structured overall common NRMSE|0.684778692952|0.684193680255|-0.085431%|
+|Ratings RMSE|0.758233126643|0.757621938152|-0.080607%|
+|Ratings MAE|0.687911318438|0.686814895758|-0.159384%|
+|Structured MCAR common NRMSE|0.516937754603|0.516188273879|-0.144985%|
+|Structured MAR common NRMSE|0.437721600907|0.437954621488|+0.053235%|
+|Structured MNAR common NRMSE|0.424373553832|0.423810413806|-0.132699%|
+|MNAR censoring common NRMSE|0.753835835267|0.749386878944|-0.590176%|
+|MNAR two-phase subset common NRMSE|0.339077809023|0.338267811771|-0.238882%|
+|MNAR skip logic common NRMSE|1.012339234337|1.013060437603|+0.071241%|
+|MNAR cluster-level common NRMSE|0.428356889943|0.427218340241|-0.265795%|
+|MAR neural common NRMSE|0.820077716609|0.821007872207|+0.113423%|
+|MAR block-neural common NRMSE|0.571888723559|0.570493092352|-0.244039%|
+|MNAR latent-factor common NRMSE|0.484894296918|0.483014438863|-0.387684%|
+|MNAR polarization common NRMSE|0.910716755496|0.912020041425|+0.143106%|
+|MNAR soft-polarization common NRMSE|1.517124144926|1.517901940480|+0.051268%|
+
+All five adverse family changes remain visible: passing the historical22
+guards does not mean universal improvement over V29. Native imputation's
+MissBench-/UCI-like NRMSE is0.6638277342454968, below the unchanged
+0.664351306907806 V8 guard. These are synthetic-bank metrics, not actual
+MissBench, UCI, MovieLens, Netflix or LLM-completion results.
+
+Read-only handleb5ba14 cross-checks the boundary5 decision/selection in
+`validation_5.json` against its `validation.jsonl` row and hashes the saved
+`selected_checkpoint.pth`: SHA256
+`f167d1c50c31fb92f5a2d7baf91703c71451d64c4d4487a4d117eb7d50f59cf8`.
+The saved frozen-scope check reports all16 frozen tensors unchanged. This is
+a provisional development selection, not confirmation or real-suite
+qualification. The next fixed development boundary is13; retain all128
+attempts, original streams, thresholds, independent audit and fresh
+confirmation requirements before any real benchmark evaluation.
+
+At13:26 UTC free bytes are22,689,034,240 on checkpoint storage,
+15,503,126,528 on root and3,402,883,674,112 on scratch, each above the
+original reserve. The new boundary files/checkpoint have consumed storage;
+do not rerun the zero-credit complete-lifecycle bound as though none of them
+exists. Original phase checks and the supplemental capacity receipt remain
+unchanged. The active single-model goal is still unmet: the latest real
+campaign remains V45, with219/392 required and14/18 primary failures.
+
+### 2026-10-17 14:49 UTC — V57 boundary13 retains guards but does not replace boundary5
+
+The preceding goal turn made progress by inspecting the first trained
+development boundary, verifying its provisional checkpoint and recording
+its adverse family changes. Continue the original processes without a
+restart. Read-only observer73980 checks original start ticks and non-zombie
+states every30 seconds and finishes normally at14:47 UTC when boundary13
+appears. The original trainer274184 now captures step14; shell274183 and
+CPU coordinator274312 remain live. No additional neural job is launched.
+
+Thirteen of128 scheduled attempts complete, with12 accepted updates. Step11
+is the first rejection, `finite_metrics_rejected`, with three adverse
+grouped point changes: `mnar_two_phase_subset/common_nrmse`
++0.0006251301258889952, `mar_block_neural/rmse`
++0.00022838769082433874 and `mar_block_neural/common_nrmse`
++0.000129661183574159. It consumes its scheduled attempt and remains in the
+original evidence; no replacement or retry occurs. Thirty-four individual
+metrics worsen on this rejected proposal. Steps6–10,12 and13 accept, with
+23,20,17,17,27,21 and27 adverse individual metrics respectively. Grouped
+acceptance must not be described as universal individual improvement.
+
+Read-only handlesd9f32a/e7aacc verify saved transfer-receipt hashes/counts and
+recorded memory limits for steps6–13. All have168 raw gradients and34 defined
+grouped guards. The maximum recorded host RSS through step13 is
+167,812,575,232 bytes (156.28763961791992 GiB), within176 GiB. The maximum
+reserved CUDA peak through step13 remains step2's125.810546875 GiB, within
+the unchanged.9 allocator allowance. These are checks of recorded evidence,
+not historical neural backward/optimizer replay or the full independent audit.
+
+Boundary13 passes all22 original V8 retention guards. However, its strict
+minimax score1.0589468391395263 is worse than boundary5's1.0576492293662496,
+although better than the actual V29 warm-start score1.0606515728673378.
+`structured_mnar_polarization` remains the worst target ratio, still above1.
+Keep the frozen selection rule: `best_step` remains5. The boundary13
+`selected_checkpoint_sha256: null` means no new checkpoint was selected,
+not that the existing selected checkpoint vanished. Handlee7aacc hashes
+`selected_checkpoint.pth` and confirms the unchanged boundary5 SHA256
+`f167d1c50c31fb92f5a2d7baf91703c71451d64c4d4487a4d117eb7d50f59cf8`.
+
+| Synthetic development metric | Actual V29 warm start | Boundary5 | Boundary13 |
+|---|---:|---:|---:|
+|Native common NRMSE|0.664331714164|0.663827733575|0.663249833201|
+|Structured overall common NRMSE|0.684778692952|0.684193680255|0.683767718538|
+|Ratings RMSE|0.758233126643|0.757621938152|0.757553722006|
+|Ratings MAE|0.687911318438|0.686814895758|0.686817636444|
+|MCAR common NRMSE|0.516937754603|0.516188273879|0.516101102143|
+|MAR common NRMSE|0.437721600907|0.437954621488|0.438782562848|
+|MNAR common NRMSE|0.424373553832|0.423810413806|0.422972837214|
+|MNAR censoring common NRMSE|0.753835835267|0.749386878944|0.747005449892|
+|MNAR two-phase subset common NRMSE|0.339077809023|0.338267811771|0.337843455973|
+|MNAR skip logic common NRMSE|1.012339234337|1.013060437603|1.013884907204|
+|MNAR cluster-level common NRMSE|0.428356889943|0.427218340241|0.426994672862|
+|MAR neural common NRMSE|0.820077716609|0.821007872207|0.819216256082|
+|MAR block-neural common NRMSE|0.571888723559|0.570493092352|0.570564162634|
+|MNAR latent-factor common NRMSE|0.484894296918|0.483014438863|0.482388754434|
+|MNAR polarization common NRMSE|0.910716755496|0.912020041425|0.913138981510|
+|MNAR soft-polarization common NRMSE|1.517124144926|1.517901940480|1.516319479664|
+
+Relative to the actual warm start, three family common-NRMSE values worsen:
+MAR+0.242383%, skip logic+0.152683% and polarization+0.265969%. Relative
+to boundary5, those three, MAR block-neural, ratings MAE and native pooled
+RMSE worsen. Native pooled RMSE changes from0.7944723563167956 at boundary5
+to0.794509264666 at boundary13. Keep these adverse changes visible despite
+the improved overall common NRMSE. All values in this entry are synthetic,
+not new real MissBench/UCI/RecSys or LLM benchmark results.
+
+A small canonical-metric difference is inspected rather than silently
+equating the MissBench-like and UCI-like metrics. Structured boundary13
+MissBench-like NRMSE is0.6837416205761632, versus UCI-like
+0.6837677181875087. The difference is entirely case134, a45-by46
+`mnar_latent_factor` case. CPU-only handle84795 binds the registered bank
+SHA256 `6b1c7fc55948d8481daeca6feb83f42c36e15ecafc3de6aa3dcf36161dd6cd87`
+and the saved boundary0/5/13 prediction hashes, then reproduces the stored
+canonical case metrics. At boundary13, column19 has truth std0 and prediction
+RMSE0.00017437338829040527. The frozen MissBench scorer's1e-3 branch includes
+it as an additional zero; the frozen UCI1e-4 branch skips it. Thus canonical
+coverage is32 versus31 columns. Boundary0/5 score31 under both formulas.
+The separate truth-defined common guard retains the same31 columns at all
+three boundaries. Do not change these registered formulas or attribute their
+coverage-dependent difference to an additional modeling improvement. No
+inference, training, new sampling or selection takes place in this check.
+
+Handlee7aacc also verifies all653 frozen source hashes and equality between
+the boundary13 JSON and its validation-log student/decision/frozen-scope/
+selection fields. The scope report records238 changed trainable tensors and
+16 unchanged frozen tensors. At14:47 UTC free bytes are22,673,276,928 on
+checkpoint storage,15,474,814,976 on root and3,401,805,520,896 on scratch,
+each above its original reserve. Preserve original phase-capacity checks.
+The next fixed development boundary is25; continue all128 attempts and
+the unchanged audit/confirmation chain. Goal remains active/unmet, with
+no new real-suite qualification or evidence of benchmark parity.
+
+### 2026-10-17 16:51 UTC — V57 boundary25 becomes the provisional minimax selection
+
+The previous goal turn made progress: boundary13 completed, its non-selection
+and adverse changes were verified, and a canonical zero-column coverage
+difference was reproduced from the original saved grids without inference.
+Continue the same scientific run. Read-only observer49132 checks the original
+shell274183, trainer274184 and coordinator274312 start ticks/non-zombie states
+every30 seconds and completes normally when boundary25 appears at16:50 UTC.
+At16:50:30 the original trainer is already capturing step26; no restart,
+new seed, early real evaluation or change to the registered schedule occurs.
+
+Twenty-five of128 attempts complete, with20 accepted updates and five
+rejections at steps11,15,18,19,23. All rejections consume their original
+scheduled attempts. The new rejected proposals have these adverse grouped
+point-metric changes, preserved without relaxing the finite guard:
+
+| Rejected attempt | Adverse grouped point changes |
+|---|---|
+|15|MCAR common NRMSE+0.00012575035762774078|
+|18|MAR RMSE+0.00017776537506719592; MAR common NRMSE+0.00014271657641873325; MNAR RMSE+0.0014922695790596796; MNAR common NRMSE+0.0015864971133161543|
+|19|MAR-neural RMSE+0.0001646890609910967; MAR-neural common NRMSE+0.0004068739287569345|
+|23|MAR RMSE+0.00001884529461998463|
+
+Individual adverse metric counts for attempts14–25 are respectively
+15,20,11,20,24,22,17,13,23,20,13,19. Retain these individual diagnostics even
+for accepted grouped updates. All12 attempts have168 raw gradients and34
+defined grouped guards. Read-only handle4492c0 verifies their saved transfer
+receipt hashes/counts, exact-transfer declarations and original memory limits.
+The maximum recorded host RSS through step25 is168,051,097,600 bytes
+(156.50978088378906 GiB); the maximum reserved CUDA peak is125.818359375 GiB
+at step14. Both remain within the original176 GiB host/.9 GPU allowances.
+This is recorded-evidence checking, not historical gradient or optimizer replay.
+
+Boundary25 passes all22 frozen V8 retention comparisons and improves the
+strict-minimax score to1.0550432017788254, from1.0576492293662496 at the
+previous best boundary5 and1.0589468391395263 at boundary13. The actual V29
+warm-start score remains1.0606515728673378. The worst target ratio remains
+`structured_mnar_polarization`, still above1. The unchanged rule now selects
+boundary25 provisionally; it is not a confirmation or real-benchmark pass.
+
+| Synthetic development metric | Actual V29 warm start | Previous selection, boundary5 | New selection, boundary25 |
+|---|---:|---:|---:|
+|Native common NRMSE|0.664331714164|0.663827733575|0.662564180851|
+|Structured overall common NRMSE|0.684778692952|0.684193680255|0.683491165161|
+|Ratings RMSE|0.758233126643|0.757621938152|0.757388475308|
+|Ratings MAE|0.687911318438|0.686814895758|0.686518062289|
+|MCAR common NRMSE|0.516937754603|0.516188273879|0.517177176415|
+|MAR common NRMSE|0.437721600907|0.437954621488|0.439047710016|
+|MNAR common NRMSE|0.424373553832|0.423810413806|0.423573662763|
+|MNAR censoring common NRMSE|0.753835835267|0.749386878944|0.744636124737|
+|MNAR two-phase subset common NRMSE|0.339077809023|0.338267811771|0.337391999953|
+|MNAR skip logic common NRMSE|1.012339234337|1.013060437603|1.014103494176|
+|MNAR cluster-level common NRMSE|0.428356889943|0.427218340241|0.426663086639|
+|MAR neural common NRMSE|0.820077716609|0.821007872207|0.819878634060|
+|MAR block-neural common NRMSE|0.571888723559|0.570493092352|0.571498647992|
+|MNAR latent-factor common NRMSE|0.484894296918|0.483014438863|0.482263513025|
+|MNAR polarization common NRMSE|0.910716755496|0.912020041425|0.909772841387|
+|MNAR soft-polarization common NRMSE|1.517124144926|1.517901940480|1.515887090773|
+
+Overall improvements do not imply uniform gains. Relative to the actual
+warm start, MCAR, MAR and skip-logic common NRMSE worsen by0.046315%,
+0.302957% and0.174276%. Relative to the previous selected boundary5, these
+three worsen along with MAR block-neural. Relative to boundary13, MCAR,
+MAR, MNAR, skip logic, MAR-neural and MAR block-neural worsen, as does
+structured pooled RMSE (0.589913497017 to0.589932447056). Preserve all
+these changes rather than presenting the aggregate gain as dominance.
+These remain synthetic-bank metrics, not real MissBench/UCI/RecSys or
+LLM-completion results.
+
+Handle4492c0 independently hashes the saved `selected_checkpoint.pth` and
+matches boundary25's SHA256
+`0d0ecb1c61be86e63a2b959004f858fd9ab80fbc71e934fed439eac0c1039f49`.
+It checks equality of the boundary25 student, decision, frozen-scope and
+selection fields with `validation.jsonl`; verifies the exact logged
+boundaries0,5,13,25 and attempts1–25; and rechecks the original configuration
+registration plus all653 source hashes. The scope report retains16 frozen
+tensors unchanged and reports238 changed trainable tensors. Full independent
+trial auditing and fresh confirmation are still pending.
+
+At16:50:30 free bytes are22,649,737,216 on checkpoint storage,
+15,445,479,424 on root and3,400,242,565,120 on scratch, all above the original
+reserves. Keep the original phase checks and supplemental lifecycle receipt;
+do not reapply a zero-credit full-lifecycle bound to already-created files.
+Continue the prescribed128 attempts; the next fixed boundary is32. No
+benchmark gate or training decision changes, and no success is claimed.
+The full single-model goal remains active/unmet.
+
+### 2026-10-17 18:03 UTC — V57 completes boundary32; boundary25 remains selected
+
+The preceding goal turn made progress by verifying and recording the new
+boundary25 provisional selection. Continue the original run without changes.
+Read-only observer53028 checks the original shell274183, trainer274184 and
+CPU coordinator274312 start ticks and non-zombie states every30 seconds,
+then completes normally when boundary32 appears at18:02 UTC. At18:02:46 the
+same trainer is capturing step33; all three original processes remain live.
+
+Thirty-two of128 attempts now complete, with24 accepted updates and eight
+rejections at steps11,15,18,19,23,28,30,32. Each rejection consumes its
+original attempt without replacement or retry. Newly rejected grouped point
+changes are: step28 MCAR common NRMSE+0.000019456077881258027;
+step30 MCAR RMSE+0.00008448421319873223; step32 MNAR RMSE
++0.000989506687416597 and common NRMSE+0.0006706731832745172.
+Individual adverse metric counts for attempts26–32 are20,16,18,24,17,22,30,
+respectively, and remain in the original records. Step32 rejection does not
+cancel its scheduled development boundary or authorize a replacement update.
+
+Boundary32 retains all22 original V8 development guards, but its
+strict-minimax score1.0573956645248537 is worse than boundary25's
+1.0550432017788254. The actual V29 warm-start score is1.0606515728673378.
+The worst target ratio is again `structured_mnar_polarization`, still above1.
+Keep boundary25 selected under the unchanged rule. Boundary32's null
+`selected_checkpoint_sha256` means no new selection, not a missing checkpoint.
+
+| Synthetic development metric | Actual V29 warm start | Selected boundary25 | Boundary32 |
+|---|---:|---:|---:|
+|Native common NRMSE|0.664331714164|0.662564180851|0.662596320520|
+|Structured overall common NRMSE|0.684778692952|0.683491165161|0.683576890892|
+|Ratings RMSE|0.758233126643|0.757388475308|0.757315799908|
+|Ratings MAE|0.687911318438|0.686518062289|0.686294593825|
+|MCAR common NRMSE|0.516937754603|0.517177176415|0.517547013981|
+|MAR common NRMSE|0.437721600907|0.439047710016|0.438855140048|
+|MNAR common NRMSE|0.424373553832|0.423573662763|0.423219492512|
+|MNAR censoring common NRMSE|0.753835835267|0.744636124737|0.744501764788|
+|MNAR two-phase subset common NRMSE|0.339077809023|0.337391999953|0.337297816304|
+|MNAR skip logic common NRMSE|1.012339234337|1.014103494176|1.014194901374|
+|MNAR cluster-level common NRMSE|0.428356889943|0.426663086639|0.425672445757|
+|MAR neural common NRMSE|0.820077716609|0.819878634060|0.819842757274|
+|MAR block-neural common NRMSE|0.571888723559|0.571498647992|0.571321665543|
+|MNAR latent-factor common NRMSE|0.484894296918|0.482263513025|0.482490107994|
+|MNAR polarization common NRMSE|0.910716755496|0.909772841387|0.911801390278|
+|MNAR soft-polarization common NRMSE|1.517124144926|1.515887090773|1.516178194846|
+
+Compared with the actual warm start, MCAR, MAR, skip logic and polarization
+common NRMSE worsen by0.117859%,0.258963%,0.183305% and0.119097%,
+respectively. Compared with selected boundary25, both overall common-NRMSE
+aggregates worsen, as do MCAR, skip logic, latent-factor, polarization and
+soft-polarization common NRMSE. Ratings improve further, but that is not
+grounds to override the worst-case selection rule. Keep the canonical
+structured MissBench-like NRMSE0.683542719666 and UCI-like
+NRMSE0.683576892361 distinct; do not assume their frozen zero-column
+conventions are equivalent. These values are all synthetic-bank results,
+not new real MissBench/UCI/RecSys or LLM-completion evaluations.
+
+Read-only handled2d49f verifies the exact logged boundaries0,5,13,25,32 and
+attempts1–32, and confirms24 accepted attempts. It cross-checks boundary32's
+student/decision/frozen-scope/selection fields against `validation.jsonl`,
+verifies the original configuration registration and all653 source hashes,
+and hashes the retained `selected_checkpoint.pth`. Its SHA256 remains
+`0d0ecb1c61be86e63a2b959004f858fd9ab80fbc71e934fed439eac0c1039f49`,
+the boundary25 checkpoint. The scope report records238 changed trainable
+tensors and16 unchanged frozen tensors. Saved transfer-receipt hashes/counts
+and recorded memory allowances pass for attempts26–32, each with168 raw
+gradients and34 defined grouped guards. Full independent trial auditing,
+along with fresh confirmation, is still pending. These read-only checks are not
+historical gradient or full optimizer-trajectory replay and do not substitute
+for the registered audits.
+
+Maximum recorded host RSS through step32 remains168,051,097,600 bytes
+(156.50978088378906 GiB), and maximum reserved CUDA remains125.818359375 GiB.
+At18:02:46 free bytes are22,635,892,736 on checkpoint storage,
+15,421,276,160 on root and3,399,234,392,064 on scratch, all above the
+original reserves. Continue the registered128-attempt schedule and original
+audit/confirmation chain; the next fixed development boundary is64. Neither
+early stopping nor an unscheduled validation/benchmark run is authorized.
+The complete single-model goal remains active/unmet.
+
+### 2026-10-17 23:16 UTC — V57 reaches boundary64; no replacement for selected boundary25
+
+The previous goal turn made progress by verifying boundary32's retention
+checks, non-selection and adverse trade-offs. Continue the original trial.
+Read-only observer33191 verifies original process start ticks/non-zombie
+states every30 seconds from18:04 UTC through the completed boundary64 at
+23:15 UTC. Shell274183, trainer274184 and CPU coordinator274312 remain
+the original live processes. At23:16:19 the trainer is capturing step65.
+No scientific job, seed, schedule, gate or selected model is replaced.
+
+Sixty-four of128 attempts complete, with36 accepted updates and28 rejections.
+Attempts33–64 accept only12 updates, compared with24 in attempts1–32: the
+acceptance rate falls from75% to37.5%. Preserve this slowdown rather than
+presenting attempted steps as successful gradient updates. The accepted
+attempts in this block are33,34,35,36,42,43,44,52,54,58,62,64. Rejections
+are37,38,39,40,41,45,46,47,48,49,50,51,53,55,56,57,59,60,61,63. Every
+rejection reports `finite_metrics_rejected`, consumes its scheduled attempt
+and remains in the original `training.jsonl`, with every adverse grouped
+and individual metric. No retry, resampling or threshold relaxation occurs.
+
+The seven consecutive rejected proposals45–51 motivate a read-only check
+of the available saved optimizer state. CPU-only handle46657 reads
+`latest_checkpoint.pth` around attempt50 but finds that it still identifies
+boundary32 and24 accepted updates. It therefore cannot establish equality
+of adjacent model/optimizer states for the later rejected proposals. Do not
+claim independent verification of those runtime rollbacks from this stale
+boundary snapshot. No live-process introspection, neural work or modification
+of the registered checkpoint-writing scheme is introduced. This observation
+is a verification limitation, not evidence that rollback failed.
+
+Undefined truth metrics remain explicit. Handled78ef9 verifies that step53
+preserves null `mnar_draw_2/common_nrmse` before and after its rejected
+proposal. It transfers167 raw gradients while retaining34 defined grouped
+guards. Step56 preserves null `legacy_draw_2/common_nrmse`, transfers167
+gradients and has33 defined grouped guards. The other30 attempts in this
+block have168 gradients and34 defined groups. For the167-row transfer the
+complete CPU capture still reserves52,414,989,312 bytes, but the defined
+prefix transfers52,102,995,328 bytes /13,025,748,832 FP32 elements. Its
+receipt SHA256 is
+`fa9f77aee95bf5283e81dcc2467872da341e1ffb4e3f69d7d0274911151f7040`.
+This remains a schema/count receipt, not a raw-gradient content checksum;
+undefined slots are not fabricated zeroes or measured passing guards.
+
+Boundary64 retains all22 original V8 development comparisons, but its
+strict-minimax score1.05678949307856 does not improve selected boundary25's
+1.0550432017788254. It is better than boundary32's1.0573956645248537 and the
+actual V29 warm-start score1.0606515728673378, without reaching a worst target
+ratio of1. `structured_mnar_polarization` remains the limiting ratio. Keep
+boundary25 selected; boundary64's null selection hash signifies no new
+selection, not loss of the selected artifact.
+
+| Synthetic development metric | Actual V29 warm start | Selected boundary25 | Boundary64 |
+|---|---:|---:|---:|
+|Native common NRMSE|0.664331714164|0.662564180851|0.662175430100|
+|Structured overall common NRMSE|0.684778692952|0.683491165161|0.683821392137|
+|Ratings RMSE|0.758233126643|0.757388475308|0.757327914856|
+|Ratings MAE|0.687911318438|0.686518062289|0.686425125236|
+|MCAR common NRMSE|0.516937754603|0.517177176415|0.517584578674|
+|MAR common NRMSE|0.437721600907|0.439047710016|0.439708069523|
+|MNAR common NRMSE|0.424373553832|0.423573662763|0.423300178502|
+|MNAR censoring common NRMSE|0.753835835267|0.744636124737|0.743529210739|
+|MNAR two-phase subset common NRMSE|0.339077809023|0.337391999953|0.337210343167|
+|MNAR skip logic common NRMSE|1.012339234337|1.014103494176|1.014607279878|
+|MNAR cluster-level common NRMSE|0.428356889943|0.426663086639|0.426124431980|
+|MAR neural common NRMSE|0.820077716609|0.819878634060|0.820091577505|
+|MAR block-neural common NRMSE|0.571888723559|0.571498647992|0.571302361624|
+|MNAR latent-factor common NRMSE|0.484894296918|0.482263513025|0.483109155354|
+|MNAR polarization common NRMSE|0.910716755496|0.909772841387|0.911278683418|
+|MNAR soft-polarization common NRMSE|1.517124144926|1.515887090773|1.518010835277|
+
+Six family common-NRMSE values worsen versus the actual warm start: MCAR
++0.125126%, MAR+0.453820%, skip logic+0.224040%, MAR-neural+0.001690%,
+polarization+0.061702% and soft-polarization+0.058445%. Versus selected
+boundary25, those six and latent-factor worsen; structured overall common
+NRMSE also worsens by0.048315%. Native common NRMSE and both ratings
+metrics improve versus boundary25, but ratings RMSE and MAE worsen versus
+boundary32. Preserve these trade-offs and the unchanged worst-case selection
+rule. Canonical structured MissBench-like NRMSE0.683792753478 and UCI-like
+NRMSE0.683821393105 remain distinct under their original formulas. None
+of these synthetic measurements is a real benchmark result or parity claim.
+
+Read-only handle11167 checks the exact logged boundaries0,5,13,25,32,64
+and attempts1–64, the36 accepted updates, and equality of boundary64's
+student/decision/frozen-scope/selection fields with `validation.jsonl`.
+It rechecks the original configuration registration and all653 source hashes,
+plus the saved step33–64 transfer-receipt hashes/counts, matching null slots
+and recorded memory allowances. The scope report records238 changed
+trainable tensors and16 unchanged frozen tensors. Hashing the retained
+`selected_checkpoint.pth` confirms boundary25's unchanged SHA256
+`0d0ecb1c61be86e63a2b959004f858fd9ab80fbc71e934fed439eac0c1039f49`.
+These checks do not constitute historical backward/full optimizer replay
+or replace the registered independent audit and fresh confirmation.
+
+Maximum recorded host RSS through64 remains168,051,097,600 bytes
+(156.50978088378906 GiB), and maximum reserved CUDA remains125.818359375 GiB,
+within the original allowances. At23:16:19 free bytes are22,573,748,224 on
+checkpoint storage,15,322,222,592 on root and3,395,459,084,288 on scratch,
+all above the original reserves. Keep original phase-capacity checks and the
+supplemental lifecycle receipt intact. The next fixed development boundary
+is96; continue all128 attempts and the original audit/confirmation chain.
+No premature benchmark evaluation or alternate checkpoint selection occurs.
+The full single-model goal remains active/unmet.
+
+### 2026-10-18 04:27 UTC — V57 completes boundary96; selected boundary25 remains unchanged
+
+The previous goal turn made progress by verifying boundary64, its adverse
+family changes, reduced acceptance rate and unchanged provisional selection.
+Continue the same registered run. Read-only observer6744 verifies original
+process start ticks/non-zombie states every30 seconds from23:17 UTC through
+boundary96's completion at04:26 UTC. At04:27:16 shell274183, trainer274184
+and CPU coordinator274312 remain the original live processes, with the
+trainer capturing attempt97. No restart, adaptive stopping, new stream,
+unscheduled evaluation or changed gate is introduced.
+
+Ninety-six of128 attempts complete, with48 accepted updates and48 rejections.
+The latest32 attempts again accept12 updates (37.5%), matching attempts33–64
+and below the24/32 accepted in the first block. The accepted attempts65–96
+are65,74,75,76,82,83,84,85,88,89,91,93. The rejected attempts are66,67,68,
+69,70,71,72,73,77,78,79,80,81,86,87,90,92,94,95,96. All report
+`finite_metrics_rejected`; retain every scheduled rejection and its grouped
+and individual adverse diagnostics. Attempts66–73 form eight consecutive
+rejections, without replacement or retry. Attempt96's rejection still
+consumes the attempt and does not cancel its fixed development evaluation.
+
+Null truth-defined metrics remain unmodified before/after rejected proposals:
+attempt78 has null `mnar_two_phase_subset_draw_0/common_nrmse`,167 raw
+gradients and34 defined grouped guards; attempt86 has null
+`legacy_draw_1/common_nrmse`,167 gradients and33 guards; attempt96 has null
+`legacy_draw_2/common_nrmse`,167 gradients and33 guards. The other29
+attempts in this block have168 gradients and34 defined groups. Do not
+count undefined metrics as measured passing values or drop their attempts.
+
+Boundary96 passes all22 original V8 development retention comparisons.
+Its strict-minimax score1.0567332585955673 is only slightly better than
+boundary64's1.05678949307856 and remains worse than selected boundary25's
+1.0550432017788254. The actual V29 warm-start score remains
+1.0606515728673378. `structured_mnar_polarization` is still the worst
+target ratio, above1. Preserve the frozen selection rule: boundary25 remains
+selected, and boundary96's null selection hash means no new selection.
+
+| Synthetic development metric | Actual V29 warm start | Selected boundary25 | Boundary96 |
+|---|---:|---:|---:|
+|Native common NRMSE|0.664331714164|0.662564180851|0.661837484193|
+|Structured overall common NRMSE|0.684778692952|0.683491165161|0.683832092131|
+|Ratings RMSE|0.758233126643|0.757388475308|0.757026110070|
+|Ratings MAE|0.687911318438|0.686518062289|0.686071278716|
+|MCAR common NRMSE|0.516937754603|0.517177176415|0.517920745923|
+|MAR common NRMSE|0.437721600907|0.439047710016|0.439196926695|
+|MNAR common NRMSE|0.424373553832|0.423573662763|0.422715122880|
+|MNAR censoring common NRMSE|0.753835835267|0.744636124737|0.745299828632|
+|MNAR two-phase subset common NRMSE|0.339077809023|0.337391999953|0.336987388131|
+|MNAR skip logic common NRMSE|1.012339234337|1.014103494176|1.014107511557|
+|MNAR cluster-level common NRMSE|0.428356889943|0.426663086639|0.424889368092|
+|MAR neural common NRMSE|0.820077716609|0.819878634060|0.821583110787|
+|MAR block-neural common NRMSE|0.571888723559|0.571498647992|0.570411700899|
+|MNAR latent-factor common NRMSE|0.484894296918|0.482263513025|0.483040784523|
+|MNAR polarization common NRMSE|0.910716755496|0.909772841387|0.911230191938|
+|MNAR soft-polarization common NRMSE|1.517124144926|1.515887090773|1.518602425512|
+
+Six families worsen versus the actual warm start: MCAR common NRMSE
++0.190157%, MAR+0.337047%, skip logic+0.174672%, MAR-neural+0.183567%,
+polarization+0.056377% and soft-polarization+0.097440%. Compared with
+selected boundary25, those six plus censoring and latent-factor worsen;
+structured overall common NRMSE worsens by0.049880%. Native common NRMSE,
+ratings RMSE and ratings MAE improve versus boundary25, but these averages
+do not justify changing the worst-case rule. Compared with boundary64,
+MCAR, censoring, MAR-neural and soft-polarization worsen, along with
+structured overall common NRMSE and pooled RMSE. Keep those regressions
+visible. Canonical structured MissBench-like NRMSE0.683768939686 and UCI-like
+NRMSE0.683832090444 remain distinct under the original zero-column rules.
+These are synthetic-bank metrics, not actual MissBench/UCI/RecSys or LLM
+benchmark results; no benchmark parity or success is established.
+
+Read-only handle84083 verifies the exact logged development boundaries
+0,5,13,25,32,64,96 and attempts1–96, with48 accepted updates. It cross-checks
+the boundary96 student/decision/frozen-scope/selection fields against
+`validation.jsonl`; verifies the original configuration registration and
+all653 source hashes; and checks saved step65–96 transfer-receipt hashes,
+counts, matching null slots and recorded memory allowances. The scope
+report records238 changed trainable tensors and16 unchanged frozen tensors.
+The retained `selected_checkpoint.pth` still hashes to boundary25's SHA256
+`0d0ecb1c61be86e63a2b959004f858fd9ab80fbc71e934fed439eac0c1039f49`.
+These are recorded-evidence checks, not historical neural backward/full
+optimizer-trajectory replay or substitutes for the registered audits.
+
+Maximum recorded host RSS through96 remains168,051,097,600 bytes
+(156.50978088378906 GiB); maximum reserved CUDA remains125.818359375 GiB.
+At04:27:16 free bytes are22,511,656,960 on checkpoint storage,
+15,256,346,624 on root and3,391,687,999,488 on scratch, all above the
+original reserves. Preserve original phase-capacity checks and the separate
+lifecycle receipt. Continue the remaining32 scheduled attempts through
+boundary128, then the original independent audit and qualification chain.
+Do not confuse the expected trainer-to-auditor process handoff at completion
+with a failed scientific run or launch a duplicate auditor. The full
+single-model goal remains active/unmet; real-suite qualification is pending.
+
+### 2026-10-18 — User stop after 100 completed V57 attempts; best-model handoff
+
+The user requested stopping at iteration100 and returning the best model if
+the single-model target remained unmet. Here iteration means the current
+V57 training-attempt counter, not100 additional research variants. This
+supersedes the preceding instruction to continue to128. The broader goal is
+paused; do not restart the training/audit/qualification chain or claim goal
+completion. Preserve the original128-attempt registration as incomplete.
+
+`four_draw_v57/training.jsonl` contains exactly attempts1–100:51 accepted
+updates and49 rejected proposals. Attempts97,98,99 were accepted;
+attempt100 was rejected with `finite_metrics_rejected`. The frozen selection
+still chooses attempt25, with20 accepted updates in that checkpoint and
+strict-minimax score1.0550432017788254. All22 V8 retention guards pass.
+Validation boundaries are0,5,13,25,32,64,96; no validation100 was performed.
+The original latest checkpoint is boundary96, not the unsaved attempt100
+endpoint. Do not substitute it for the frozen selected checkpoint.
+
+Shutdown correction: the stop watcher reported process-group signals at
+04:58:52 UTC after observing completed attempt100, but SIGTERM did not
+terminate trainer274184. Follow-up inspection found it alive, still holding
+GPU memory. After verifying its original start ticks319411326 and process
+group274183, SIGSTOP then SIGKILL terminated it. Its final status snapshot
+shows partial attempt101, `capturing_gradients`, task`legacy_draw_0`. No
+attempt101 completion record or gradient-transfer receipt exists. Retain
+these partial artifacts and do not claim that no work on101 began. At
+05:00:21 UTC shell274183, trainer274184 and coordinator274312 were absent,
+and `nvidia-smi` reported no compute processes. The read-only observer's
+exit2 reflects the user-cancelled coordinator, not a scientific failure.
+Original status files remain stale evidence, not live-process indicators.
+
+The best saved synthetic-development selection is exported as:
+
+`/mnt/checkpoints_200/single_model_goal_20261005/four_draw_v57_user_stop_100/best_validation_checkpoint.pth`
+
+The exported hard link retains SHA256
+`0d0ecb1c61be86e63a2b959004f858fd9ab80fbc71e934fed439eac0c1039f49`.
+CPU loading confirms the ordinary single-network checkpoint, step25 and20
+accepted updates; the parameter inventory totals77,998,496 parameters.
+Its original `config.json` is copied alongside the checkpoint, together
+with registration and validation evidence. `README.md` supplies the model
+card and `stop_summary.json` records exact counts, provenance, shutdown
+details and qualification limits. All653 registered source hashes and the
+original configuration hash were verified unchanged before export.
+
+Selected synthetic native common NRMSE is0.6625641808509432, structured
+common NRMSE0.683491165161242, ratings RMSE0.7573884753080385 and
+MAE0.6865180622894484. These are not real-suite results. The worst target
+ratio remains above1; MCAR, MAR and skip-logic regress slightly versus the
+actual V29 warm start. Blend parity remains unproven. The full128 trial
+audit, fresh confirmation and real benchmarks did not complete; no auditor
+or benchmark stage was launched. Return this model with those limitations,
+not as a qualified replacement for the blended MatrixFormer.
+
+### 2026-10-20 — User-authorized real benchmarks for the returned V57 model
+
+The user explicitly requested the outstanding real-benchmark evaluation.
+Run a report-only campaign on the already selected attempt25 checkpoint,
+SHA256`0d0ecb1c61be86e63a2b959004f858fd9ab80fbc71e934fed439eac0c1039f49`.
+This authorizes evaluation, not restarting training, selecting another model,
+fabricating a synthetic gate, or claiming the incomplete128-attempt audit
+passed. Keep the original V57 training/qualification artifacts unchanged.
+
+New script`mcpfn/scripts/evaluate_stopped_single_matrixformer.py` adapts only
+the authorization/manifest preamble of each existing frozen evaluator.
+The remainder of inference, parity, caching, scoring and prediction audits
+is unchanged, checked by13 passing tests in
+`mcpfn/tests/test_stopped_single_matrixformer.py`. All653 registered training
+source hashes and all three existing benchmark protocols were verified.
+
+Coverage is all462 MissBench cases and1800 UCI cases, all four ratings
+datasets (MovieLens100K, Netflix small, MovieLens1M and10M), and all1800
+LLM fold settings/180 panels across MTEB, MMLU, merged and BenchPress.
+Keep the frozen missingness, normalization, context, targets and metrics.
+All student predictions are fresh; only the four fully audited unchanged
+general-parent rating controls are reused from the completed V45 campaign.
+Specialist parity checks and all original complete-suite audits still run.
+
+Campaign output:
+`/mnt/matrixformer_scratch/single_model_goal_20261005/four_draw_v57_user_eval_20261020`
+
+The campaign launched as PID765959, process group765959, start
+ticks341802481. `launch.json` binds that identity; `status.json` records
+the active stage/worker. `evaluation_authorization.json` explicitly labels
+the synthetic confirmation as incomplete. Final cross-suite`comparisons.csv`,
+`result.json` and`RESULTS.md` are produced only after the complete prediction
+audits succeed. At launch there are no new benchmark results or parity claims.
+
+The first launch completed and audited all2262 tabular cases: MissBench
+NRMSE1.6117417502774691 versus blend1.5796436577358641 (+2.031983%), UCI
+1.0170063619901784 versus0.9979220471196109 (+1.912405%). It then stopped
+before RecSys inference because the existing parent-cache importer resolves
+protocol symlinks while the new authorization initially recorded the aliases.
+Preserve the failed launch, its source snapshots and all results; this is an
+operational failure, not a missing model score or permission to tune the model.
+
+The corrected launcher consistently resolves protocol paths at registration
+and evaluation. A new regression test brings the focused suite to14 passes.
+The actual four-control RecSys cache import and its exact evaluator-manifest
+match were verified on CPU before the replacement launch. The original653
+registered training sources and the frozen benchmark evaluators remain intact.
+The same model and all original cases are rerun without any score-dependent
+selection in the separate corrected output directory:
+
+`/mnt/matrixformer_scratch/single_model_goal_20261005/four_draw_v57_user_eval_20261020_v2`
+
+Use that directory's`launch.json` and`status.json` for the active process;
+the first launch's status remains failed and is not overwritten.
+
+### 2026-10-20 03:47 UTC — V57 real-suite evaluation complete; blend parity fails
+
+The corrected report-only campaign completed all2262 tabular cases,
+all four ratings datasets with their separately audited unchanged-parent
+controls, and all1800 LLM fold settings/180 panels. Each original prediction
+audit passed. No training, checkpoint reselection, benchmark protocol change,
+or fabricated synthetic gate was performed. Both tabular launches produce
+byte-identical overall, pattern, dataset, pattern-rate and all2262 per-case CSVs.
+
+| Benchmark | Metric | Returned V57 attempt25 | Frozen blend |
+|---|---|---:|---:|
+| MissBench | NRMSE | 1.6117417502774691 | 1.5796436577358641 |
+| UCI | NRMSE | 1.0170063619901784 | 0.9979220471196109 |
+| MovieLens100K | RMSE | 0.8926228161632795 | 0.8873583919266732 |
+| MovieLens100K | MAE | 0.7329623850429668 | 0.7278777597350297 |
+| Netflix small | RMSE | 0.8665749004395331 | 0.8617214412348364 |
+| Netflix small | MAE | 0.7364485325061727 | 0.7329887182890474 |
+| MovieLens1M | RMSE | 0.8805252486219771 | 0.8767200656799594 |
+| MovieLens1M | MAE | 0.7166405762834447 | 0.7142404070084183 |
+| MovieLens10M | RMSE | 0.8375579405734609 | 0.8334006188611748 |
+| MovieLens10M | MAE | 0.6801118472383074 | 0.6781884369645175 |
+| MTEB | R2 | 0.7488898280761846 | 0.7504993808838661 |
+| MTEB | standardized RMSE | 0.4739318355429809 | 0.46736544974533556 |
+| MMLU | R2 | 0.8864659096848015 | 0.8882252336425493 |
+| MMLU | standardized RMSE | 0.32671360631971574 | 0.3244759923397767 |
+| Merged | R2 | 0.4356454230701622 | 0.4116447602431527 |
+| Merged | standardized RMSE | 0.7492275671715343 | 0.7558587148933996 |
+| BenchPress | R2 | 0.3153592766457501 | 0.30303008558302647 |
+| BenchPress | standardized RMSE | 1.009513327163765 | 1.0147962806573871 |
+
+MissBench overall is2.031983% worse and UCI1.912405% worse. MissBench
+MCAR and MNAR improve, but polarization worsens13.499605%; do not hide this
+behind the better patterns. All three UCI pattern averages regress. All four
+ratings datasets regress on both RMSE and MAE. LLM Merged and BenchPress
+improve on both reported metrics, while MTEB and MMLU regress.
+
+The frozen comparison review records222/392 required point-estimate
+regressions and14/18 primary regressions. Therefore the observed benchmark
+point estimates do not match/surpass the blend across the required scope.
+No uncertainty analysis or practical-equivalence margin is introduced.
+The goal remains paused and unmet; benchmark completion does not complete
+the independent synthetic confirmation or the original128-attempt audit.
+
+The complete campaign, including raw predictions, full-precision CSVs,
+source snapshots, protocol/model bindings and prediction audits, is archived
+with per-file SHA256 verification at:
+
+`/mnt/checkpoints_200/single_model_goal_20261005/four_draw_v57_user_eval_20261020`
+
+Use`RESULTS.md` for the primary comparison table,`comparisons.csv` for all
+pattern/dataset/panel comparisons and`archive_receipt.json` for the verified
+copy inventory. Original scratch outputs and the failed first launch remain
+preserved. GPU compute processes are absent after completion.

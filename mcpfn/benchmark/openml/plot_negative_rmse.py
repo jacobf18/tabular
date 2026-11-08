@@ -24,6 +24,7 @@ from plot_options import (
     NEUTRAL_COLOR_DARK,
     compute_normalized_rmse_columnwise,
 )
+from missbench_statistics import bootstrap_mean_interval
 
 # --- Plotting ---
 # Configure LaTeX rendering for all text in plots
@@ -325,7 +326,7 @@ if plot_pattern:
         for c in df_norm_all.columns
         if not ("MCAR" in c or "Col-MAR" in c or "Self-MNAR" in c or "Censoring" in c or "NN-MNAR" in c or "Block-MNAR" in c or "Polar" in c or "Soft-Pol" in c or "Latent-MNAR" in c or "Clustering" in c or "Two-Phase" in c)
     ]
-    df_overall = df_norm_all[_cols_overall]
+    df_overall = df_norm_all[_cols_overall].groupby(level=0).mean()
 
     # 3x4 grid: Overall + 11 patterns
     _grid_pattern_order = [
@@ -378,6 +379,7 @@ if plot_pattern:
             palette=method_colors,
             ax=ax_g,
             **BARPLOT_STYLE,
+            seed=0,
             legend=False,
         )
         _grid_title_names = {
@@ -389,9 +391,9 @@ if plot_pattern:
             "MAR_BlockNeural": "Block-MNAR",
             "MNARPolarizationPattern": "Pol-MNAR",
             "MNARSoftPolarizationPattern": "Soft-Pol-MNAR",
-            "MNARLatentFactorPattern": "Latent-MNAR",
-            "MNARClusterLevelPattern": "Clust-MNAR",
-            "MNARTwoPhaseSubsetPattern": "Phase-MNAR",
+            "MNARLatentFactorPattern": "Latent-MCAR",
+            "MNARClusterLevelPattern": "Clust-MCAR",
+            "MNARTwoPhaseSubsetPattern": "Phase-MAR",
             "MNARCensoringPattern": "Censor-MNAR",
         }
         _display_title = _grid_title_names.get(_title, _title)
@@ -471,6 +473,7 @@ if plot_pattern:
         order=sorted_methods_all,
         palette=method_colors,
         **BARPLOT_STYLE,
+        seed=0,
         legend=False,
     )
 
@@ -506,7 +509,6 @@ if plot_pattern:
     plt.savefig(f"{figure_base_path}/negative_rmse_overall.pdf", dpi=300, bbox_inches=None)
     plt.close()
 
-    # Four barplots in one row: Overall, MCAR, MAR, MNAR (Censoring)
     def _prepare_pattern_panel(pattern_name: str) -> pd.DataFrame:
         d2 = df[df.index.get_level_values(1) == pattern_name]
         dnorm = d2.copy()
@@ -525,7 +527,6 @@ if plot_pattern:
     _panel_dfs = [
         ("Overall", df_overall, None),
         ("MCAR", _prepare_pattern_panel("MCAR"), None),
-        # ("Col-MAR", _prepare_pattern_panel("MAR"), method_names["masters_mar"]),
         ("Censor-MNAR", _prepare_pattern_panel("MNARCensoringPattern"), method_names["masters_mnar_censoring"]),
         ("Self-MNAR", _prepare_pattern_panel("MNAR"), method_names["masters_mnar"]),
     ]
@@ -554,6 +555,7 @@ if plot_pattern:
             palette=method_colors,
             ax=ax_panel,
             **BARPLOT_STYLE,
+            seed=0,
             legend=False,
         )
         if _spec_label is not None or _title == "MCAR":
@@ -624,7 +626,7 @@ if plot_pattern:
     )
 
     plt.savefig(
-        f"{figure_base_path}/negative_rmse_row_overall_mcar_mar_self_mnar.pdf",
+        f"{figure_base_path}/negative_rmse_row_overall_mcar_censor_self_mnar.pdf",
         dpi=300,
         bbox_inches="tight",
     )
@@ -632,15 +634,15 @@ if plot_pattern:
 
 
 # exit()
-# Generate LaTeX table for normalized negative RMSE
+def _fmt_estimate(mean_val, interval):
+    lower, upper = interval
+    half_width = max(mean_val - lower, upper - mean_val)
+    width_str = f"{half_width:.3f}" if np.isfinite(interval).all() else "--"
+    return f"{mean_val:.3f} $\\pm$ {width_str}"
+
+
 print("Creating LaTeX table for normalized negative RMSE...")
 
-
-def _ci95_halfwidth(series: pd.Series) -> float:
-    n = int(series.count())
-    if n < 2:
-        return float("nan")
-    return float(stats.t.ppf(0.975, n - 1)) * float(series.sem())
 
 # Define methods to include in the table (subset of all methods)
 table_methods = [
@@ -684,10 +686,8 @@ for pattern_name in patterns:
     # df_norm = 1.0 - (df_pattern - df_pattern.min(axis=1).values[:, None]) / (df_pattern.max(axis=1) - df_pattern.min(axis=1)).values[:, None]
     df_norm = df_pattern
     
-    # Calculate mean and 95% CI half-width for each method across datasets
     pattern_means = df_norm.mean(axis=0)
-    # pattern_stds = df_norm.std(axis=0)
-    pattern_stds = df_norm.apply(_ci95_halfwidth, axis=0)
+    pattern_intervals = {method: bootstrap_mean_interval(df_norm[method]) for method in df_norm}
     
     # Create summary data for this pattern
     pattern_data = []
@@ -695,7 +695,9 @@ for pattern_name in patterns:
         pattern_data.append({
             'Method': method,
             'mean': pattern_means[method],
-            'std': pattern_stds[method],
+            'ci_low': pattern_intervals[method][0],
+            'ci_high': pattern_intervals[method][1],
+            'datasets': int(df_norm[method].count()),
             'Pattern': pattern_name
         })
     
@@ -703,10 +705,9 @@ for pattern_name in patterns:
 
 # Calculate overall normalized negative RMSE
 # df_all_norm = 1.0 - (df_all - df_all.min(axis=1).values[:, None]) / (df_all.max(axis=1) - df_all.min(axis=1)).values[:, None]
-df_all_norm = df_all
+df_all_norm = df_all.groupby(level=0).mean()
 overall_means = df_all_norm.mean(axis=0)
-# overall_stds = df_all_norm.std(axis=0)
-overall_stds = df_all_norm.apply(_ci95_halfwidth, axis=0)
+overall_intervals = {method: bootstrap_mean_interval(df_all_norm[method]) for method in df_all_norm}
 
 # Create summary data for overall
 overall_data = []
@@ -714,7 +715,9 @@ for method in overall_means.index:
     overall_data.append({
         'Method': method,
         'mean': overall_means[method],
-        'std': overall_stds[method],
+        'ci_low': overall_intervals[method][0],
+        'ci_high': overall_intervals[method][1],
+        'datasets': int(df_all_norm[method].count()),
         'Pattern': 'Overall'
     })
 
@@ -723,15 +726,15 @@ pattern_normalized_rmse['Overall'] = pd.DataFrame(overall_data)
 # Create summary data for LaTeX table
 summary_data = []
 all_patterns = ['MCAR', 
+                "MNARLatentFactorPattern",
+                "MNARClusterLevelPattern",
                 'MAR', 
+                "MNARTwoPhaseSubsetPattern",
                 'MNAR', 
                 'MAR_Neural', 
                 'MAR_BlockNeural', 
                 "MNARPolarizationPattern",
                 "MNARSoftPolarizationPattern",
-                "MNARLatentFactorPattern",
-                "MNARClusterLevelPattern",
-                "MNARTwoPhaseSubsetPattern",
                 "MNARCensoringPattern",
                 'Overall'
                 ]
@@ -750,7 +753,8 @@ print(summary_data)
 
 if summary_data:
     summary_df = pd.concat(summary_data, ignore_index=True)
-    summary_pivot = summary_df.pivot(index='Pattern', columns='Method', values=['mean', 'std'])
+    summary_df.to_csv(f"{figure_base_path}/normalized_negative_rmse_summary.csv", index=False)
+    summary_pivot = summary_df.pivot(index='Pattern', columns='Method', values=['mean', 'ci_low', 'ci_high'])
     
     # Flatten column names
     summary_pivot.columns = [f"{col[1]}_{col[0]}" for col in summary_pivot.columns]
@@ -793,9 +797,9 @@ if summary_data:
         "MAR_BlockNeural": "MNAR",
         "MNARPolarizationPattern": "MNAR",
         "MNARSoftPolarizationPattern": "MNAR",
-        "MNARLatentFactorPattern": "MNAR",
-        "MNARClusterLevelPattern": "MNAR",
-        "MNARTwoPhaseSubsetPattern": "MNAR",
+        "MNARLatentFactorPattern": "MCAR",
+        "MNARClusterLevelPattern": "MCAR",
+        "MNARTwoPhaseSubsetPattern": "MAR",
         "MNARCensoringPattern": "MNAR",
         "Overall": None,
     }
@@ -809,7 +813,7 @@ if summary_data:
     # Start single table environment
     latex_content = "\\begin{table*}[!ht]\n"
     latex_content += "\\centering\n"
-    latex_content += "\\caption{RMSE $\\pm$ 95\\% Confidence Interval by Missingness Pattern}\n"
+    latex_content += "\\caption{NRMSE $\\pm$ symmetrized 95\\% bootstrap confidence half-width by Missingness Pattern. Intervals resample datasets (1,000 resamples); Overall first averages patterns within each dataset. The half-width is the larger distance from the mean to the two bootstrap limits, conservatively enclosing the asymmetric interval.}\n"
     latex_content += "\\label{tab:normalized_negative_rmse_by_pattern}\n"
 
     # Generate each tabular environment
@@ -878,13 +882,15 @@ if summary_data:
             for method in this_table_methods:
                 if f"{method}_mean" in summary_pivot.columns:
                     mean_val = summary_pivot.loc[pattern, f"{method}_mean"]
-                    std_val = summary_pivot.loc[pattern, f"{method}_std"]
-                    if pd.notna(mean_val) and pd.notna(std_val):
+                    ci_low = summary_pivot.loc[pattern, f"{method}_ci_low"]
+                    ci_high = summary_pivot.loc[pattern, f"{method}_ci_high"]
+                    if np.isfinite([mean_val, ci_low, ci_high]).all():
+                        cell = _fmt_estimate(mean_val, (ci_low, ci_high))
                         # Bold if this is the global minimum value in this row (across all tabulars)
                         if abs(mean_val - row_min) < 1e-6:  # Use small epsilon for float comparison
-                            row += f" & \\textbf{{{mean_val:.3f} ± {std_val:.3f}}}"
+                            row += f" & \\textbf{{{cell}}}"
                         else:
-                            row += f" & {mean_val:.3f} ± {std_val:.3f}"
+                            row += f" & {cell}"
                     else:
                         row += " & --"
             row += " \\\\\n"
@@ -915,15 +921,15 @@ print("Creating square LaTeX table (specialized models x patterns)...")
 
 _square_patterns = [
     "MCAR",
+    "MNARLatentFactorPattern",
+    "MNARClusterLevelPattern",
     "MAR",
+    "MNARTwoPhaseSubsetPattern",
     "MNAR",
     "MAR_Neural",
     "MAR_BlockNeural",
     "MNARPolarizationPattern",
     "MNARSoftPolarizationPattern",
-    "MNARLatentFactorPattern",
-    "MNARClusterLevelPattern",
-    "MNARTwoPhaseSubsetPattern",
     "MNARCensoringPattern",
 ]
 
@@ -933,34 +939,31 @@ for _pat in _square_patterns:
     _col_name = method_names.get(_key) if _key else None
     _square_columns.append((_pat, _col_name))
 
-# Build value matrix: row pattern x column specialized model (mean and 95% CI half-width across datasets)
 _square_means = {}
-_square_sems = {}
+_square_intervals = {}
 for _row_pat in _square_patterns:
     _df_row = df[df.index.get_level_values(1) == _row_pat]
     for _col_pat, _col_name in _square_columns:
         if _col_name is not None and _col_name in _df_row.columns and not _df_row.empty:
             _square_means[(_row_pat, _col_pat)] = _df_row[_col_name].mean()
-            _square_sems[(_row_pat, _col_pat)] = _ci95_halfwidth(_df_row[_col_name])
+            _square_intervals[(_row_pat, _col_pat)] = bootstrap_mean_interval(_df_row[_col_name])
         else:
             _square_means[(_row_pat, _col_pat)] = float("nan")
-            _square_sems[(_row_pat, _col_pat)] = float("nan")
+            _square_intervals[(_row_pat, _col_pat)] = (float("nan"), float("nan"))
 
-# Overall row: mean / 95% CI half-width across all (dataset, pattern) entries for each specialized model
 for _col_pat, _col_name in _square_columns:
     if _col_name is not None and _col_name in df.columns:
-        _square_means[("Overall", _col_pat)] = df[_col_name].mean()
-        _square_sems[("Overall", _col_pat)] = _ci95_halfwidth(df[_col_name])
+        _square_means[("Overall", _col_pat)] = df_all_norm[_col_name].mean()
+        _square_intervals[("Overall", _col_pat)] = bootstrap_mean_interval(df_all_norm[_col_name])
     else:
         _square_means[("Overall", _col_pat)] = float("nan")
-        _square_sems[("Overall", _col_pat)] = float("nan")
+        _square_intervals[("Overall", _col_pat)] = (float("nan"), float("nan"))
 
 # Build LaTeX
-def _fmt_cell(mean_val, sem_val, bold_threshold):
+def _fmt_cell(mean_val, interval, bold_threshold, include_intervals=True):
     if pd.isna(mean_val):
         return " & --"
-    sem_str = f"{sem_val:.3f}" if pd.notna(sem_val) else "--"
-    cell = f"{mean_val:.3f} $\\pm$ {sem_str}"
+    cell = _fmt_estimate(mean_val, interval) if include_intervals else f"{mean_val:.3f}"
     if bold_threshold is not None and mean_val <= bold_threshold + 1e-6:
         return f" & \\textbf{{{cell}}}"
     return f" & {cell}"
@@ -984,9 +987,9 @@ _square_pattern_groups = {
     "MAR_BlockNeural": "MNAR",
     "MNARPolarizationPattern": "MNAR",
     "MNARSoftPolarizationPattern": "MNAR",
-    "MNARLatentFactorPattern": "MNAR",
-    "MNARClusterLevelPattern": "MNAR",
-    "MNARTwoPhaseSubsetPattern": "MNAR",
+    "MNARLatentFactorPattern": "MCAR",
+    "MNARClusterLevelPattern": "MCAR",
+    "MNARTwoPhaseSubsetPattern": "MAR",
     "MNARCensoringPattern": "MNAR",
 }
 _square_group_macro = {"MCAR": "\\mcar", "MAR": "\\mar", "MNAR": "\\mnar"}
@@ -1012,9 +1015,6 @@ for _p in _square_patterns:
     if _g is not None:
         _square_group_size[_g] = _square_group_size.get(_g, 0) + 1
 
-# Top-2 bolding threshold computed across ALL columns per row, so the bolded
-# cell stays the global top-2 even when the table is split into multiple
-# tabulars.
 _row_thresholds = {
     _row_pat: _top2_threshold(
         [_square_means[(_row_pat, _cp)] for _cp, _ in _square_columns]
@@ -1025,114 +1025,150 @@ _overall_thresh = _top2_threshold(
     [_square_means[("Overall", _cp)] for _cp, _ in _square_columns]
 )
 
-# Split into tabulars with at most max_cols_sq data columns each, mirroring the
-# main per-pattern table's multi-tabular layout.
-max_cols_sq = 5
-num_tabulars_sq = (len(_square_columns) + max_cols_sq - 1) // max_cols_sq
+def _render_specialized_square_table(include_intervals):
+    if include_intervals:
+        caption = "NRMSE $\\pm$ symmetrized 95\\% bootstrap confidence half-width for Specialized TabImpute Models. Intervals resample datasets (1,000 resamples); Overall first averages patterns within each dataset. The half-width is the larger distance from the mean to the two bootstrap limits, conservatively enclosing the asymmetric interval."
+        label = "tab:specialized_square"
+    else:
+        caption = "Mean NRMSE for Specialized TabImpute Models. Overall first averages patterns within each dataset."
+        label = "tab:specialized_square_no_ci"
+    caption += " The top-2 are bolded for each missingness pattern."
+    lines = [
+        "\\begin{table*}[!ht]",
+        "\\centering",
+        f"\\caption{{{caption}}}",
+        f"\\label{{{label}}}",
+    ]
+    split_index = _square_group_size["MCAR"] + _square_group_size["MAR"]
+    column_blocks = [_square_columns[:split_index], _square_columns[split_index:]] if include_intervals else [_square_columns]
+    for block_index, columns in enumerate(column_blocks):
+        if block_index:
+            lines.append("\\par\\medskip")
+        column_group_sizes = {}
+        for training_pattern, _ in columns:
+            group = _square_pattern_groups[training_pattern]
+            column_group_sizes[group] = column_group_sizes.get(group, 0) + 1
+        groups = list(column_group_sizes)
+        column_spec = "ll" + ":".join("c" * column_group_sizes[group] for group in groups)
+        lines.extend([
+            "\\resizebox{\\textwidth}{!}{",
+            f"\\begin{{tabular}}{{{column_spec}}}",
+            "\\toprule",
+        ])
+        header = "&"
+        for group_index, group in enumerate(groups):
+            alignment = "c:" if group_index < len(groups) - 1 else "c"
+            header += f" & \\multicolumn{{{column_group_sizes[group]}}}{{{alignment}}}{{\\textbf{{{_square_group_macro[group]}}}}}"
+        lines.extend([header + r" \\", "\\midrule"])
+        header = "& Trained on $\\Rightarrow$"
+        for training_pattern, _ in columns:
+            header += f" & {_square_col_header_macro[training_pattern]}"
+        lines.extend([header + r" \\", "\\midrule"])
 
-latex_square = "\\begin{table*}[!ht]\n"
-latex_square += "\\centering\n"
-latex_square += "\\caption{RMSE $\\pm$ 95\\% Confidence Interval for Specialized TabImpute Models \\\\ The top-2 are bolded for each missingness pattern.}\n"
-latex_square += "\\label{tab:specialized_square}\n"
+        previous_group = None
+        for pattern in _square_patterns + ["Overall"]:
+            group = _square_pattern_groups.get(pattern)
+            if pattern == "Overall":
+                lines.append("\\midrule")
+            elif previous_group is not None and group != previous_group:
+                lines.extend(["\\noalign{\\vskip 1.5pt}", "\\hdashline", "\\noalign{\\vskip 1.5pt}"])
+            group_cell = ""
+            if group is not None and group != previous_group:
+                group_cell = f"\\multirow{{{_square_group_size[group]}}}{{*}}{{\\textbf{{{_square_group_macro[group]}}}}}"
+            row_label = patern_latex_names.get(pattern, pattern).replace("_", "\\_")
+            row = f"{group_cell} & {row_label}"
+            threshold = _overall_thresh if pattern == "Overall" else _row_thresholds[pattern]
+            for training_pattern, _ in columns:
+                row += _fmt_cell(
+                    _square_means[(pattern, training_pattern)],
+                    _square_intervals[(pattern, training_pattern)],
+                    threshold,
+                    include_intervals=include_intervals,
+                )
+            lines.append(row + r" \\")
+            previous_group = group
+        lines.extend(["\\bottomrule", "\\end{tabular}", "}"])
+    lines.append("\\end{table*}")
+    return "\n".join(lines) + "\n"
 
-for _tab_idx in range(num_tabulars_sq):
-    _start = _tab_idx * max_cols_sq
-    _end = min(_start + max_cols_sq, len(_square_columns))
-    _this_cols = _square_columns[_start:_end]
-    _this_pats = [cp for cp, _ in _this_cols]
+for include_intervals, suffix in [(True, ""), (False, "_no_ci")]:
+    square_filename = f"{figure_base_path}/specialized_square_table{suffix}.txt"
+    with open(square_filename, "w") as output:
+        output.write(_render_specialized_square_table(include_intervals))
+    print(f"Square LaTeX table saved to {square_filename}")
 
-    # "ll" = (group-label column, pattern-label column); one centered "c" per
-    # data column.
-    _col_spec = "ll" + "c" * len(_this_cols)
-    latex_square += f"\\begin{{tabular}}{{{_col_spec}}}\n"
-    latex_square += "\\toprule\n"
 
-    # Header row 1: contiguous-group spans across this tabular's columns.
-    # Single-column groups are emitted as a plain bold cell; longer spans use
-    # \multicolumn, with ":c" (dashed left edge) when this isn't the first
-    # group in the tabular — matching the example layout.
-    _header1 = "&"  # leading slot for the group-label column
-    _i = 0
-    _first_group_in_tab = True
-    while _i < len(_this_pats):
-        _grp = _square_pattern_groups[_this_pats[_i]]
-        _j = _i
-        while _j < len(_this_pats) and _square_pattern_groups[_this_pats[_j]] == _grp:
-            _j += 1
-        _span = _j - _i
-        _macro = "\\textbf{" + _square_group_macro[_grp] + "}"
-        if _span == 1:
-            _header1 += f" & {_macro}"
-        else:
-            _align = "c" if _first_group_in_tab else ":c"
-            _header1 += f" & \\multicolumn{{{_span}}}{{{_align}}}{{{_macro}}}"
-        _first_group_in_tab = False
-        _i = _j
-    _header1 += " \\\\\n"
-    latex_square += _header1
-    latex_square += "\\midrule\n"
+def _summarize_nonlinear_comparison(scores):
+    records = []
+    for pattern in all_patterns:
+        values = scores.groupby(level=0).mean() if pattern == "Overall" else scores.xs(pattern, level=1)
+        for method in values:
+            mean = values[method].mean()
+            lower, upper = bootstrap_mean_interval(values[method])
+            records.append({
+                "Pattern": pattern,
+                "Method": method,
+                "mean": mean,
+                "ci_low": lower,
+                "ci_high": upper,
+                "ci_half_width": max(mean - lower, upper - mean),
+                "datasets": int(values[method].count()),
+            })
+    return pd.DataFrame(records)
 
-    # Header row 2: per-column \shortstack labels.
-    _header2 = "& Trained on $\\Rightarrow$"
-    for _cp, _ in _this_cols:
-        _header2 += f" & {_square_col_header_macro[_cp]}"
-    _header2 += " \\\\\n"
-    latex_square += _header2
-    latex_square += "\\midrule\n"
 
-    # Data rows.
-    _prev_group = None
-    for _row_pat in _square_patterns:
-        _grp = _square_pattern_groups.get(_row_pat)
-        if _grp is None:
-            _group_cell = ""
-        elif _grp != _prev_group:
-            _n = _square_group_size[_grp]
-            _macro = _square_group_macro[_grp]
-            if _n == 1:
-                _group_cell = f"\\textbf{{{_macro}}}"
-            else:
-                _group_cell = f"\\multirow{{{_n}}}{{*}}{{\\textbf{{{_macro}}}}}"
-        else:
-            _group_cell = ""
+def _render_nonlinear_comparison_table(summary):
+    comparison_methods = summary["Method"].drop_duplicates().tolist()
+    lines = [
+        "\\begin{table}[!ht]",
+        "\\centering",
+        "\\caption{NRMSE $\\pm$ symmetrized 95\\% bootstrap confidence half-width for TabImpute and its nonlinear variant. Intervals resample the 42 datasets (1,000 resamples); Overall first averages patterns within each dataset. The half-width is the larger distance from the mean to the two bootstrap limits, conservatively enclosing the asymmetric interval. Bold marks the lower mean in each row.}",
+        "\\label{tab:tabimpute_nonlinear_comparison}",
+        "\\begin{tabular}{llcc}",
+        "\\toprule",
+        "& Pattern & " + " & ".join(comparison_methods) + r" \\",
+        "\\midrule",
+    ]
+    previous_group = None
+    for pattern in all_patterns:
+        group = _pattern_groups[pattern]
+        if pattern == "Overall":
+            lines.append("\\midrule")
+        elif previous_group is not None and group != previous_group:
+            lines.extend(["\\noalign{\\vskip 1.5pt}", "\\hdashline", "\\noalign{\\vskip 1.5pt}"])
+        group_cell = ""
+        if group is not None and group != previous_group:
+            group_cell = f"\\multirow{{{_group_size[group]}}}{{*}}{{\\textbf{{{_group_latex_macro[group]}}}}}"
+        row = f"{group_cell} & {patern_latex_names[pattern]}"
+        pattern_results = summary[summary["Pattern"] == pattern].set_index("Method")
+        threshold = pattern_results["mean"].min()
+        for method in comparison_methods:
+            result = pattern_results.loc[method]
+            row += _fmt_cell(result["mean"], (result["ci_low"], result["ci_high"]), threshold)
+        lines.append(row + r" \\")
+        previous_group = group
+    lines.extend(["\\bottomrule", "\\end{tabular}", "\\end{table}"])
+    return "\n".join(lines) + "\n"
 
-        _row_label = patern_latex_names.get(_row_pat, _row_pat).replace("_", "\\_")
-        _row = f"{_group_cell} & {_row_label}"
-        _row_thresh = _row_thresholds[_row_pat]
-        for _cp, _ in _this_cols:
-            _row += _fmt_cell(
-                _square_means[(_row_pat, _cp)],
-                _square_sems[(_row_pat, _cp)],
-                _row_thresh,
-            )
-        _row += " \\\\\n"
-        latex_square += _row
-        _prev_group = _grp
 
-    # Overall row (ungrouped: empty group cell, "Overall" label).
-    latex_square += "\\midrule\n"
-    _overall_row = " & Overall"
-    for _cp, _ in _this_cols:
-        _overall_row += _fmt_cell(
-            _square_means[("Overall", _cp)],
-            _square_sems[("Overall", _cp)],
-            _overall_thresh,
-        )
-    _overall_row += " \\\\\n"
-    latex_square += _overall_row
-
-    latex_square += "\\bottomrule\n"
-    latex_square += "\\end{tabular}\n"
-
-    if _tab_idx < num_tabulars_sq - 1:
-        latex_square += "\\quad\n"
-
-latex_square += "\\end{table*}\n"
-
-square_filename = f"{figure_base_path}/specialized_square_table.txt"
-with open(square_filename, "w") as f:
-    f.write(latex_square)
-print(f"Square LaTeX table saved to {square_filename}")
+nonlinear_scores = {}
+for dataset, pattern in df.index:
+    case_path = f"{base_path}/{dataset}/{pattern}_0.4"
+    nonlinear_true = np.load(f"{case_path}/true.npy")
+    nonlinear_mask = np.isnan(np.load(f"{case_path}/missing.npy"))
+    nonlinear_prediction = np.load(f"{case_path}/masters_mcar_nonlinear.npy")
+    nonlinear_scores[(dataset, pattern)] = compute_normalized_rmse_columnwise(
+        nonlinear_true, nonlinear_prediction, nonlinear_mask,
+    )
+nonlinear_comparison = df[["TabImpute"]].copy()
+nonlinear_comparison["TabImpute (Nonlinear)"] = pd.Series(nonlinear_scores)
+nonlinear_summary = _summarize_nonlinear_comparison(nonlinear_comparison)
+nonlinear_comparison.to_csv(f"{figure_base_path}/nonlinear_comparison_per_dataset.csv", index_label=["dataset", "pattern"])
+nonlinear_summary.to_csv(f"{figure_base_path}/nonlinear_comparison_summary.csv", index=False)
+nonlinear_filename = f"{figure_base_path}/nonlinear_comparison_table.txt"
+with open(nonlinear_filename, "w") as output:
+    output.write(_render_nonlinear_comparison_table(nonlinear_summary))
+print(f"Nonlinear comparison LaTeX table saved to {nonlinear_filename}")
 
 
 exit()
@@ -1149,13 +1185,16 @@ for method in all_methods:
             method_row = pattern_df[pattern_df['Method'] == method]
             if not method_row.empty:
                 method_data[f"{pattern}_mean"] = method_row.iloc[0]['mean']
-                method_data[f"{pattern}_std"] = method_row.iloc[0]['std']
+                method_data[f"{pattern}_ci_low"] = method_row.iloc[0]['ci_low']
+                method_data[f"{pattern}_ci_high"] = method_row.iloc[0]['ci_high']
             else:
                 method_data[f"{pattern}_mean"] = None
-                method_data[f"{pattern}_std"] = None
+                method_data[f"{pattern}_ci_low"] = None
+                method_data[f"{pattern}_ci_high"] = None
         else:
             method_data[f"{pattern}_mean"] = None
-            method_data[f"{pattern}_std"] = None
+            method_data[f"{pattern}_ci_low"] = None
+            method_data[f"{pattern}_ci_high"] = None
     transposed_summary_data.append(method_data)
 
 transposed_df = pd.DataFrame(transposed_summary_data)
@@ -1181,7 +1220,7 @@ for method in all_methods:
 # Start single table environment
 latex_content_transposed = "\\begin{table}[h]\n"
 latex_content_transposed += "\\centering\n"
-latex_content_transposed += "\\caption{RMSE ± Standard Error by Method (Transposed)}\n"
+latex_content_transposed += "\\caption{NRMSE $\\pm$ symmetrized 95\\% dataset-bootstrap confidence half-width by Method (Transposed). The half-width is the larger distance from the mean to the two bootstrap limits, conservatively enclosing the asymmetric interval.}\n"
 latex_content_transposed += "\\label{tab:normalized_negative_rmse_by_method_transposed}\n"
 
 # Generate each tabular environment
@@ -1215,19 +1254,22 @@ for tabular_idx in range(num_tabulars_transposed):
         
         for pattern in table_patterns:
             mean_col = f"{pattern}_mean"
-            std_col = f"{pattern}_std"
+            lower_col = f"{pattern}_ci_low"
+            upper_col = f"{pattern}_ci_high"
             
-            if mean_col in transposed_df.columns and std_col in transposed_df.columns:
+            if all(column in transposed_df.columns for column in [mean_col, lower_col, upper_col]):
                 method_row = transposed_df[transposed_df['Method'] == method]
                 if not method_row.empty:
                     mean_val = method_row[mean_col].iloc[0]
-                    std_val = method_row[std_col].iloc[0]
-                    if pd.notna(mean_val) and pd.notna(std_val):
+                    ci_low = method_row[lower_col].iloc[0]
+                    ci_high = method_row[upper_col].iloc[0]
+                    if pd.notna(mean_val) and pd.notna(ci_low) and pd.notna(ci_high):
+                        cell = _fmt_estimate(mean_val, (ci_low, ci_high))
                         # Bold if this is the global maximum value in this row (across all tabulars)
                         if abs(mean_val - row_max) < 1e-6:  # Use small epsilon for float comparison
-                            row += f" & \\textbf{{{mean_val:.3f} ± {std_val:.3f}}}"
+                            row += f" & \\textbf{{{cell}}}"
                         else:
-                            row += f" & {mean_val:.3f} ± {std_val:.3f}"
+                            row += f" & {cell}"
                     else:
                         row += " & --"
                 else:
@@ -1436,4 +1478,3 @@ if len(tabimpute_values) > 0:
     print("="*60 + "\n")
 else:
     print("No valid paired comparisons found between TabImpute and HyperImpute")
-
