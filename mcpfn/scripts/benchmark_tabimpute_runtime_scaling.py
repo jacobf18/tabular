@@ -95,7 +95,7 @@ def watchdog(output):
 
 
 @contextmanager
-def exclusive_compute(output, pause_pid):
+def exclusive_compute(output, pause_pid, guard_seconds=900):
     parent = None
     identities = []
     if pause_pid is not None:
@@ -107,7 +107,7 @@ def exclusive_compute(output, pause_pid):
             raise ValueError('A process is already suspended; do not take ownership of its pause')
         identities = [dict(pid=process.pid, created=process.create_time()) for process in processes]
     guard = dict(state='active', owner=dict(pid=os.getpid(), created=psutil.Process().create_time()),
-                 suspended=identities, deadline=time.time() + 900, started_unix=time.time())
+                 suspended=identities, deadline=time.time() + guard_seconds, started_unix=time.time())
     write_json(output / 'gpu_guard.json', guard)
     with (output / 'watchdog.log').open('a') as stream:
         subprocess.Popen([sys.executable, str(Path(__file__).resolve()), '--output', str(output), '--watchdog'],
@@ -166,7 +166,7 @@ def worker(arguments):
     torch.manual_seed(manifest['seed'])
     np.random.seed(manifest['seed'])
     torch.backends.cuda.enable_cudnn_sdp(False)
-    torch.cuda.set_per_process_memory_fraction(0.25)
+    torch.cuda.set_per_process_memory_fraction(manifest['worker_memory_fraction'])
     record = dict(model=MODELS[model], model_key=model, rows=arguments.rows, columns=manifest['columns'],
                   missing_cells=int(np.isnan(matrix).sum()), input_sha256=digest(output / 'inputs' / f'rows_{arguments.rows}.npy'),
                   checkpoint_sha256=spec['checkpoint_sha256'], precision=spec['precision'],
@@ -178,6 +178,17 @@ def worker(arguments):
                             precision_mode=spec['precision'], max_num_rows=None, max_num_cols=None,
                             max_num_chunks=1, preprocessors=None)
         imputer.model.eval()
+        memory_factor = spec.get('save_peak_mem_factor')
+        if model == 'legacy' and memory_factor is not None:
+            probe = make_input(256, manifest['columns'], manifest['missing_fraction'], manifest['seed'])
+            reference = imputer.impute(probe.copy())
+            imputer.model.model.reset_save_peak_mem_factor(memory_factor)
+            candidate = imputer.impute(probe.copy())
+            missing = np.isnan(probe)
+            record['memory_mode_check'] = dict(rows=256, max_absolute_difference=float(np.max(np.abs(candidate - reference))),
+                                                missing_rmse_difference=float(np.sqrt(np.mean((candidate[missing] - reference[missing]) ** 2))))
+            write_json(target, record)
+            np.testing.assert_allclose(candidate, reference, rtol=.005, atol=.005)
         phase = 'warmup'
         for iteration in range(manifest['warmup'] + manifest['repeats']):
             check_exclusive(output)
@@ -240,9 +251,13 @@ def run(arguments):
                     timing='Synchronized end-to-end impute(); normalization, transfers, inference and NumPy output included; model loading, input copy, and warmup excluded',
                     context='Full matrices; no row/column chunking, no preprocessing/permutation ensemble, no fitting',
                     runtime_scope='Single-matrix synthetic workload; not timings of the archived benchmark ensemble/chunking configurations',
-                    worker_memory_fraction=0.25, suspension='Recommender computation paused during timing; its GPU allocations remain resident; watchdog resumes it within 15 minutes',
+                    worker_memory_fraction=arguments.memory_fraction, worker_timeout=arguments.worker_timeout,
+                    guard_seconds=arguments.guard_seconds,
+                    suspension=('Recommender computation paused; allocations remain resident; watchdog enforces guard_seconds'
+                                if arguments.pause_pid is not None else 'None; GPU must be idle and exclusive throughout timing'),
                     models={'legacy': dict(checkpoint=str(legacy), checkpoint_sha256=digest(legacy),
-                                          precision='full_bfloat16', prediction_stat='median'),
+                                          precision='full_bfloat16', prediction_stat='median',
+                                          save_peak_mem_factor=arguments.legacy_memory_factor),
                             'matrixformer': dict(checkpoint=str(arguments.checkpoint), checkpoint_sha256=digest(arguments.checkpoint),
                                                  config={'config': config['model']}, precision='amp_bfloat16', prediction_stat='mean')},
                     source_sha256={str(path): digest(path) for path in sources},
@@ -258,7 +273,7 @@ def run(arguments):
         raise SystemExit(f'Interrupted by signal {signum}')
     signal.signal(signal.SIGTERM, interrupted)
     try:
-        with exclusive_compute(output, arguments.pause_pid):
+        with exclusive_compute(output, arguments.pause_pid, arguments.guard_seconds):
             for index, rows in enumerate(arguments.row_sizes):
                 order = ('matrixformer', 'legacy') if index % 2 == 0 else ('legacy', 'matrixformer')
                 for model in order:
@@ -266,7 +281,7 @@ def run(arguments):
                     with (output / 'logs' / f'{model}_{rows}.log').open('w') as stream:
                         subprocess.run([sys.executable, str(Path(__file__).resolve()), '--output', str(output),
                                         '--worker-model', model, '--rows', str(rows)], stdout=stream,
-                                       stderr=subprocess.STDOUT, check=True, timeout=300)
+                                       stderr=subprocess.STDOUT, check=True, timeout=arguments.worker_timeout)
                     records = summarize(output)
                     current = next(record for record in records if record['model_key'] == model and record['rows'] == rows)
                     print(f"{rows} x {arguments.columns}: {MODELS[model]} {current['status']} {current.get('median_seconds', '')}", flush=True)
@@ -289,10 +304,18 @@ def main():
     parser.add_argument('--columns', type=int, default=10)
     parser.add_argument('--row-sizes', nargs='+', type=int, default=[16, 32, 64, 128, 256, 512, 1024, 2048])
     parser.add_argument('--pause-pid', type=int)
+    parser.add_argument('--memory-fraction', type=float, default=0.25)
+    parser.add_argument('--worker-timeout', type=int, default=300)
+    parser.add_argument('--guard-seconds', type=int, default=900)
+    parser.add_argument('--legacy-memory-factor', type=int)
     parser.add_argument('--worker-model', choices=tuple(MODELS))
     parser.add_argument('--rows', type=int)
     parser.add_argument('--watchdog', action='store_true')
     arguments = parser.parse_args()
+    if not 0 < arguments.memory_fraction <= 1 or min(arguments.worker_timeout, arguments.guard_seconds) <= 0:
+        parser.error('Require 0 < memory-fraction <= 1 and positive timeouts')
+    if arguments.legacy_memory_factor is not None and arguments.legacy_memory_factor <= 1:
+        parser.error('legacy-memory-factor must exceed one')
     if arguments.watchdog:
         watchdog(arguments.output)
     elif arguments.worker_model:

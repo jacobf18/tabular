@@ -15,7 +15,7 @@ def interval(values):
     return float(student_t.ppf(.975, len(values) - 1) * values.std(ddof=1) / np.sqrt(len(values)))
 
 
-def dataset_scores(cases, results, methods):
+def dataset_scores(cases, results, methods, shared_methods=False):
     expected = pd.DataFrame(cases)
     if expected.case_id.duplicated().any():
         raise ValueError('Duplicate registered cases')
@@ -28,12 +28,13 @@ def dataset_scores(cases, results, methods):
         raise ValueError('Unregistered method or case')
     outputs, coverage = [], []
     for method in methods:
-        requested = expected if method != 'tabimpute' else expected[expected.suite == 'missbench']
+        requested = expected if shared_methods or method != 'tabimpute' else expected[expected.suite == 'missbench']
         matched = requested.merge(actual[actual.method == method][['case_id', 'status', 'nrmse']], on='case_id', how='left')
         matched['valid'] = matched.status.eq('ok') & np.isfinite(pd.to_numeric(matched.nrmse, errors='coerce'))
         for suite, suite_cases in matched.groupby('suite'):
             coverage.append(dict(method=method, suite=suite, expected=len(suite_cases),
                                  successful=int(suite_cases.valid.sum()), failed=int(suite_cases.status.notna().sum() - suite_cases.valid.sum()),
+                                 unevaluable=int(suite_cases.status.eq('unevaluable_mask').sum()),
                                  pending=int(suite_cases.status.isna().sum()), complete=bool(suite_cases.valid.all())))
         for (suite, dataset), group in matched.groupby(['suite', 'dataset']):
             per_pattern = {}
@@ -56,8 +57,8 @@ def dataset_scores(cases, results, methods):
     return outputs, coverage
 
 
-def summarize(cases, results, methods):
-    scores, coverage = dataset_scores(cases, results, methods)
+def summarize(cases, results, methods, shared_methods=False):
+    scores, coverage = dataset_scores(cases, results, methods, shared_methods=shared_methods)
     if not scores:
         return scores, coverage, [], []
     frame = pd.DataFrame(scores)
@@ -96,9 +97,18 @@ def summarize(cases, results, methods):
 def export(output, manifest):
     output = Path(output)
     results = [json.loads(path.read_text()) for path in (output / 'results').glob('*/cases/**/*.json')]
-    scores, coverage, summaries, tests = summarize(manifest['cases'], results, manifest['methods'])
+    scores, coverage, summaries, tests = summarize(manifest['cases'], results, manifest['methods'],
+                                                  shared_methods=manifest.get('shared_methods', False))
     destination = output / 'summary'
     destination.mkdir(exist_ok=True)
+    if manifest.get('shared_methods'):
+        suites = {case['suite'] for case in manifest['cases']}
+        common = [method for method in manifest['methods']
+                  if {row['suite'] for row in coverage if row['method'] == method and row['complete']} == suites]
+        temporary = destination / 'complete_shared_methods.json.tmp'
+        temporary.write_text(json.dumps(dict(methods=common, suites=sorted(suites),
+                                             policy='Identical methods with complete eligible coverage in both suites; no accuracy selection.'), indent=2))
+        temporary.replace(destination / 'complete_shared_methods.json')
     for name, rows in [('per_case', results), ('dataset_scores', scores), ('coverage', coverage),
                        ('summary', summaries), ('paired_tests', tests)]:
         temporary = destination / f'{name}.csv.tmp'
@@ -111,6 +121,7 @@ def export(output, manifest):
              'Observed-only SD NRMSE is also saved per case as a separate diagnostic.',
              '95% t intervals and two-sided Wilcoxon tests use dataset means, not mask seeds.',
              'Missing/failed cases are explicit; incomplete dataset-panels are excluded, not silently averaged.',
+             'Unevaluable masks (no queries or no context) remain registered, count within failed coverage, and are never assigned zero error.',
              'Overall is the equal-pattern mean after averaging seeds and rates within datasets.',
              'Partial summaries are provisional and must not be used for method rankings.', '',
              '| Suite | Method | Overall NRMSE ± 95% CI | Complete datasets |',

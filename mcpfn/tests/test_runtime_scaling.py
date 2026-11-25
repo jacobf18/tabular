@@ -11,7 +11,7 @@ def test_runtime_model_display_names():
 
 
 def test_runtime_inputs_are_matched_deterministic_and_fixed_width():
-    for rows in (16, 32, 64, 128, 256, 512, 1024, 2048):
+    for rows in (16, 32, 64, 128, 256, 512, 1024, 2048, 4096):
         matrix = make_input(rows, 10, 0.4, 42)
         np.testing.assert_array_equal(matrix, make_input(rows, 10, 0.4, 42))
         assert matrix.shape == (rows, 10)
