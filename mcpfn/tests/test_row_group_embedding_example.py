@@ -1,9 +1,70 @@
+import json
+import sys
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch
 
 from run_row_group_embedding_example import CASE, construction_figure, generate, score_features
+import run_row_group_embedding_example as probe
+from run_matrixformer_synthetic_study import Predictor
+
+
+def test_predictor_uses_supplied_checkpoint_and_adjacent_config(tmp_path, monkeypatch):
+    checkpoint = tmp_path / 'final.pth'
+    config = {'model': {'example_setting': 8}}
+    (tmp_path / 'config.json').write_text(json.dumps(config))
+    received = {}
+
+    def imputer_factory(**kwargs):
+        received.update(kwargs)
+        return SimpleNamespace(model=SimpleNamespace(parameters=lambda: []))
+
+    monkeypatch.setitem(sys.modules, 'tabimpute.interface', SimpleNamespace(ImputePFN=imputer_factory))
+    Predictor(device='cpu', checkpoint=checkpoint)
+    assert received['checkpoint_path'] == str(checkpoint)
+    assert received['json_config'] == {'config': config['model']}
+    assert received['prediction_stat'] == 'mean'
+
+
+def test_probe_rejects_wrong_checkpoint_hash_before_creating_output(tmp_path):
+    checkpoint = tmp_path / 'final.pth'
+    checkpoint.write_bytes(b'checkpoint fixture')
+    output = tmp_path / 'probe'
+    with pytest.raises(ValueError, match='checkpoint hash mismatch'):
+        probe.run(output, 'cpu', checkpoint=checkpoint, checkpoint_sha256='incorrect')
+    assert not output.exists()
+
+
+def test_probe_records_and_uses_supplied_checkpoint(tmp_path, monkeypatch):
+    checkpoint = tmp_path / 'final.pth'
+    checkpoint.write_bytes(b'checkpoint fixture')
+    (tmp_path / 'config.json').write_text('{}')
+    checkpoint_hash = probe.digest(checkpoint)
+    data = generate()
+    calls = {}
+
+    def make_predictor(**kwargs):
+        calls.update(kwargs)
+        return SimpleNamespace(predict=lambda *args: data['truth'].copy(), check_unchanged=lambda: None)
+
+    features = {f'{representation}_row_{layer}': data['signal']
+                for representation in ('mean', 'profile') for layer in range(9)}
+    monkeypatch.setattr(probe, 'Predictor', make_predictor)
+    monkeypatch.setattr(probe, 'source_paths', lambda: [])
+    monkeypatch.setattr(probe.analysis, 'capture', lambda *args: (data['truth'].copy(), features, {}))
+    monkeypatch.setattr(probe, 'render', lambda *args: None)
+    output = tmp_path / 'probe'
+    probe.run(output, 'cpu', checkpoint=checkpoint, checkpoint_sha256=checkpoint_hash)
+    assert calls == {'device': 'cpu', 'checkpoint': checkpoint.resolve()}
+    protocol = json.loads((output / 'protocol.json').read_text())
+    assert protocol['checkpoint'] == str(checkpoint.resolve())
+    assert protocol['checkpoint_sha256'] == checkpoint_hash
+    assert protocol['case'] == CASE
+    assert str(tmp_path / 'config.json') in protocol['source_sha256']
+    assert json.loads((output / 'manifest.json').read_text())['checkpoint_unchanged']
 
 
 def test_generator_has_four_row_profiles_and_no_column_groups():

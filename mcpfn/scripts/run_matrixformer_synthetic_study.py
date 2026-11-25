@@ -55,10 +55,11 @@ def register(output, profile):
 
 
 class Predictor:
-    def __init__(self, device='cuda'):
+    def __init__(self, device='cuda', checkpoint=CHECKPOINT):
         from tabimpute.interface import ImputePFN
-        config = json.loads((CHECKPOINT.parent / 'config.json').read_text())['model']
-        self.imputer = ImputePFN(device=device, entry_wise_features=False, checkpoint_path=str(CHECKPOINT),
+        checkpoint = Path(checkpoint)
+        config = json.loads((checkpoint.parent / 'config.json').read_text())['model']
+        self.imputer = ImputePFN(device=device, entry_wise_features=False, checkpoint_path=str(checkpoint),
                                 json_config={'config': config}, model_family='new_stable', preprocessors=None,
                                 max_num_rows=None, max_num_cols=None, prediction_stat='mean',
                                 precision_mode='amp_bfloat16' if device == 'cuda' else 'float32')

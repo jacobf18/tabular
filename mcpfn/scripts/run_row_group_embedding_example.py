@@ -148,21 +148,22 @@ def render(output, matrix_only=False, colorbar_side='bottom'):
             artifacts_sha256={str(path): digest(path) for path in paths}))
 
 
-def run(output, device):
+def run(output, device, checkpoint=CHECKPOINT, checkpoint_sha256=CHECKPOINT_SHA):
     output = Path(output)
+    checkpoint = Path(checkpoint).resolve()
     if output.exists():
         raise ValueError('Use a new output directory; original examples must not be overwritten')
-    if digest(CHECKPOINT) != CHECKPOINT_SHA:
+    if digest(checkpoint) != checkpoint_sha256:
         raise ValueError('Frozen checkpoint hash mismatch')
     paths = set(source_paths()) | {Path(__file__).resolve(), Path(analysis.__file__).resolve(),
                                   Path(__file__).with_name('plot_synthetic_embedding_filmstrip.py').resolve(),
-                                  CHECKPOINT.parent / 'config.json'}
+                                  checkpoint.parent / 'config.json'}
     hashes = {str(path): digest(path) for path in paths}
     output.mkdir(parents=True)
     started = time.perf_counter()
     write_json(output / 'protocol.json', dict(case=CASE, formula='X_ij = P_{g_i,j} + 0.25 E_ij',
                profiles='4 x 64 independent standard-normal entries; no column labels or column groups',
-               checkpoint=str(CHECKPOINT), checkpoint_sha256=CHECKPOINT_SHA,
+               checkpoint=str(checkpoint), checkpoint_sha256=checkpoint_sha256,
                device=device, precision='float32' if device == 'cpu' else 'amp_bfloat16',
                selection='One fixed seed and condition, chosen before inference; no seed search',
                normalization='Observed-only per-column mean and population standard deviation',
@@ -175,7 +176,7 @@ def run(output, device):
     atomic_npz(output / 'inputs.npz', **data)
     torch.set_num_threads(2)
     torch.manual_seed(CASE['seed'])
-    predictor = Predictor(device=device)
+    predictor = Predictor(device=device, checkpoint=checkpoint)
     context = data['context']
     means = np.nanmean(context.astype(float), axis=0)
     scales = np.nanstd(context.astype(float), axis=0)
@@ -196,7 +197,7 @@ def run(output, device):
     for path, expected in hashes.items():
         if digest(path) != expected:
             raise ValueError(f'Source changed during the experiment: {path}')
-    if digest(CHECKPOINT) != CHECKPOINT_SHA:
+    if digest(checkpoint) != checkpoint_sha256:
         raise ValueError('Checkpoint changed during the experiment')
     write_json(output / 'manifest.json', dict(created=datetime.now(timezone.utc).isoformat(),
                case=CASE, capture_bit_identical=True, model_parameters_unchanged=True,
@@ -211,11 +212,14 @@ def main():
     parser.add_argument('command', choices=('run', 'render', 'render-matrix'))
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--device', choices=('cpu', 'cuda'), default='cuda')
+    parser.add_argument('--checkpoint', type=Path, default=CHECKPOINT)
+    parser.add_argument('--checkpoint-sha256', default=CHECKPOINT_SHA,
+                        help='Expected SHA-256 of the checkpoint; supply both options for a different model')
     parser.add_argument('--colorbar', choices=('bottom', 'left'), default='bottom',
                         help='Side of the first matrix for the color scale (render-matrix only)')
     args = parser.parse_args()
     if args.command == 'run':
-        run(args.output, args.device)
+        run(args.output, args.device, args.checkpoint, args.checkpoint_sha256)
     else:
         render(args.output, matrix_only=args.command == 'render-matrix', colorbar_side=args.colorbar)
 
